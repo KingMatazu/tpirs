@@ -25,7 +25,7 @@ import { Validator } from "./validator.js";
 const OBLIGATION_MODELS: readonly ObligationModel[] = ["pay_per_use", "scheduled"];
 const OBLIGATION_FREQUENCIES: readonly ObligationFrequency[] = ["daily", "weekly", "monthly"];
 const ARREARS_POLICIES: readonly ArrearsPolicy[] = ["none", "accrue"];
-const ATTRIBUTE_TYPES = ["string", "number", "boolean"] as const;
+const ATTRIBUTE_TYPES = ["string", "number", "date", "enum"] as const;
 
 function isIsoDate(value: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`));
@@ -102,7 +102,11 @@ function validateLocale(v: Validator, value: unknown): TenantLocale | undefined 
     return undefined;
   }
   if (!enabledLanguages.includes(defaultLanguage)) {
-    v.issue("schema_error", "locale.defaultLanguage must be in enabledLanguages", "defaultLanguage");
+    v.issue(
+      "schema_error",
+      "locale.defaultLanguage must be in enabledLanguages",
+      "defaultLanguage",
+    );
     return undefined;
   }
   return { defaultLanguage, enabledLanguages, timezone, currency, numberFormat, dateFormat };
@@ -149,12 +153,40 @@ function validateAttribute(v: Validator, value: unknown): TenantAssetAttribute |
   if (key === undefined || label === undefined || type === undefined || required === undefined) {
     return undefined;
   }
-  if (obj.pattern === undefined) {
-    return { key, label, type, required };
+
+  let options: string[] | undefined;
+  if (obj.options !== undefined) {
+    const list = v.array(obj.options, "options");
+    if (list === undefined) return undefined;
+    options = [];
+    list.forEach((option, index) => {
+      const parsed = v.string(option, `options.${index}`);
+      if (parsed !== undefined) options?.push(parsed);
+    });
+    if (options.length === 0) {
+      v.issue("schema_error", "attribute.options must not be empty", "options");
+      return undefined;
+    }
   }
-  const pattern = v.string(obj.pattern, "pattern");
-  if (pattern === undefined) return undefined;
-  return { key, label, type, required, pattern };
+  if (type === "enum" && options === undefined) {
+    v.issue("schema_error", "enum attributes must declare options", "options");
+    return undefined;
+  }
+
+  let pattern: string | undefined;
+  if (obj.pattern !== undefined) {
+    pattern = v.string(obj.pattern, "pattern");
+    if (pattern === undefined) return undefined;
+  }
+
+  return {
+    key,
+    label,
+    type,
+    required,
+    ...(options === undefined ? {} : { options }),
+    ...(pattern === undefined ? {} : { pattern }),
+  };
 }
 
 function validateAssetType(v: Validator, value: unknown): TenantAssetType | undefined {
@@ -195,7 +227,12 @@ function validateFeeRule(v: Validator, value: unknown): TenantFeeRule | undefine
     return undefined;
   }
   if (obj.effectiveTo === undefined) {
-    if (key === undefined || assetTypeKey === undefined || amountMinor === undefined || effectiveFrom === undefined) {
+    if (
+      key === undefined ||
+      assetTypeKey === undefined ||
+      amountMinor === undefined ||
+      effectiveFrom === undefined
+    ) {
       return undefined;
     }
     return { key, assetTypeKey, amountMinor, effectiveFrom };
@@ -282,7 +319,11 @@ function validateProvider(v: Validator, value: unknown): TenantProviderBinding |
       if (typeof val === "string" || typeof val === "number" || typeof val === "boolean") {
         options[k] = val;
       } else {
-        v.issue("schema_error", `provider.options.${k} must be string, number, or boolean`, `options.${k}`);
+        v.issue(
+          "schema_error",
+          `provider.options.${k} must be string, number, or boolean`,
+          `options.${k}`,
+        );
         return undefined;
       }
     }
@@ -324,15 +365,29 @@ function validateChannels(v: Validator, value: unknown): TenantChannels | undefi
   if (obj === undefined) return undefined;
   const ussdCode = v.string(obj.ussdCode, "ussdCode");
   const smsKeyword = v.string(obj.smsKeyword, "smsKeyword");
+  const otpMessageTemplate = v.string(obj.otpMessageTemplate, "otpMessageTemplate");
+  if (otpMessageTemplate !== undefined && !otpMessageTemplate.includes("{code}")) {
+    v.issue(
+      "schema_error",
+      "channels.otpMessageTemplate must contain the {code} placeholder",
+      "otpMessageTemplate",
+    );
+    return undefined;
+  }
   const menus: TenantMenu[] = [];
   v.each(obj.menus, "menus", (item) => {
     const menu = validateMenu(v, item);
     if (menu !== undefined) menus.push(menu);
   });
-  if (ussdCode === undefined || smsKeyword === undefined || !Array.isArray(obj.menus)) {
+  if (
+    ussdCode === undefined ||
+    smsKeyword === undefined ||
+    otpMessageTemplate === undefined ||
+    !Array.isArray(obj.menus)
+  ) {
     return undefined;
   }
-  return { ussdCode, smsKeyword, menus };
+  return { ussdCode, smsKeyword, otpMessageTemplate, menus };
 }
 
 function validateCashRules(v: Validator, value: unknown): TenantCashRules | undefined {
@@ -340,7 +395,9 @@ function validateCashRules(v: Validator, value: unknown): TenantCashRules | unde
   if (obj === undefined) return undefined;
   const enabled = v.boolean(obj.enabled, "enabled");
   const floatCeilingMinor = v.integer(obj.floatCeilingMinor, "floatCeilingMinor", { min: 0 });
-  const depositDeadlineHours = v.integer(obj.depositDeadlineHours, "depositDeadlineHours", { min: 0 });
+  const depositDeadlineHours = v.integer(obj.depositDeadlineHours, "depositDeadlineHours", {
+    min: 0,
+  });
   const freezeOnShortfall = v.boolean(obj.freezeOnShortfall, "freezeOnShortfall");
   if (
     enabled === undefined ||
@@ -360,7 +417,12 @@ function validateFeatureFlags(v: Validator, value: unknown): TenantFeatureFlags 
   const prepay = v.boolean(obj.prepay, "prepay");
   const offlineMode = v.boolean(obj.offlineMode, "offlineMode");
   const anomalyAlerts = v.boolean(obj.anomalyAlerts, "anomalyAlerts");
-  if (disputes === undefined || prepay === undefined || offlineMode === undefined || anomalyAlerts === undefined) {
+  if (
+    disputes === undefined ||
+    prepay === undefined ||
+    offlineMode === undefined ||
+    anomalyAlerts === undefined
+  ) {
     return undefined;
   }
   return { disputes, prepay, offlineMode, anomalyAlerts };
@@ -418,7 +480,10 @@ export function validateTenantConfig(input: unknown): TenantConfig {
   const channels = validateChannels(root.child("channels"), rootObj.channels);
   const cashRules = validateCashRules(root.child("cashRules"), rootObj.cashRules);
   const featureFlags = validateFeatureFlags(root.child("featureFlags"), rootObj.featureFlags);
-  const reconciliation = validateReconciliation(root.child("reconciliation"), rootObj.reconciliation);
+  const reconciliation = validateReconciliation(
+    root.child("reconciliation"),
+    rootObj.reconciliation,
+  );
   const compliance = validateCompliance(root.child("compliance"), rootObj.compliance);
 
   const assetTypeKeys = new Set(assetTypes.map((a) => a.key));

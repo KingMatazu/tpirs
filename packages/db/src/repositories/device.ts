@@ -37,10 +37,7 @@ export class DeviceRepository {
       .executeTakeFirstOrThrow();
   }
 
-  async findActive(input: {
-    userId: string;
-    deviceId: string;
-  }): Promise<DeviceRecord | undefined> {
+  async findActive(input: { userId: string; deviceId: string }): Promise<DeviceRecord | undefined> {
     return this.db
       .selectFrom("devices")
       .select(["id", "deviceId", "platform", "revokedAt"])

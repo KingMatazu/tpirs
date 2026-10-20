@@ -48,7 +48,11 @@ export class Validator {
     return value;
   }
 
-  integer(value: unknown, key: string, options: { min?: number; max?: number } = {}): number | undefined {
+  integer(
+    value: unknown,
+    key: string,
+    options: { min?: number; max?: number } = {},
+  ): number | undefined {
     if (typeof value !== "number" || !Number.isInteger(value)) {
       this.issue("schema_error", `${this.#path(key)} must be an integer`, key);
       return undefined;

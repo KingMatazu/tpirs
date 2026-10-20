@@ -15,7 +15,12 @@ export class TenantConfigError extends Error {
   /** Dot-separated location within the config, e.g. "locale.timezone". Empty at the root. */
   readonly path: string;
 
-  constructor(reason: ConfigErrorReason, message: string, path: string, options?: { cause?: unknown }) {
+  constructor(
+    reason: ConfigErrorReason,
+    message: string,
+    path: string,
+    options?: { cause?: unknown },
+  ) {
     super(message, options);
     this.name = "TenantConfigError";
     this.reason = reason;
@@ -28,7 +33,9 @@ export class TenantConfigValidationError extends Error {
   readonly issues: readonly TenantConfigError[];
 
   constructor(issues: readonly TenantConfigError[]) {
-    super(`Tenant configuration has ${issues.length} issue(s): ${issues.map((i) => i.message).join("; ")}`);
+    super(
+      `Tenant configuration has ${issues.length} issue(s): ${issues.map((i) => i.message).join("; ")}`,
+    );
     this.name = "TenantConfigValidationError";
     this.issues = issues;
   }

@@ -48,8 +48,9 @@ export interface TenantAssetType {
 export interface TenantAssetAttribute {
   readonly key: string;
   readonly label: string;
-  readonly type: "string" | "number" | "boolean";
+  readonly type: "string" | "number" | "date" | "enum";
   readonly required: boolean;
+  readonly options?: readonly string[];
   readonly pattern?: string;
 }
 
@@ -97,6 +98,8 @@ export interface TenantMenu {
 export interface TenantChannels {
   readonly ussdCode: string;
   readonly smsKeyword: string;
+  /** SMS template for owner phone verification; must contain the {code} placeholder. */
+  readonly otpMessageTemplate: string;
   readonly menus: readonly TenantMenu[];
 }
 

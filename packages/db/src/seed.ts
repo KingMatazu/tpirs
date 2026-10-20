@@ -121,6 +121,7 @@ function baseConfig(overrides: {
     channels: {
       ussdCode: overrides.ussdCode,
       smsKeyword: "LEVY",
+      otpMessageTemplate: `${overrides.appName}: your verification code is {code}.`,
       menus: [
         {
           key: "main",
@@ -181,6 +182,12 @@ const FAKE_TENANTS: readonly FakeTenant[] = [
         password: "alpha-officer-password",
         roleKeys: ["officer"],
       },
+      {
+        username: "alpha.collector",
+        displayName: "Alpha Collector",
+        password: "alpha-collector-password",
+        roleKeys: ["collector"],
+      },
     ],
   },
   {
@@ -218,6 +225,12 @@ const FAKE_TENANTS: readonly FakeTenant[] = [
         password: "beta-finance-password",
         roleKeys: ["finance_admin"],
       },
+      {
+        username: "beta.officer",
+        displayName: "Beta Officer",
+        password: "beta-officer-password",
+        roleKeys: ["officer"],
+      },
     ],
   },
 ];
@@ -246,7 +259,8 @@ export const seed: SeedFn = async (db) => {
       for (const role of SYSTEM_ROLES) {
         const existingRole = await repos.roles.findByKey(role.key);
         const created =
-          existingRole ?? (await repos.roles.create({
+          existingRole ??
+          (await repos.roles.create({
             tenantId: tenant.id,
             key: role.key,
             name: role.name,

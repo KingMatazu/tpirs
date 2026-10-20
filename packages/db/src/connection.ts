@@ -93,6 +93,42 @@ export interface AuditLogTable {
   createdAt: Generated<Timestamp>;
 }
 
+export interface OwnerTable {
+  id: Generated<string>;
+  tenantId: string;
+  displayName: string;
+  phone: string;
+  phoneVerifiedAt: Timestamp | null;
+  createdAt: Generated<Timestamp>;
+  updatedAt: Generated<Timestamp>;
+}
+
+export interface AssetTable {
+  id: Generated<string>;
+  tenantId: string;
+  zoneId: string | null;
+  ownerId: string | null;
+  assetTypeKey: string;
+  status: Generated<string>;
+  attributes: Json;
+  qrPayload: string;
+  qrToken: string;
+  shortCode: string;
+  createdByUserId: string | null;
+  createdAt: Generated<Timestamp>;
+  updatedAt: Generated<Timestamp>;
+}
+
+export interface AssetPhotoTable {
+  id: Generated<string>;
+  tenantId: string;
+  assetId: string;
+  objectKey: string;
+  contentType: string;
+  createdByUserId: string | null;
+  createdAt: Generated<Timestamp>;
+}
+
 export interface Database {
   tenants: TenantTable;
   zones: ZoneTable;
@@ -103,6 +139,9 @@ export interface Database {
   devices: DeviceTable;
   sessions: SessionTable;
   auditLog: AuditLogTable;
+  owners: OwnerTable;
+  assets: AssetTable;
+  assetPhotos: AssetPhotoTable;
 }
 
 export type TenantRow = Selectable<TenantTable>;
@@ -112,6 +151,9 @@ export type RoleRow = Selectable<RoleTable>;
 export type DeviceRow = Selectable<DeviceTable>;
 export type SessionRow = Selectable<SessionTable>;
 export type AuditLogRow = Selectable<AuditLogTable>;
+export type OwnerRow = Selectable<OwnerTable>;
+export type AssetRow = Selectable<AssetTable>;
+export type AssetPhotoRow = Selectable<AssetPhotoTable>;
 
 export interface DbOptions {
   readonly connectionString: string;
@@ -128,6 +170,8 @@ export function createDb(options: DbOptions): AnyDb {
   });
   return new Kysely<Database>({
     dialect: new PostgresDialect({ pool }),
-    plugins: [new CamelCasePlugin()],
+    // Tenant asset attributes are tenant-defined keys (e.g. `plate_number`);
+    // they must round-trip unchanged, so leave nested JSON object keys alone.
+    plugins: [new CamelCasePlugin({ maintainNestedObjectKeys: true })],
   });
 }

@@ -1,12 +1,6 @@
-import { assetTypeId } from "@tpirs/domain";
+import { assetTypeId, validateAttributesAgainstSchema } from "@tpirs/domain";
 import { PortError } from "@tpirs/ports";
-import type {
-  AssetSchemaRegistry,
-  AssetTypeDefinition,
-  AttributeSchema,
-  AttributeValidationError,
-  ValidationResult,
-} from "@tpirs/ports";
+import type { AssetSchemaRegistry, AssetTypeDefinition } from "@tpirs/ports";
 import { conformanceFixtures } from "@tpirs/contracts";
 
 export interface MockAssetTypeSeed {
@@ -34,48 +28,6 @@ export const defaultMockAssetTypeSeed: MockAssetTypeSeed = {
 
 export interface MockAssetSchemaRegistry extends AssetSchemaRegistry {
   registerType(tenantId: string, definition: AssetTypeDefinition): void;
-}
-
-function validateAgainstSchema(
-  schema: readonly AttributeSchema[],
-  attributes: Readonly<Record<string, unknown>>,
-): ValidationResult {
-  const errors: AttributeValidationError[] = [];
-  for (const attribute of schema) {
-    const value = attributes[attribute.key];
-    if (value === undefined) {
-      if (attribute.required) {
-        errors.push({ attribute: attribute.key, message: "Required attribute is missing" });
-      }
-      continue;
-    }
-    switch (attribute.type) {
-      case "string":
-        if (typeof value !== "string") {
-          errors.push({ attribute: attribute.key, message: "Must be a string" });
-        }
-        break;
-      case "number":
-        if (typeof value !== "number") {
-          errors.push({ attribute: attribute.key, message: "Must be a number" });
-        }
-        break;
-      case "date":
-        if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-          errors.push({ attribute: attribute.key, message: "Must be a YYYY-MM-DD date" });
-        }
-        break;
-      case "enum":
-        if (typeof value !== "string" || !attribute.options?.includes(value)) {
-          errors.push({
-            attribute: attribute.key,
-            message: `Must be one of: ${(attribute.options ?? []).join(", ")}`,
-          });
-        }
-        break;
-    }
-  }
-  return { ok: errors.length === 0, errors };
 }
 
 export function createMockAssetSchemaRegistry(
@@ -113,7 +65,7 @@ export function createMockAssetSchemaRegistry(
     validateAttributes(tenantId, typeKey, attributes) {
       try {
         const definition = requireType(tenantId, typeKey);
-        return Promise.resolve(validateAgainstSchema(definition.attributes, attributes));
+        return Promise.resolve(validateAttributesAgainstSchema(definition.attributes, attributes));
       } catch (error) {
         return Promise.reject(error instanceof Error ? error : new Error(String(error)));
       }

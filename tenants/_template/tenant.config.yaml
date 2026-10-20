@@ -74,6 +74,7 @@ providers:
 channels:
   ussdCode: "*000*0#"
   smsKeyword: "LEVY"
+  otpMessageTemplate: "Template Levy: your verification code is {code}."
   menus:
     - key: "main"
       promptKey: "ussd.main.prompt"

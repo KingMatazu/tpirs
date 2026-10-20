@@ -1,29 +1,11 @@
-import type { AssetTypeId, TenantId } from "@tpirs/domain";
+import type { AssetTypeDefinition, AssetTypeId, TenantId, ValidationResult } from "@tpirs/domain";
 
-export interface AttributeSchema {
-  readonly key: string;
-  readonly label: string;
-  readonly type: "string" | "number" | "date" | "enum";
-  readonly required: boolean;
-  readonly options?: readonly string[];
-}
-
-export interface AssetTypeDefinition {
-  readonly id: AssetTypeId;
-  readonly key: string;
-  readonly name: string;
-  readonly attributes: readonly AttributeSchema[];
-}
-
-export interface AttributeValidationError {
-  readonly attribute: string;
-  readonly message: string;
-}
-
-export interface ValidationResult {
-  readonly ok: boolean;
-  readonly errors: readonly AttributeValidationError[];
-}
+export type {
+  AssetTypeDefinition,
+  AttributeSchema,
+  AttributeValidationError,
+  ValidationResult,
+} from "@tpirs/domain";
 
 export interface AssetSchemaRegistry {
   listTypes(tenantId: TenantId): Promise<readonly AssetTypeDefinition[]>;
@@ -35,3 +17,5 @@ export interface AssetSchemaRegistry {
     attributes: Readonly<Record<string, unknown>>,
   ): Promise<ValidationResult>;
 }
+
+export type { AssetTypeId, TenantId };

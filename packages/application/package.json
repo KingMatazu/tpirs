@@ -1,0 +1,40 @@
+{
+  "name": "@tpirs/application",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b && tsc -p tsconfig.test.json",
+    "lint": "eslint src",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@tpirs/config": "workspace:*",
+    "@tpirs/crypto": "workspace:*",
+    "@tpirs/db": "workspace:*",
+    "@tpirs/domain": "workspace:*",
+    "@tpirs/ports": "workspace:*",
+    "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "@tpirs/asset-schema-registry-config": "workspace:*",
+    "@tpirs/cache-mock": "workspace:*",
+    "@tpirs/clock-mock": "workspace:*",
+    "@tpirs/object-storage-mock": "workspace:*",
+    "@tpirs/sms-provider-mock": "workspace:*",
+    "@types/qrcode": "^1.5.6",
+    "vitest": "^3.2.4"
+  }
+}

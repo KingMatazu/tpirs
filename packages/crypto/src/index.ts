@@ -1,4 +1,11 @@
-import { createHash, createHmac, randomBytes, scrypt, timingSafeEqual } from "node:crypto";
+import {
+  createHash,
+  createHmac,
+  randomBytes,
+  randomUUID,
+  scrypt,
+  timingSafeEqual,
+} from "node:crypto";
 import type { ScryptOptions } from "node:crypto";
 import { promisify } from "node:util";
 
@@ -29,7 +36,12 @@ export async function verifyPassword(password: string, stored: string): Promise<
   const hashHex = parts[2];
   if (saltHex === undefined || hashHex === undefined) return false;
   const expected = Buffer.from(hashHex, "hex");
-  const derived = await scryptAsync(password, Buffer.from(saltHex, "hex"), expected.length, SCRYPT_PARAMS);
+  const derived = await scryptAsync(
+    password,
+    Buffer.from(saltHex, "hex"),
+    expected.length,
+    SCRYPT_PARAMS,
+  );
   if (derived.length !== expected.length) return false;
   return timingSafeEqual(derived, expected);
 }
@@ -124,4 +136,75 @@ export function generateTotpSecret(): string {
   }
   if (bits > 0) output += base32Char(value << (5 - bits));
   return output;
+}
+
+/**
+ * A QR token signer: HMAC-SHA256 over the opaque payload with a per-tenant key,
+ * rendered as a truncated base32 checksum. Structurally satisfies the domain's
+ * QrTokenSigner so domain code stays free of crypto imports.
+ */
+export interface QrTokenSignerImpl {
+  checksum(payload: string): string;
+  verify(payload: string, checksum: string): boolean;
+}
+
+function hmacBase32(key: Buffer, payload: string, bytes: number): string {
+  const digest = createHmac("sha256", key).update(payload).digest();
+  const truncated = digest.subarray(0, bytes);
+  let bits = 0;
+  let value = 0;
+  let output = "";
+  for (const byte of truncated) {
+    value = (value << 8) | byte;
+    bits += 8;
+    while (bits >= 5) {
+      output += base32Char(value >>> (bits - 5));
+      bits -= 5;
+    }
+  }
+  if (bits > 0) output += base32Char(value << (5 - bits));
+  return output;
+}
+
+/**
+ * Creates a signer from a key reference value. Keys come from the
+ * SecretsProvider; this function never reads the environment itself.
+ */
+export function createQrTokenSigner(
+  key: string,
+  options: { bytes?: number } = {},
+): QrTokenSignerImpl {
+  const bytes = options.bytes ?? 10;
+  const keyBuffer = Buffer.from(key, "utf8");
+  return {
+    checksum(payload) {
+      return hmacBase32(keyBuffer, payload, bytes);
+    },
+    verify(payload, checksum) {
+      const expected = Buffer.from(hmacBase32(keyBuffer, payload, bytes), "utf8");
+      const presented = Buffer.from(checksum, "utf8");
+      if (expected.length !== presented.length) return false;
+      return timingSafeEqual(expected, presented);
+    },
+  };
+}
+
+/** A random opaque, URL-safe public identifier (no tenant/owner information). */
+export function randomOpaqueId(): string {
+  return randomUUID().replaceAll("-", "");
+}
+
+/**
+ * A random numeric one-time code with `digits` digits, uniform and
+ * constant-time safe to compare via hash. Uses rejection sampling to avoid
+ * modulo bias.
+ */
+export function randomNumericCode(digits = 6): string {
+  if (digits < 1 || digits > 10) throw new Error("digits must be between 1 and 10");
+  const max = 10 ** digits;
+  const limit = Math.floor(0xffffffff / max) * max;
+  for (;;) {
+    const value = randomBytes(4).readUInt32BE(0);
+    if (value < limit) return String(value % max).padStart(digits, "0");
+  }
 }

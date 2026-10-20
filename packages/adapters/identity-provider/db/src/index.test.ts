@@ -116,7 +116,12 @@ describeIntegration("db identity provider (integration)", () => {
       return tenant.id;
     });
     await expect(
-      identity.authenticate({ tenantId: otherTenantId, username: "officer1", password, totpCode: totpCode(totpSecret) }),
+      identity.authenticate({
+        tenantId: otherTenantId,
+        username: "officer1",
+        password,
+        totpCode: totpCode(totpSecret),
+      }),
     ).rejects.toThrow(PortError);
   });
 });

@@ -43,5 +43,12 @@ export default tseslint.config(
     files: ["**/*.test.ts"],
     ...tseslint.configs.disableTypeChecked,
   },
+  {
+    // Build/tooling files that legitimately sit outside every package's
+    // type-checked project (they are not in a `tsconfig.json` include), so the
+    // type-aware project service cannot resolve them.
+    files: ["**/vitest.config.ts", "**/*.config.ts", "**/migrations/**/*.ts"],
+    ...tseslint.configs.disableTypeChecked,
+  },
   prettier,
 );

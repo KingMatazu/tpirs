@@ -67,6 +67,7 @@ providers:
 channels:
   ussdCode: "*347*9#"
   smsKeyword: "LEVY"
+  otpMessageTemplate: "Example: your code is {code}"
   menus:
     - key: "main"
       promptKey: "ussd.main.prompt"
@@ -155,7 +156,12 @@ describe("validateTenantConfig", () => {
             feeRules: [],
           },
           providers: [],
-          channels: { ussdCode: "*1#", smsKeyword: "X", menus: [] },
+          channels: {
+            ussdCode: "*1#",
+            smsKeyword: "X",
+            otpMessageTemplate: "code {code}",
+            menus: [],
+          },
           cashRules: {
             enabled: true,
             floatCeilingMinor: 1,

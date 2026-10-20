@@ -27,9 +27,14 @@ export async function loadTenantConfig(filePath: string): Promise<TenantConfig> 
   try {
     text = await readFile(filePath, "utf8");
   } catch (error) {
-    throw new TenantConfigError("read_error", `Cannot read config '${filePath}': ${toError(error).message}`, "", {
-      cause: error,
-    });
+    throw new TenantConfigError(
+      "read_error",
+      `Cannot read config '${filePath}': ${toError(error).message}`,
+      "",
+      {
+        cause: error,
+      },
+    );
   }
   return loadTenantConfigFromString(text);
 }

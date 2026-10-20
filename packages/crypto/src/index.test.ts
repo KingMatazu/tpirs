@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { generateTotpSecret, hashPassword, totpCode, verifyPassword, verifyTotp } from "./index.js";
+import {
+  createQrTokenSigner,
+  generateTotpSecret,
+  hashPassword,
+  randomOpaqueId,
+  totpCode,
+  verifyPassword,
+  verifyTotp,
+} from "./index.js";
 
 describe("password hashing", () => {
   it("round-trips a valid password and rejects a wrong one", async () => {
@@ -40,5 +48,31 @@ describe("totp", () => {
 
   it("generates a base32 secret", () => {
     expect(generateTotpSecret()).toMatch(/^[A-Z2-7]+$/);
+  });
+});
+
+describe("qr token signer", () => {
+  it("produces a deterministic, verifiable checksum", () => {
+    const signer = createQrTokenSigner("tenant-key-a");
+    const checksum = signer.checksum("abcdef0123456789");
+    expect(checksum).toMatch(/^[A-Z2-7]+$/);
+    expect(signer.checksum("abcdef0123456789")).toBe(checksum);
+    expect(signer.verify("abcdef0123456789", checksum)).toBe(true);
+    expect(signer.verify("abcdef0123456789", "WRONG")).toBe(false);
+  });
+
+  it("is key-specific: a different key fails verification", () => {
+    const a = createQrTokenSigner("key-a");
+    const b = createQrTokenSigner("key-b");
+    const checksum = a.checksum("abcdef0123456789");
+    expect(b.verify("abcdef0123456789", checksum)).toBe(false);
+  });
+});
+
+describe("randomOpaqueId", () => {
+  it("returns a URL-safe hex identifier without dashes", () => {
+    const id = randomOpaqueId();
+    expect(id).toMatch(/^[0-9a-f]{32}$/);
+    expect(randomOpaqueId()).not.toBe(id);
   });
 });
