@@ -1,0 +1,66 @@
+name: tpirs
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: tpirs
+      POSTGRES_PASSWORD: tpirs
+      POSTGRES_DB: tpirs
+    ports:
+      - "5433:5432"
+    volumes:
+      - tpirs-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tpirs -d tpirs"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6380:6379"
+    volumes:
+      - tpirs-redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  object-store:
+    image: chrislusf/seaweedfs:3.80
+    command:
+      - "server"
+      - "-dir=/data"
+      - "-s3"
+      - "-s3.port=8333"
+    ports:
+      - "9000:8333"
+    volumes:
+      - tpirs-objectstore:/data
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8333/"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 15s
+
+  object-store-init:
+    image: chrislusf/seaweedfs:3.80
+    depends_on:
+      object-store:
+        condition: service_healthy
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        until echo "s3.bucket.create -name tpirs-uploads" | weed shell -master=object-store:9333 -filer=object-store:8888; do sleep 2; done
+        until echo "s3.bucket.create -name tpirs-exports" | weed shell -master=object-store:9333 -filer=object-store:8888; do sleep 2; done
+
+volumes:
+  tpirs-postgres:
+  tpirs-redis:
+  tpirs-objectstore:

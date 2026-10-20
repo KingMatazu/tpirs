@@ -1,0 +1,21 @@
+# Template tenant configuration. Copy to tenants/<state-slug>/tenant.config.yaml.
+# Schema, loader, and validation are implemented in Phase 1 (packages/config).
+# Values here are illustrative placeholders, not real defaults.
+
+identity:
+  name: "Template State"
+  slug: "template-state"
+  legalEntity: "Template State Revenue Authority"
+  supportContacts:
+    email: "support@example.state.gov"
+    phone: "+000000000000"
+
+locale:
+  defaultLanguage: "en"
+  enabledLanguages: ["en"]
+
+branding:
+  appName: "Template Levy"
+
+# asset types, obligation rules, providers, channels, cash rules, feature flags,
+# reconciliation, and compliance blocks are added by the Phase 1 schema.

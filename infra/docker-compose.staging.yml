@@ -1,0 +1,98 @@
+# Staging profile used by CI: brings up the app image plus dependencies, runs
+# migrations, then the smoke test hits /v1/ready and /v1/health.
+# Invoke with an explicit image tag:
+#   IMAGE_TAG=<tag> docker compose -f infra/docker-compose.staging.yml up -d --wait
+name: tpirs-staging
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: tpirs
+      POSTGRES_PASSWORD: tpirs
+      POSTGRES_DB: tpirs
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tpirs -d tpirs"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  object-store:
+    image: chrislusf/seaweedfs:3.80
+    command:
+      - "server"
+      - "-dir=/data"
+      - "-s3"
+      - "-s3.port=8333"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8333/"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 15s
+
+  object-store-init:
+    image: chrislusf/seaweedfs:3.80
+    depends_on:
+      object-store:
+        condition: service_healthy
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        until echo "s3.bucket.create -name tpirs-uploads" | weed shell -master=object-store:9333 -filer=object-store:8888; do sleep 2; done
+
+  api:
+    image: ${IMAGE_REF:?set IMAGE_REF to the built image}
+    environment:
+      NODE_ENV: production
+      API_HOST: 0.0.0.0
+      API_PORT: "3000"
+      LOG_LEVEL: info
+      DEPLOYMENT_REGION: staging
+      DATABASE_URL: postgres://tpirs:tpirs@postgres:5432/tpirs
+      REDIS_URL: redis://redis:6379
+      OBJECT_STORAGE_ADAPTER: s3
+      OBJECT_STORAGE_ENDPOINT: http://object-store:8333
+      OBJECT_STORAGE_REGION: us-east-1
+      OBJECT_STORAGE_BUCKET: tpirs-uploads
+      OBJECT_STORAGE_ACCESS_KEY_ID: tpirs
+      OBJECT_STORAGE_SECRET_ACCESS_KEY: tpirs-secret
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      object-store:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:3000/v1/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  migrate:
+    image: ${IMAGE_REF:?set IMAGE_REF to the built image}
+    environment:
+      DATABASE_URL: postgres://tpirs:tpirs@postgres:5432/tpirs
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint: ["node", "packages/db/dist/cli/migrate.js", "up"]
+    restart: "no"

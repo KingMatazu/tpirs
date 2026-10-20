@@ -1,0 +1,10 @@
+packages:
+  - apps/*
+  - packages/*
+  - packages/adapters/*/*
+  - packages/adapters/*/*/*
+
+# pnpm 11 requires explicit build approval for postinstall scripts. Only esbuild
+# (a build tool) is allowed; everything else stays unbuilt by default.
+allowBuilds:
+  esbuild: true

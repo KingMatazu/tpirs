@@ -1,0 +1,8 @@
+dist/
+node_modules/
+.turbo/
+coverage/
+pnpm-lock.yaml
+docker-data/
+infra/staging-data/
+*.tsbuildinfo

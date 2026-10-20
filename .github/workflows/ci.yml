@@ -1,0 +1,27 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Thin caller: all logic lives in scripts/ci and turbo tasks so the CI vendor
+# can be swapped without rewriting pipeline logic. See docs/adr/0003-ci-strategy.md.
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.1.3
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - name: Verify (lint, typecheck, build)
+        run: sh scripts/ci/verify.sh
+      - name: Test
+        run: pnpm test
+      - name: Migration check (reversibility)
+        run: sh scripts/ci/migration-check.sh

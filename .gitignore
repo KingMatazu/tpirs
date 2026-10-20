@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.turbo/
+coverage/
+*.tsbuildinfo
+.pnpm-store/
+.env
+.env.*
+!.env.example
+docker-data/
+infra/staging-data/
+.test-data/
+.DS_Store

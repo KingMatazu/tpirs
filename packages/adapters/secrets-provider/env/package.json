@@ -1,0 +1,27 @@
+{
+  "name": "@tpirs/adapters-env-secrets",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b && tsc -p tsconfig.test.json",
+    "lint": "eslint src",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@tpirs/ports": "workspace:*"
+  },
+  "devDependencies": {
+    "@tpirs/contracts": "workspace:*",
+    "vitest": "^3.2.4"
+  }
+}
