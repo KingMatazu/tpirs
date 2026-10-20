@@ -27,6 +27,40 @@ docker compose -f infra/docker-compose.yml down -v
 pnpm setup
 ```
 
+## Integration tests (real Postgres)
+
+DB-backed suites (auth, audit, RLS, identity, asset-registry e2e) skip unless
+`TEST_DATABASE_URL` is set. Two options:
+
+```sh
+sh scripts/ci/integration.sh        # scratch Postgres + migrations + full suite
+```
+
+or, against the dev database on port 5433:
+
+```sh
+pnpm db:migrate
+export TEST_DATABASE_URL="postgres://tpirs:tpirs@localhost:5433/tpirs"
+pnpm test
+```
+
+On Windows (PowerShell) the Git-bash script works via
+`& "C:\Program Files\Git\bin\bash.exe" scripts/ci/integration.sh`, or export the
+variable with `$env:TEST_DATABASE_URL=...` and run `pnpm test` directly.
+
+## Seeded users
+
+After `pnpm setup` (or `pnpm db:seed`):
+
+| Tenant      | Username        | Role          |
+| ----------- | --------------- | ------------- |
+| alpha-state | alpha.admin     | system_admin  |
+| alpha-state | alpha.officer   | officer       |
+| alpha-state | alpha.collector | collector     |
+| beta-state  | beta.admin      | system_admin  |
+| beta-state  | beta.finance    | finance_admin |
+| beta-state  | beta.officer    | officer       |
+
 ## Ports
 
 - Postgres: `5433` (host) → 5432

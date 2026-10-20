@@ -18,13 +18,13 @@ step runs through the `noop` target.
 
 ## D2: Verification token format details
 
-**Status:** open (Phase 2/6).
+**Status:** partially resolved (Phase 2). Checksum is HMAC-SHA256 over the
+opaque payload with a per-deployment key from `SecretsProvider`
+(`qr-token-signing-key`); see ADR 0007. Still open: key rotation strategy and
+short-code length rules.
 
-The brief fixes the shape (opaque ID plus HMAC checksum, revealing nothing) but
-not the checksum algorithm, key rotation, or short-code length.
-
-- Recommendation: HMAC-SHA256 over the opaque ID with a per-tenant key from
-  `SecretsProvider`; short code length from tenant config.
+- Recommendation: rotate by verifying against current and next keys during a
+  overlap window; short-code length stays a tenant-config format string.
 
 ## D3: Payment instruction model per adapter
 
@@ -50,3 +50,30 @@ mode (several states in one deployment).
 - Recommendation: keep the explicit `tenantSlug` behind a config flag, and add
   hostname-based resolution for single-tenant deployments in Phase 9/11 when the
   dashboard and onboarding flows are built.
+
+## D5: Rate limiting on the public verify endpoint
+
+**Status:** open (deferred to Phase 5).
+
+`GET /v1/verify/:token` is unauthenticated by design (ADR 0007) and has no rate
+limit yet; token verification is HMAC-checked before any database access, so
+abuse costs CPU then a bounded lookup, but field-scale abuse controls belong
+with the driver channels phase.
+
+- Options: fixed-window per-IP counters via the `Cache` port; token-bucket per
+  network; upstream WAF rules.
+- Recommendation: per-IP fixed window through the existing `Cache`/`LockService`
+  ports when USSD/SMS rate limiting lands in Phase 5, sharing one limiter
+  implementation.
+
+## D6: Payment status in verify responses
+
+**Status:** open (Phase 4).
+
+The verify payload deliberately carries no payment field until obligations and
+payments exist. When they do, the field must be additive and never render
+"UNPAID" for a `pay_per_use` day with no obligation row (build brief section 6).
+
+- Recommendation: add `paymentStatus` only with explicit values `PAID` /
+  `NOT_IN_OFFLINE_LIST` semantics from the verification design; absence stays
+  non-accusatory.
