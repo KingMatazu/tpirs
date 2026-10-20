@@ -1,0 +1,26 @@
+{
+  "extends": "../../../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist"
+  },
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts"],
+  "references": [
+    {
+      "path": "../../../contracts"
+    },
+    {
+      "path": "../../../crypto"
+    },
+    {
+      "path": "../../../db"
+    },
+    {
+      "path": "../../../domain"
+    },
+    {
+      "path": "../../../ports"
+    }
+  ]
+}

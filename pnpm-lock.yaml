@@ -74,12 +74,21 @@ importers:
       '@tpirs/adapters-s3-storage':
         specifier: workspace:*
         version: link:../../packages/adapters/object-storage/s3
+      '@tpirs/config':
+        specifier: workspace:*
+        version: link:../../packages/config
+      '@tpirs/crypto':
+        specifier: workspace:*
+        version: link:../../packages/crypto
       '@tpirs/db':
         specifier: workspace:*
         version: link:../../packages/db
       '@tpirs/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@tpirs/identity-provider-db':
+        specifier: workspace:*
+        version: link:../../packages/adapters/identity-provider/db
       '@tpirs/ports':
         specifier: workspace:*
         version: link:../../packages/ports
@@ -198,6 +207,28 @@ importers:
       '@tpirs/contracts':
         specifier: workspace:*
         version: link:../../../contracts
+      '@tpirs/domain':
+        specifier: workspace:*
+        version: link:../../../domain
+      '@tpirs/ports':
+        specifier: workspace:*
+        version: link:../../../ports
+    devDependencies:
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.7(@types/node@24.19.2)(jiti@2.6.1)(tsx@4.23.15)(yaml@2.9.1)
+
+  packages/adapters/identity-provider/db:
+    dependencies:
+      '@tpirs/contracts':
+        specifier: workspace:*
+        version: link:../../../contracts
+      '@tpirs/crypto':
+        specifier: workspace:*
+        version: link:../../../crypto
+      '@tpirs/db':
+        specifier: workspace:*
+        version: link:../../../db
       '@tpirs/domain':
         specifier: workspace:*
         version: link:../../../domain
@@ -427,6 +458,16 @@ importers:
         specifier: ^3.2.4
         version: 3.2.7(@types/node@24.19.2)(jiti@2.6.1)(tsx@4.23.15)(yaml@2.9.1)
 
+  packages/config:
+    dependencies:
+      yaml:
+        specifier: ^2.9.1
+        version: 2.9.1
+    devDependencies:
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.7(@types/node@24.19.2)(jiti@2.6.1)(tsx@4.23.15)(yaml@2.9.1)
+
   packages/contracts:
     dependencies:
       '@tpirs/domain':
@@ -440,8 +481,23 @@ importers:
         specifier: ^3.2.4
         version: 3.2.7(@types/node@24.19.2)(jiti@2.6.1)(tsx@4.23.15)(yaml@2.9.1)
 
+  packages/crypto:
+    devDependencies:
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.7(@types/node@24.19.2)(jiti@2.6.1)(tsx@4.23.15)(yaml@2.9.1)
+
   packages/db:
     dependencies:
+      '@tpirs/config':
+        specifier: workspace:*
+        version: link:../config
+      '@tpirs/crypto':
+        specifier: workspace:*
+        version: link:../crypto
+      '@tpirs/domain':
+        specifier: workspace:*
+        version: link:../domain
       kysely:
         specifier: ^0.28.2
         version: 0.28.18

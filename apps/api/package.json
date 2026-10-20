@@ -18,8 +18,11 @@
     "@tpirs/adapters-localdisk-storage": "workspace:*",
     "@tpirs/adapters-otel-telemetry": "workspace:*",
     "@tpirs/adapters-s3-storage": "workspace:*",
+    "@tpirs/config": "workspace:*",
+    "@tpirs/crypto": "workspace:*",
     "@tpirs/db": "workspace:*",
     "@tpirs/domain": "workspace:*",
+    "@tpirs/identity-provider-db": "workspace:*",
     "@tpirs/ports": "workspace:*",
     "fastify": "^5.4.0",
     "pino": "^9.9.0"

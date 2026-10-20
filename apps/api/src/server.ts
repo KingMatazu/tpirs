@@ -4,6 +4,10 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import sensible from "@fastify/sensible";
 import type { BuildAppOptions } from "./config.js";
 import { defaultErrorCode, errorEnvelope } from "./errors.js";
+import { authenticate, UnauthorizedError } from "./auth.js";
+import { auditOnSuccess } from "./audit.js";
+import { registerAuthRoutes } from "./routes/auth.js";
+import { registerConfigRoutes } from "./routes/config.js";
 
 export interface HealthResponse {
   readonly status: "ok";
@@ -32,6 +36,13 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     done();
   });
 
+  if (options.identity !== undefined && options.db !== undefined) {
+    app.addHook("onRequest", authenticate({ identity: options.identity, db: options.db }));
+    app.addHook("onResponse", auditOnSuccess(options.db));
+    registerAuthRoutes(app, { identity: options.identity, db: options.db });
+    registerConfigRoutes(app, { identity: options.identity, db: options.db });
+  }
+
   app.addHook("onResponse", (request, reply, done) => {
     telemetry.counter("http.requests", 1, {
       method: request.method,
@@ -45,19 +56,26 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   });
 
   app.setErrorHandler((error: unknown, request, reply) => {
-    const statusCode =
-      typeof error === "object" &&
-      error !== null &&
-      "statusCode" in error &&
-      typeof error.statusCode === "number"
-        ? error.statusCode
-        : 500;
+    const isUnauthorized = error instanceof UnauthorizedError;
+    const isForbidden = error instanceof Error && error.name === "ForbiddenError";
+    const statusCode = isUnauthorized
+      ? 401
+      : isForbidden
+        ? 403
+        : typeof error === "object" &&
+            error !== null &&
+            "statusCode" in error &&
+            typeof error.statusCode === "number"
+          ? error.statusCode
+          : 500;
     const message = error instanceof Error ? error.message : "Internal server error";
-    telemetry.captureError(error, {
-      requestId: request.id,
-      method: request.method,
-      url: request.url,
-    });
+    if (statusCode >= 500) {
+      telemetry.captureError(error, {
+        requestId: request.id,
+        method: request.method,
+        url: request.url,
+      });
+    }
     void reply
       .code(statusCode)
       .send(errorEnvelope(defaultErrorCode(statusCode), message, request.id));

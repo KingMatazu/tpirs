@@ -35,3 +35,18 @@ per-asset assignment strategy depends on the first gateway chosen.
 
 - Recommendation: model both behind the `PaymentProvider` capability declaration;
   default to references until a virtual-account gateway is confirmed.
+
+## D4: Tenant resolution at login
+
+**Status:** open (Phase 1). Default chosen: explicit `tenantSlug` in the login body.
+
+Session tokens are opaque and do not reveal their tenant, so login must resolve a
+tenant before authentication. This is required for the multi-tenant deployment
+mode (several states in one deployment).
+
+- Options: require `tenantSlug` in the login body (current default); infer the
+  tenant from the request hostname/subdomain; infer it when the deployment hosts
+  exactly one tenant and require it otherwise.
+- Recommendation: keep the explicit `tenantSlug` behind a config flag, and add
+  hostname-based resolution for single-tenant deployments in Phase 9/11 when the
+  dashboard and onboarding flows are built.

@@ -8,3 +8,4 @@ Format: context, decision, consequences, alternatives considered.
 - [0003](./0003-ci-strategy.md) CI as thin callers over scripts
 - [0004](./0004-delivery-and-deploy.md) Images to GHCR, compose smoke, deploy targets
 - [0005](./0005-local-object-store.md) Local S3-compatible store (SeaweedFS) and MinIO drop
+- [0006](./0006-tenant-config.md) Tenant config schema, YAML parsing, hand-written validation

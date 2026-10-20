@@ -24,6 +24,9 @@
     "seed": "tsx src/cli/seed.ts"
   },
   "dependencies": {
+    "@tpirs/config": "workspace:*",
+    "@tpirs/crypto": "workspace:*",
+    "@tpirs/domain": "workspace:*",
     "kysely": "^0.28.2",
     "pg": "^8.16.3"
   },
