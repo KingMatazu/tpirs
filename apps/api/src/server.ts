@@ -8,6 +8,8 @@ import { authenticate, UnauthorizedError } from "./auth.js";
 import { auditOnSuccess } from "./audit.js";
 import { registerAuthRoutes } from "./routes/auth.js";
 import { registerConfigRoutes } from "./routes/config.js";
+import { registerAssetRoutes } from "./routes/assets.js";
+import { registerVerifyRoutes } from "./routes/verify.js";
 
 export interface HealthResponse {
   readonly status: "ok";
@@ -41,6 +43,11 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     app.addHook("onResponse", auditOnSuccess(options.db));
     registerAuthRoutes(app, { identity: options.identity, db: options.db });
     registerConfigRoutes(app, { identity: options.identity, db: options.db });
+  }
+
+  if (options.services !== undefined && options.loadConfig !== undefined) {
+    registerAssetRoutes(app, { services: options.services, loadConfig: options.loadConfig });
+    registerVerifyRoutes(app, { services: options.services, loadConfig: options.loadConfig });
   }
 
   app.addHook("onResponse", (request, reply, done) => {

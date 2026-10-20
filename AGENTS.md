@@ -1,5 +1,47 @@
 # AGENTS.md: Revenue Collection Platform (Build Brief)
 
+## Working in this repo (verified against the codebase)
+
+**Toolchain:** Node 24 (`.node-version`), pnpm 11.1.3 (`corepack enable`), turbo, vitest, TypeScript strict, type-aware ESLint (`strictTypeChecked` + stylistic), Prettier (printWidth 100).
+
+**Commands** (repo root, all in `package.json`):
+
+| Command                                                        | What it does                                             |
+| -------------------------------------------------------------- | -------------------------------------------------------- |
+| `pnpm install`                                                 | install workspace dependencies                           |
+| `pnpm setup`                                                   | copy `.env`, start containers, migrate, seed (first run) |
+| `pnpm dev`                                                     | all dev servers via turbo; API on :3000                  |
+| `pnpm dev:infra`                                               | Postgres/Redis/MinIO containers only                     |
+| `pnpm lint` / `typecheck` / `test` / `build`                   | turbo runs that task in every package                    |
+| `pnpm format`                                                  | Prettier write; unformatted new files fail lint-staged   |
+| `pnpm db:migrate` / `db:migrate:down` / `db:check` / `db:seed` | migrate, roll back, prove reversibility, seed            |
+
+**Order before finishing a change:** `pnpm format` → `pnpm lint` → `pnpm typecheck` → `pnpm test`. CI (`scripts/ci/verify.sh`) runs install → lint → typecheck → build, then `scripts/ci/integration.sh` (scratch Postgres + full suite) and `scripts/ci/migration-check.sh` (every migration must roll back to zero). Husky hooks: pre-commit = `pnpm lint-staged` (eslint `--fix --max-warnings 0` + prettier); pre-push = `pnpm typecheck` + `pnpm test`.
+
+**Testing gotchas:**
+
+- One package: `pnpm --filter @tpirs/<name> test` (runs `vitest run`); one file: append `-- src/<file>.test.ts`.
+- DB-backed suites (auth, audit, RLS, identity, registry) are `describe.skip` unless `TEST_DATABASE_URL` is set — a plain `pnpm test` can pass without ever touching Postgres. Real run: `sh scripts/ci/integration.sh` (spins up scratch Postgres, migrates, exports the var), or `pnpm dev:infra` + `pnpm db:migrate` with `TEST_DATABASE_URL` exported.
+- Cross-package imports resolve to built `dist/` (`main: ./dist/index.js`), never `src`. After editing a dependency, rebuild before testing dependents — running vitest directly inside a package uses stale `dist`. Root `pnpm test`/`pnpm typecheck` are safe: turbo declares `dependsOn: ^build`.
+
+**Adding a package or adapter:**
+
+- Workspace globs (`pnpm-workspace.yaml`) cover `apps/*`, `packages/*`, `packages/adapters/*/*`, `packages/adapters/*/*/*` — nested adapter folders are picked up automatically.
+- Copy the sibling package shape exactly: scripts `build` (`tsc -b`), `typecheck` (`tsc -b && tsc -p tsconfig.test.json`), `lint` (`eslint src`), `test` (`vitest run`), plus a `vitest.config.ts`.
+- Adapter package names are inconsistent (`@tpirs/telemetry-mock`, `@tpirs/adapters-s3-storage`, `@tpirs/identity-provider-db`, `@tpirs/asset-schema-registry-config`) — read the `package.json` name before using `--filter`; do not guess a pattern.
+- pnpm 11 blocks postinstall scripts; only `esbuild` is allowed via `allowBuilds` in `pnpm-workspace.yaml`.
+- Every adapter must run its shared suite from `@tpirs/contracts` — pattern in `packages/contracts/README.md`.
+
+**Environment:**
+
+- `.env` (gitignored) is created from `.env.example` by `pnpm setup`. The db CLI (`packages/db/src/env.ts`, used by migrate/seed) auto-loads it; `pnpm dev` apps load it via `tsx --env-file-if-exists=../../.env`. Anything else (scripts, tests, one-off commands) reads `process.env` directly — export variables yourself.
+- Local ports: Postgres **5433**, Redis **6380**, MinIO 9000/9001, API 3000 (see `docs/runbooks/local-development.md`).
+- Full reset: `docker compose -f infra/docker-compose.yml down -v`, then `pnpm setup`.
+
+**Git:** small, phase-scoped commits in conventional style (`chore: phase 0 foundations` matches history). commitlint is configured but not hooked — `lint-staged` is the only commit-time gate.
+
+**Current repo state:** Phases 0–1 committed; Phase 2 (asset registry) complete and committed: photo serving, public `GET /v1/verify/:token` (ADR 0007), SVG sticker export via `qrcode` (ADR 0009), asset-registry e2e suite, seed users `alpha.collector`/`beta.officer`. `PHASE2-TODO-APPLY.md` is untracked scratch — delete it; never commit it. Tenant-config fixtures must include `channels.otpMessageTemplate` (with a `{code}` placeholder) or validation throws.
+
 ## 0. Mission and how to use this brief
 
 Build a **white-label, multi-tenant revenue collection platform**. The first deployment is a state levy system for bikes and tuk-tuks. The firm will resell the same codebase to other states, so nothing may be hardcoded to one state, gateway, SMS provider, currency, language, or vehicle type.
@@ -50,6 +92,8 @@ Postgres is the one deliberate fixed choice. Any managed or self-hosted Postgres
 
 Frontend swappability: the admin dashboard and field app are separate clients of the OpenAPI contract. Generated API clients live in `packages/api-client`. Theming comes from design tokens, never hardcoded colors or logos.
 
+Adapters built **today**: a mock for every port, plus non-mock adapters for `ObjectStorage` (S3-compatible, local disk), `IdentityProvider` (db), `SecretsProvider` (env), `Telemetry` (OTel), and `AssetSchemaRegistry` (config). The remaining real adapters (Paystack, Remita, Africa's Talking, Termii, Redis queue, …) arrive with their phases.
+
 ## 4. Multi-tenancy and white-labelling
 
 **Deployment model (support both, default to dedicated):**
@@ -77,27 +121,33 @@ Frontend swappability: the admin dashboard and field app are separate clients of
 
 ## 5. Repository layout
 
+Target layout. Items marked _(later)_ do not exist yet — do not create them before their phase; everything else is present today.
+
 ```
 /apps
   /api            # delivery layer (HTTP, webhooks, USSD/SMS callbacks); thin
-  /admin          # web dashboard (consumes api-client only)
-  /field          # mobile app for officers and collectors (consumes api-client only)
-  /worker         # background job runner
+  /admin          # web dashboard (later; consumes api-client only)
+  /field          # mobile app for officers and collectors (later; consumes api-client only)
+  /worker         # background job runner (stub)
 /packages
   /domain         # pure business logic (ledger, allocation, obligations, verification, disputes)
   /ports          # TypeScript interfaces for every port in section 3
   /adapters       # one folder per adapter, grouped by port
   /contracts      # conformance test suites for each port
   /config         # tenant config schema and loader
-  /api-client     # generated from OpenAPI
-  /ui-tokens      # design tokens and theming
-  /i18n           # message catalogs and templating
+  /application    # use-case services wiring domain + ports (read by apps/api)
+  /crypto         # hashing and HMAC helpers (passwords, QR tokens)
+  /db             # Kysely connection, migrations, seed, repositories
+  /api-client     # generated from OpenAPI (later)
+  /ui-tokens      # design tokens and theming (later)
+  /i18n           # message catalogs and templating (later)
 /tenants
   /_template      # starter config, templates, assets for a new state
   /<state-slug>   # config only: no code
 /docs
-  /adr  decisions-needed.md  runbooks  onboarding
+  /adr  decisions-needed.md  runbooks  onboarding (planned)
 /infra            # IaC, Docker, deployment manifests
+/scripts          # setup and CI entrypoints (thin CI callers live here)
 ```
 
 **Plugin hook:** a small, versioned plugin interface (for example custom fee rules or custom report columns) loaded from `tenants/<slug>/plugins`. Core must work with zero plugins.

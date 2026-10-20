@@ -33,16 +33,20 @@ export function registerAuthRoutes(app: FastifyInstance, context: AuthContext): 
     const username = asString(body.username);
     const password = asString(body.password);
     if (tenantSlug === undefined || username === undefined || password === undefined) {
-      return reply
-        .code(400)
-        .send({ error: { code: "bad_request", message: "tenantSlug, username, and password are required", requestId: request.id } });
+      return reply.code(400).send({
+        error: {
+          code: "bad_request",
+          message: "tenantSlug, username, and password are required",
+          requestId: request.id,
+        },
+      });
     }
 
     const tenantId = await resolveTenantIdBySlug(context.db, tenantSlug);
     if (tenantId === undefined) {
-      return reply
-        .code(401)
-        .send({ error: { code: "unauthorized", message: "Invalid credentials", requestId: request.id } });
+      return reply.code(401).send({
+        error: { code: "unauthorized", message: "Invalid credentials", requestId: request.id },
+      });
     }
 
     const totpCode = asString(body.totpCode);
@@ -67,9 +71,9 @@ export function registerAuthRoutes(app: FastifyInstance, context: AuthContext): 
       });
     } catch (error) {
       if (error instanceof PortError && error.code === "unauthorized") {
-        return reply
-          .code(401)
-          .send({ error: { code: "unauthorized", message: "Invalid credentials", requestId: request.id } });
+        return reply.code(401).send({
+          error: { code: "unauthorized", message: "Invalid credentials", requestId: request.id },
+        });
       }
       throw error;
     }
@@ -96,7 +100,9 @@ export function registerAuthRoutes(app: FastifyInstance, context: AuthContext): 
       principal = requirePrincipal(request);
     } catch (error) {
       if (error instanceof UnauthorizedError) {
-        return reply.code(401).send({ error: { code: "unauthorized", message: error.message, requestId: request.id } });
+        return reply
+          .code(401)
+          .send({ error: { code: "unauthorized", message: error.message, requestId: request.id } });
       }
       throw error;
     }

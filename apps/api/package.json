@@ -6,7 +6,7 @@
   "main": "./dist/index.js",
   "scripts": {
     "build": "tsc -b",
-    "dev": "tsx watch src/index.ts",
+    "dev": "tsx watch --env-file-if-exists=../../.env src/index.ts",
     "start": "node dist/index.js",
     "typecheck": "tsc -b && tsc -p tsconfig.test.json",
     "lint": "eslint src",
@@ -18,16 +18,23 @@
     "@tpirs/adapters-localdisk-storage": "workspace:*",
     "@tpirs/adapters-otel-telemetry": "workspace:*",
     "@tpirs/adapters-s3-storage": "workspace:*",
+    "@tpirs/application": "workspace:*",
+    "@tpirs/asset-schema-registry-config": "workspace:*",
+    "@tpirs/cache-mock": "workspace:*",
+    "@tpirs/clock-mock": "workspace:*",
     "@tpirs/config": "workspace:*",
     "@tpirs/crypto": "workspace:*",
     "@tpirs/db": "workspace:*",
     "@tpirs/domain": "workspace:*",
     "@tpirs/identity-provider-db": "workspace:*",
     "@tpirs/ports": "workspace:*",
+    "@tpirs/sms-provider-mock": "workspace:*",
     "fastify": "^5.4.0",
     "pino": "^9.9.0"
   },
   "devDependencies": {
+    "@tpirs/object-storage-mock": "workspace:*",
+    "@tpirs/secrets-provider-mock": "workspace:*",
     "@tpirs/telemetry-mock": "workspace:*",
     "vitest": "^3.2.4"
   }

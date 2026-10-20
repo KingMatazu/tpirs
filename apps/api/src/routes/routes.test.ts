@@ -66,8 +66,13 @@ function validConfig(slug: string): unknown {
       feeRules: [],
     },
     providers: [],
-    channels: { ussdCode: "*1#", smsKeyword: "X", menus: [] },
-    cashRules: { enabled: true, floatCeilingMinor: 1, depositDeadlineHours: 1, freezeOnShortfall: true },
+    channels: { ussdCode: "*1#", smsKeyword: "X", otpMessageTemplate: "code {code}", menus: [] },
+    cashRules: {
+      enabled: true,
+      floatCeilingMinor: 1,
+      depositDeadlineHours: 1,
+      freezeOnShortfall: true,
+    },
     featureFlags: { disputes: true, prepay: false, offlineMode: true, anomalyAlerts: true },
     reconciliation: { schedule: "0 2 * * *", toleranceMinor: 0, notifyRole: "finance_admin" },
     compliance: { retentionDays: 1, dataResidency: "x", consentTextKey: "c" },
@@ -121,8 +126,16 @@ describeIntegration("api auth/config/audit (integration)", () => {
         passwordHash,
         totpSecret: null,
       });
-      await repos.roles.assignToUser({ tenantId: tenant.id, userId: admin.id, roleId: adminRole.id });
-      await repos.roles.assignToUser({ tenantId: tenant.id, userId: officer.id, roleId: officerRole.id });
+      await repos.roles.assignToUser({
+        tenantId: tenant.id,
+        userId: admin.id,
+        roleId: adminRole.id,
+      });
+      await repos.roles.assignToUser({
+        tenantId: tenant.id,
+        userId: officer.id,
+        roleId: officerRole.id,
+      });
     });
     const identity = createDbIdentityProvider({ db });
     app = buildApp({ config, telemetry: createMockTelemetry(), db, identity });
