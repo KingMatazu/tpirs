@@ -31,4 +31,4 @@ docker compose -f "$compose_file" run --rm migrate
 echo "starting api..."
 docker compose -f "$compose_file" up -d --wait --wait-timeout 180 api
 
-scripts/ci/smoke.sh "http://localhost:3000"
+sh scripts/ci/smoke.sh "http://localhost:3000"

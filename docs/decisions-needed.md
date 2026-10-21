@@ -80,7 +80,7 @@ payments exist. When they do, the field must be additive and never render
 
 ## D7: Multi-currency and FX
 
-**Status:** resolved for v1 (deferred). 
+**Status:** resolved for v1 (deferred).
 Multi-currency and FX are deferred. The schema is ready for it (each ledger entry stores its currency code, with a database constraint requiring it to match both accounts’ currency), but v1 uses one currency per tenant with no FX and no cross-currency postings.
 
 - Recommendation: defer until a concrete requirement arises; the currency-matching constraint allows adding multi-currency later without a migration.
