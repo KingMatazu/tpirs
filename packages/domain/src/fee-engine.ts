@@ -1,4 +1,3 @@
-import { compareBusinessDates } from "./business-date.js";
 import type { BusinessDate } from "./business-date.js";
 import type { Money } from "./money.js";
 import { money } from "./money.js";
