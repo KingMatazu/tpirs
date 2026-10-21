@@ -38,9 +38,10 @@ export class LedgerService {
     validateBalanced(this.toDomainPostings(params.postings));
 
     if (params.idempotencyKey) {
+      const idempotencyKey = params.idempotencyKey;
       const existing = await this.db.transaction().execute(async (trx: Transaction<Database>) => {
         const repos = repositories(trx);
-        return repos.ledger.findTransactionByIdempotencyKey(tenantId, params.idempotencyKey!);
+        return repos.ledger.findTransactionByIdempotencyKey(tenantId, idempotencyKey);
       });
       if (existing) {
         return this.db.transaction().execute(async (trx: Transaction<Database>) => {
@@ -157,7 +158,10 @@ export class LedgerService {
     if (!firstPosting) {
       throw new LedgerOperationError("no postings");
     }
-    const accounts = await repos.accounts.ensureStandardAccounts(tenantId, firstPosting.amount.currency);
+    const accounts = await repos.accounts.ensureStandardAccounts(
+      tenantId,
+      firstPosting.amount.currency,
+    );
     const accountMap = new Map(Object.entries(accounts));
     const postingInputs = params.postings.map((p) => {
       const account = accountMap.get(p.accountCode);

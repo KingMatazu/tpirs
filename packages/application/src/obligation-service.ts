@@ -9,7 +9,10 @@ import type { Kysely } from "kysely";
 import type { Transaction } from "kysely";
 
 export class ObligationService {
-  constructor(private readonly db: Kysely<Database>, private readonly ledgerService: LedgerService) {}
+  constructor(
+    private readonly db: Kysely<Database>,
+    private readonly ledgerService: LedgerService,
+  ) {}
 
   ensurePaidForBusinessDay(
     tenantId: string,
@@ -33,7 +36,11 @@ export class ObligationService {
       await repos.obligations.lockAssetObligations(tenantId, params.assetId);
 
       if (model === "pay_per_use") {
-        let period = await repos.obligations.findByAssetAndPeriod(tenantId, params.assetId, periodKey);
+        let period = await repos.obligations.findByAssetAndPeriod(
+          tenantId,
+          params.assetId,
+          periodKey,
+        );
         if (!period) {
           // Under pay_per_use, create obligation period only when payment occurs
           let feeAmount = params.amount;
@@ -68,7 +75,12 @@ export class ObligationService {
           await this.ledgerService.postTransaction(tenantId, {
             postings: [
               { accountCode: "GATEWAY_CLEARING", direction: "debit", amount: params.amount },
-              { accountCode: "ASSET_WALLET", direction: "credit", amount: params.amount, assetId: params.assetId },
+              {
+                accountCode: "ASSET_WALLET",
+                direction: "credit",
+                amount: params.amount,
+                assetId: params.assetId,
+              },
             ],
             sourceType: "payment",
             sourceId: params.sourceId ?? params.paymentId ?? null,
@@ -78,19 +90,38 @@ export class ObligationService {
         }
         const tx = await this.ledgerService.postTransaction(tenantId, {
           postings: [
-            { accountCode: "ASSET_WALLET", direction: "debit", amount: params.amount, assetId: params.assetId },
-            { accountCode: "REVENUE_LEVY", direction: "credit", amount: params.amount, assetId: params.assetId },
+            {
+              accountCode: "ASSET_WALLET",
+              direction: "debit",
+              amount: params.amount,
+              assetId: params.assetId,
+            },
+            {
+              accountCode: "REVENUE_LEVY",
+              direction: "credit",
+              amount: params.amount,
+              assetId: params.assetId,
+            },
           ],
           sourceType: "allocation",
           sourceId: params.sourceId ?? params.paymentId ?? null,
           description: "Obligation allocation",
         });
         if (!tx) throw new Error("transaction failed");
-        await repos.obligations.markPaid(tenantId, period.id, tx.transaction.id, BigInt(params.amount.amount));
+        await repos.obligations.markPaid(
+          tenantId,
+          period.id,
+          tx.transaction.id,
+          BigInt(params.amount.amount),
+        );
         return { period, transaction: tx };
       } else {
         // scheduled model
-        let period = await repos.obligations.findByAssetAndPeriod(tenantId, params.assetId, periodKey);
+        let period = await repos.obligations.findByAssetAndPeriod(
+          tenantId,
+          params.assetId,
+          periodKey,
+        );
         if (!period && params.assetTypeKey) {
           let feeAmount = params.amount;
           try {
@@ -120,7 +151,12 @@ export class ObligationService {
           await this.ledgerService.postTransaction(tenantId, {
             postings: [
               { accountCode: "GATEWAY_CLEARING", direction: "debit", amount: params.amount },
-              { accountCode: "ASSET_WALLET", direction: "credit", amount: params.amount, assetId: params.assetId },
+              {
+                accountCode: "ASSET_WALLET",
+                direction: "credit",
+                amount: params.amount,
+                assetId: params.assetId,
+              },
             ],
             sourceType: "payment",
             sourceId: params.sourceId ?? params.paymentId ?? null,
@@ -132,12 +168,20 @@ export class ObligationService {
           return { period, transaction: null };
         }
         // Allocate: pay oldest-first logic is enforced by findUnpaidForAsset ordering; for current period apply
-        const debitAmount = BigInt(params.amount.amount) >= period.amountMinor ? period.amountMinor : BigInt(params.amount.amount);
+        const debitAmount =
+          BigInt(params.amount.amount) >= period.amountMinor
+            ? period.amountMinor
+            : BigInt(params.amount.amount);
         if (debitAmount === 0n) {
           await this.ledgerService.postTransaction(tenantId, {
             postings: [
               { accountCode: "GATEWAY_CLEARING", direction: "debit", amount: params.amount },
-              { accountCode: "ASSET_WALLET", direction: "credit", amount: params.amount, assetId: params.assetId },
+              {
+                accountCode: "ASSET_WALLET",
+                direction: "credit",
+                amount: params.amount,
+                assetId: params.assetId,
+              },
             ],
             sourceType: "payment",
             sourceId: params.sourceId ?? params.paymentId ?? null,
@@ -148,15 +192,31 @@ export class ObligationService {
         const allocationMoney = money(currency, Number(debitAmount));
         const tx = await this.ledgerService.postTransaction(tenantId, {
           postings: [
-            { accountCode: "ASSET_WALLET", direction: "debit", amount: allocationMoney, assetId: params.assetId },
-            { accountCode: "REVENUE_LEVY", direction: "credit", amount: allocationMoney, assetId: params.assetId },
+            {
+              accountCode: "ASSET_WALLET",
+              direction: "debit",
+              amount: allocationMoney,
+              assetId: params.assetId,
+            },
+            {
+              accountCode: "REVENUE_LEVY",
+              direction: "credit",
+              amount: allocationMoney,
+              assetId: params.assetId,
+            },
           ],
           sourceType: "allocation",
           sourceId: params.sourceId ?? params.paymentId ?? null,
           description: "Obligation allocation",
         });
+        if (!tx) throw new Error("transaction failed");
         if (BigInt(params.amount.amount) >= period.amountMinor) {
-          await repos.obligations.markPaid(tenantId, period.id, tx.transaction.id, period.amountMinor);
+          await repos.obligations.markPaid(
+            tenantId,
+            period.id,
+            tx.transaction.id,
+            period.amountMinor,
+          );
         } else {
           await repos.obligations.updatePaidAmount(tenantId, period.id, debitAmount);
         }
@@ -165,8 +225,17 @@ export class ObligationService {
           const remainder = BigInt(params.amount.amount) - period.amountMinor;
           await this.ledgerService.postTransaction(tenantId, {
             postings: [
-              { accountCode: "GATEWAY_CLEARING", direction: "debit", amount: money(currency, Number(remainder)) },
-              { accountCode: "ASSET_WALLET", direction: "credit", amount: money(currency, Number(remainder)), assetId: params.assetId },
+              {
+                accountCode: "GATEWAY_CLEARING",
+                direction: "debit",
+                amount: money(currency, Number(remainder)),
+              },
+              {
+                accountCode: "ASSET_WALLET",
+                direction: "credit",
+                amount: money(currency, Number(remainder)),
+                assetId: params.assetId,
+              },
             ],
             sourceType: "payment",
             sourceId: params.sourceId ?? params.paymentId ?? null,
@@ -219,13 +288,24 @@ export class ObligationService {
           const payMoney = money(p.currency, Number(pay));
           const tx = await this.ledgerService.postTransaction(tenantId, {
             postings: [
-              { accountCode: "ASSET_WALLET", direction: "debit", amount: payMoney, assetId: params.assetId },
-              { accountCode: "REVENUE_LEVY", direction: "credit", amount: payMoney, assetId: params.assetId },
+              {
+                accountCode: "ASSET_WALLET",
+                direction: "debit",
+                amount: payMoney,
+                assetId: params.assetId,
+              },
+              {
+                accountCode: "REVENUE_LEVY",
+                direction: "credit",
+                amount: payMoney,
+                assetId: params.assetId,
+              },
             ],
             sourceType: "allocation",
             sourceId: params.sourceId ?? null,
             description: "Obligation allocation (wallet)",
           });
+          if (!tx) throw new Error("transaction failed");
           if (pay >= due) {
             await repos.obligations.markPaid(tenantId, p.id, tx.transaction.id, p.amountMinor);
           } else {
@@ -234,10 +314,10 @@ export class ObligationService {
           remaining = remaining - pay;
           results.push({ period: p, paid: pay >= due });
         }
-        return { results, remaining: Number(remaining) };
+        return { results, remaining: Number(remaining.toString()) };
       }
       // pay_per_use: no arrears/periods to allocate to by default
-      return { results: [], remaining: Number(params.amount.amount) };
+      return { results: [], remaining: params.amount.amount };
     });
   }
 }

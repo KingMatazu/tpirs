@@ -3,22 +3,67 @@ import type { Transaction } from "kysely";
 import type { Database } from "../connection.js";
 import { withTenant } from "../tenant-scope.js";
 
-export type { AccountRow, TransactionRow, LedgerEntryRow, ObligationPeriodRow, ReversalRequestRow } from "../connection.js";
-import type { AccountRow, TransactionRow, LedgerEntryRow, ObligationPeriodRow, ReversalRequestRow } from "../connection.js";
+export type {
+  AccountRow,
+  TransactionRow,
+  LedgerEntryRow,
+  ObligationPeriodRow,
+  ReversalRequestRow,
+} from "../connection.js";
+import type {
+  AccountRow,
+  TransactionRow,
+  LedgerEntryRow,
+  ObligationPeriodRow,
+  ReversalRequestRow,
+} from "../connection.js";
 
 export class AccountRepository {
   constructor(private readonly db: Transaction<Database>) {}
 
-  async ensureStandardAccounts(tenantId: string, currency: string): Promise<Record<string, AccountRow>> {
+  async ensureStandardAccounts(
+    tenantId: string,
+    currency: string,
+  ): Promise<Record<string, AccountRow>> {
     const results: Record<string, AccountRow> = {};
     await withTenant(this.db, tenantId, async (scoped) => {
       const standard = [
-        { code: "ASSET_WALLET", name: "Asset wallet", account_type: "asset_wallet", account_class: "liability" },
-        { code: "REVENUE_LEVY", name: "Levy revenue", account_type: "revenue_levy", account_class: "revenue" },
-        { code: "GATEWAY_CLEARING", name: "Gateway clearing", account_type: "gateway_clearing", account_class: "asset" },
-        { code: "SETTLEMENT_BANK", name: "Settlement bank", account_type: "settlement_bank", account_class: "asset" },
-        { code: "SUSPENSE", name: "Suspense", account_type: "suspense", account_class: "liability" },
-        { code: "COLLECTOR_CASH", name: "Collector cash", account_type: "collector_cash", account_class: "asset" },
+        {
+          code: "ASSET_WALLET",
+          name: "Asset wallet",
+          account_type: "asset_wallet",
+          account_class: "liability",
+        },
+        {
+          code: "REVENUE_LEVY",
+          name: "Levy revenue",
+          account_type: "revenue_levy",
+          account_class: "revenue",
+        },
+        {
+          code: "GATEWAY_CLEARING",
+          name: "Gateway clearing",
+          account_type: "gateway_clearing",
+          account_class: "asset",
+        },
+        {
+          code: "SETTLEMENT_BANK",
+          name: "Settlement bank",
+          account_type: "settlement_bank",
+          account_class: "asset",
+        },
+        {
+          code: "SUSPENSE",
+          name: "Suspense",
+          account_type: "suspense",
+          account_class: "liability",
+        },
+        {
+          code: "COLLECTOR_CASH",
+          name: "Collector cash",
+          account_type: "collector_cash",
+          account_class: "asset",
+        },
       ];
 
       for (const acct of standard) {
@@ -28,7 +73,7 @@ export class AccountRepository {
           .where("code", "=", acct.code)
           .executeTakeFirst();
         if (existing) {
-          results[acct.code] = existing as AccountRow;
+          results[acct.code] = existing;
           continue;
         }
         const created = await scoped
@@ -44,7 +89,7 @@ export class AccountRepository {
           })
           .returningAll()
           .executeTakeFirstOrThrow();
-        results[acct.code] = created as AccountRow;
+        results[acct.code] = created;
       }
     });
     return results;
@@ -53,8 +98,12 @@ export class AccountRepository {
   async findByCode(tenantId: string, code: string): Promise<AccountRow | undefined> {
     let result: AccountRow | undefined;
     await withTenant(this.db, tenantId, async (scoped) => {
-      const row = await scoped.selectFrom("accounts").selectAll().where("code", "=", code).executeTakeFirst();
-      result = row as AccountRow | undefined;
+      const row = await scoped
+        .selectFrom("accounts")
+        .selectAll()
+        .where("code", "=", code)
+        .executeTakeFirst();
+      result = row;
     });
     return result;
   }
@@ -63,7 +112,7 @@ export class AccountRepository {
     let results: AccountRow[] = [];
     await withTenant(this.db, tenantId, async (scoped) => {
       const rows = await scoped.selectFrom("accounts").selectAll().execute();
-      results = rows as AccountRow[];
+      results = rows;
     });
     return results;
   }
@@ -83,7 +132,10 @@ export interface PostingInput {
 export class LedgerRepository {
   constructor(private readonly db: Transaction<Database>) {}
 
-  async findTransactionByIdempotencyKey(tenantId: string, key: string): Promise<TransactionRow | undefined> {
+  async findTransactionByIdempotencyKey(
+    tenantId: string,
+    key: string,
+  ): Promise<TransactionRow | undefined> {
     let result: TransactionRow | undefined;
     await withTenant(this.db, tenantId, async (scoped) => {
       const row = await scoped
@@ -91,7 +143,7 @@ export class LedgerRepository {
         .selectAll()
         .where("idempotencyKey", "=", key)
         .executeTakeFirst();
-      result = row as TransactionRow | undefined;
+      result = row;
     });
     return result;
   }
@@ -119,7 +171,7 @@ export class LedgerRepository {
           sourceId: params.sourceId ?? null,
           description: params.description ?? null,
           createdByUserId: params.createdByUserId ?? null,
-          metadata: (params.metadata ?? {}) as Record<string, unknown>,
+          metadata: params.metadata ?? {},
         })
         .returningAll()
         .executeTakeFirstOrThrow();
@@ -142,9 +194,9 @@ export class LedgerRepository {
           })
           .returningAll()
           .executeTakeFirstOrThrow();
-        entries.push(entry as LedgerEntryRow);
+        entries.push(entry);
       }
-      result = { transaction: tx as TransactionRow, entries };
+      result = { transaction: tx, entries };
     });
     if (!result) {
       throw new Error("failed to create transaction");
@@ -152,10 +204,16 @@ export class LedgerRepository {
     return result;
   }
 
-  async findTransactionWithEntries(tenantId: string, transactionId: string): Promise<{
-    transaction: TransactionRow;
-    entries: LedgerEntryRow[];
-  } | undefined> {
+  async findTransactionWithEntries(
+    tenantId: string,
+    transactionId: string,
+  ): Promise<
+    | {
+        transaction: TransactionRow;
+        entries: LedgerEntryRow[];
+      }
+    | undefined
+  > {
     let result:
       | {
           transaction: TransactionRow;
@@ -177,7 +235,7 @@ export class LedgerRepository {
         .selectAll()
         .where("transactionId", "=", transactionId)
         .execute();
-      result = { transaction: tx as TransactionRow, entries: entries as LedgerEntryRow[] };
+      result = { transaction: tx, entries: entries };
     });
     return result;
   }
@@ -199,15 +257,17 @@ export class ObligationRepository {
         .where("assetId", "=", assetId)
         .where("periodKey", "=", periodKey)
         .executeTakeFirst();
-      result = row as ObligationPeriodRow | undefined;
+      result = row;
     });
     return result;
   }
 
   async lockAssetObligations(tenantId: string, assetId: string): Promise<void> {
     await withTenant(this.db, tenantId, async (scoped) => {
-      await sql`select 1 from obligation_periods where tenant_id = ${tenantId} and asset_id = ${assetId} for update`.execute(scoped as any);
-      await sql`select 1 from assets where id = ${assetId} for update`.execute(scoped as any);
+      await sql`select 1 from obligation_periods where tenant_id = ${tenantId} and asset_id = ${assetId} for update`.execute(
+        scoped,
+      );
+      await sql`select 1 from assets where id = ${assetId} for update`.execute(scoped);
     });
   }
 
@@ -245,7 +305,7 @@ export class ObligationRepository {
         })
         .returningAll()
         .executeTakeFirstOrThrow();
-      result = row as ObligationPeriodRow;
+      result = row;
     });
     if (!result) {
       throw new Error("failed to create obligation period");
@@ -266,7 +326,7 @@ export class ObligationRepository {
         .orderBy("createdAt", "asc")
         .orderBy("id", "asc")
         .execute();
-      results = rows as ObligationPeriodRow[];
+      results = rows;
     });
     return results;
   }
@@ -290,7 +350,7 @@ export class ObligationRepository {
         .where("id", "=", id)
         .returningAll()
         .executeTakeFirstOrThrow();
-      result = row as ObligationPeriodRow;
+      result = row;
     });
     if (!result) {
       throw new Error("failed to mark obligation as paid");
@@ -298,7 +358,11 @@ export class ObligationRepository {
     return result;
   }
 
-  async updatePaidAmount(tenantId: string, id: string, amountPaidMinor: bigint): Promise<ObligationPeriodRow> {
+  async updatePaidAmount(
+    tenantId: string,
+    id: string,
+    amountPaidMinor: bigint,
+  ): Promise<ObligationPeriodRow> {
     let result: ObligationPeriodRow | undefined;
     await withTenant(this.db, tenantId, async (scoped) => {
       const row = await scoped
@@ -307,7 +371,7 @@ export class ObligationRepository {
         .where("id", "=", id)
         .returningAll()
         .executeTakeFirstOrThrow();
-      result = row as ObligationPeriodRow;
+      result = row;
     });
     if (!result) {
       throw new Error("failed to update obligation paid amount");
@@ -392,7 +456,11 @@ export class ReversalRepository {
     return result;
   }
 
-  async reject(tenantId: string, id: string, rejectedByUserId: string): Promise<ReversalRequestRow> {
+  async reject(
+    tenantId: string,
+    id: string,
+    rejectedByUserId: string,
+  ): Promise<ReversalRequestRow> {
     let result: ReversalRequestRow | undefined;
     await withTenant(this.db, tenantId, async (scoped) => {
       const row = await scoped
@@ -414,4 +482,3 @@ export class ReversalRepository {
     return result;
   }
 }
-
