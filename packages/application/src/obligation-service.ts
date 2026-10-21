@@ -26,7 +26,7 @@ export class ObligationService {
     const currency = params.amount.currency;
     const model = config.obligations.model;
 
-    return this.db.transaction().execute(async (trx) => {
+    return (this.db as any).transaction().execute(async (trx: any) => {
       const repos = repositories(trx);
       await repos.obligations.lockAssetObligations(tenantId, params.assetId);
 
@@ -62,7 +62,7 @@ export class ObligationService {
         if (period.status === "paid") {
           return { period, transaction: null };
         }
-        if (BigInt(params.amount.amount) < period.amount_minor) {
+        if (BigInt(params.amount.amount) < period.amountMinor) {
           await this.ledgerService.postTransaction(tenantId, {
             postings: [
               { accountCode: "GATEWAY_CLEARING", direction: "debit", amount: params.amount },
@@ -129,7 +129,7 @@ export class ObligationService {
           return { period, transaction: null };
         }
         // Allocate: pay oldest-first logic is enforced by findUnpaidForAsset ordering; for current period apply
-        const debitAmount = BigInt(params.amount.amount) >= period.amount_minor ? period.amount_minor : BigInt(params.amount.amount);
+        const debitAmount = BigInt(params.amount.amount) >= period.amountMinor ? period.amountMinor : BigInt(params.amount.amount);
         if (debitAmount === 0n) {
           await this.ledgerService.postTransaction(tenantId, {
             postings: [
@@ -152,14 +152,14 @@ export class ObligationService {
           sourceId: params.sourceId ?? params.paymentId ?? null,
           description: "Obligation allocation",
         });
-        if (BigInt(params.amount.amount) >= period.amount_minor) {
-          await repos.obligations.markPaid(tenantId, period.id, tx.transaction.id, period.amount_minor);
+        if (BigInt(params.amount.amount) >= period.amountMinor) {
+          await repos.obligations.markPaid(tenantId, period.id, tx.transaction.id, period.amountMinor);
         } else {
           await repos.obligations.updatePaidAmount(tenantId, period.id, debitAmount);
         }
         // Any remainder stays in wallet (already credited conceptually via gateway clearing->wallet if we model differently; but simplified)
-        if (BigInt(params.amount.amount) > period.amount_minor) {
-          const remainder = BigInt(params.amount.amount) - period.amount_minor;
+        if (BigInt(params.amount.amount) > period.amountMinor) {
+          const remainder = BigInt(params.amount.amount) - period.amountMinor;
           await this.ledgerService.postTransaction(tenantId, {
             postings: [
               { accountCode: "GATEWAY_CLEARING", direction: "debit", amount: money(currency, Number(remainder)) },
@@ -185,7 +185,7 @@ export class ObligationService {
     },
   ) {
     const model = config.obligations.model;
-    return this.db.transaction().execute(async (trx) => {
+    return (this.db as any).transaction().execute(async (trx: any) => {
       const repos = repositories(trx);
       await repos.obligations.lockAssetObligations(tenantId, params.assetId);
       if (model === "scheduled") {
@@ -194,15 +194,15 @@ export class ObligationService {
         const sorted = [...unpaid].sort((a, b) =>
           compareObligationsForAllocation(
             {
-              periodStartDate: a.business_date,
+              periodStartDate: a.businessDate,
               priority: a.priority,
-              createdAt: a.created_at.toISOString(),
+              createdAt: a.createdAt.toISOString(),
               id: a.id,
             },
             {
-              periodStartDate: b.business_date,
+              periodStartDate: b.businessDate,
               priority: b.priority,
-              createdAt: b.created_at.toISOString(),
+              createdAt: b.createdAt.toISOString(),
               id: b.id,
             },
           ),

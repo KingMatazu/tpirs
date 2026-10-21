@@ -98,12 +98,12 @@ export class LedgerService {
       if (request.status !== "pending") {
         throw new LedgerOperationError("reversal request is not pending");
       }
-      if (request.requested_by_user_id === params.approverUserId) {
+      if (request.requestedByUserId === params.approverUserId) {
         throw new LedgerOperationError("cannot approve own reversal request");
       }
       const original = await repos.ledger.findTransactionWithEntries(
         tenantId,
-        request.original_transaction_id,
+        request.originalTransactionId,
       );
       if (!original || original.entries.length === 0) {
         throw new LedgerOperationError("original transaction not found");
@@ -118,13 +118,13 @@ export class LedgerService {
         assetId: entry.asset_id,
         paymentId: entry.payment_id,
         obligationPeriodId: entry.obligation_period_id,
-        memo: `Reversal of ${request.original_transaction_id}`,
+        memo: `Reversal of ${request.originalTransactionId}`,
       }));
 
       const reversal = await this.postInternal(repos, tenantId, {
         postings,
         sourceType: "reversal",
-        sourceId: request.original_transaction_id,
+        sourceId: request.originalTransactionId,
         description: `Reversal: ${request.reason}`,
         createdByUserId: params.approverUserId,
       });
