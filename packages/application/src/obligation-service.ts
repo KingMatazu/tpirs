@@ -211,7 +211,7 @@ export class ObligationService {
         const results = [];
         for (const p of sorted) {
           if (remaining <= 0n) break;
-          const due = p.amount_minor - p.amount_paid_minor;
+          const due = p.amountMinor - p.amountPaidMinor;
           const pay = remaining >= due ? due : remaining;
           const payMoney = money(p.currency, Number(pay));
           const tx = await this.ledgerService.postTransaction(tenantId, {
@@ -224,11 +224,11 @@ export class ObligationService {
             description: "Obligation allocation (wallet)",
           });
           if (pay >= due) {
-            await repos.obligations.markPaid(tenantId, p.id, tx.transaction.id, p.amount_minor);
+            await repos.obligations.markPaid(tenantId, p.id, tx.transaction.id, p.amountMinor);
           } else {
-            await repos.obligations.updatePaidAmount(tenantId, p.id, p.amount_paid_minor + pay);
+            await repos.obligations.updatePaidAmount(tenantId, p.id, p.amountPaidMinor + pay);
           }
-          remaining -= pay;
+          remaining = remaining - pay;
           results.push({ period: p, paid: pay >= due });
         }
         return { results, remaining: Number(remaining) };
