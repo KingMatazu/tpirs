@@ -129,6 +129,84 @@ export interface AssetPhotoTable {
   createdAt: Generated<Timestamp>;
 }
 
+export interface AccountTable {
+  id: Generated<string>;
+  tenantId: string;
+  code: string;
+  name: string;
+  accountType: string;
+  accountClass: string;
+  currency: string;
+  metadata: Json;
+  createdAt: Generated<Timestamp>;
+  updatedAt: Generated<Timestamp>;
+}
+
+export interface TransactionTable {
+  id: Generated<string>;
+  tenantId: string;
+  idempotencyKey: string | null;
+  sourceType: string;
+  sourceId: string | null;
+  description: string | null;
+  postedAt: Generated<Timestamp>;
+  createdByUserId: string | null;
+  metadata: Json;
+}
+
+export interface LedgerEntryTable {
+  id: Generated<string>;
+  tenantId: string;
+  transactionId: string;
+  accountId: string;
+  direction: "debit" | "credit";
+  amountMinor: bigint;
+  currency: string;
+  assetId: string | null;
+  paymentId: string | null;
+  obligationPeriodId: string | null;
+  memo: string | null;
+  postedAt: Generated<Timestamp>;
+  createdAt: Generated<Timestamp>;
+}
+
+export interface ObligationPeriodTable {
+  id: Generated<string>;
+  tenantId: string;
+  assetId: string;
+  periodKey: string;
+  businessDate: string;
+  status: "unpaid" | "paid" | "waived";
+  amountMinor: bigint;
+  amountPaidMinor: bigint;
+  currency: string;
+  feeRuleKey: string | null;
+  feeAmountSnapshotMinor: bigint | null;
+  paidTransactionId: string | null;
+  priority: number;
+  metadata: Json;
+  createdAt: Generated<Timestamp>;
+  updatedAt: Generated<Timestamp>;
+}
+
+export interface ReversalRequestTable {
+  id: Generated<string>;
+  tenantId: string;
+  originalTransactionId: string;
+  reason: string;
+  status: "pending" | "approved" | "rejected";
+  requestedByUserId: string;
+  approvedByUserId: string | null;
+  rejectedByUserId: string | null;
+  approvedAt: Timestamp | null;
+  rejectedAt: Timestamp | null;
+  expiresAt: Timestamp | null;
+  reversingTransactionId: string | null;
+  metadata: Json;
+  createdAt: Generated<Timestamp>;
+  updatedAt: Generated<Timestamp>;
+}
+
 export interface Database {
   tenants: TenantTable;
   zones: ZoneTable;
@@ -142,6 +220,11 @@ export interface Database {
   owners: OwnerTable;
   assets: AssetTable;
   assetPhotos: AssetPhotoTable;
+  accounts: AccountTable;
+  transactions: TransactionTable;
+  ledgerEntries: LedgerEntryTable;
+  obligationPeriods: ObligationPeriodTable;
+  reversalRequests: ReversalRequestTable;
 }
 
 export type TenantRow = Selectable<TenantTable>;
@@ -154,6 +237,11 @@ export type AuditLogRow = Selectable<AuditLogTable>;
 export type OwnerRow = Selectable<OwnerTable>;
 export type AssetRow = Selectable<AssetTable>;
 export type AssetPhotoRow = Selectable<AssetPhotoTable>;
+export type AccountRow = Selectable<AccountTable>;
+export type TransactionRow = Selectable<TransactionTable>;
+export type LedgerEntryRow = Selectable<LedgerEntryTable>;
+export type ObligationPeriodRow = Selectable<ObligationPeriodTable>;
+export type ReversalRequestRow = Selectable<ReversalRequestTable>;
 
 export interface DbOptions {
   readonly connectionString: string;
@@ -162,6 +250,9 @@ export interface DbOptions {
 
 /** The untyped-ish handle repositories accept; table interfaces live in `Database`. */
 export type AnyDb = Kysely<Database>;
+export type Db = Kysely<Database>;
+export type { Transaction } from "kysely";
+export type DbOrTrx = Kysely<Database>;
 
 export function createDb(options: DbOptions): AnyDb {
   const pool = new pg.Pool({

@@ -26,7 +26,7 @@ export class ObligationService {
     const currency = params.amount.currency;
     const model = config.obligations.model;
 
-    return (this.db as any).transaction().execute(async (trx: any) => {
+    return this.db.transaction().execute(async (trx) => {
       const repos = repositories(trx);
       await repos.obligations.lockAssetObligations(tenantId, params.assetId);
 
@@ -185,7 +185,7 @@ export class ObligationService {
     },
   ) {
     const model = config.obligations.model;
-    return (this.db as any).transaction().execute(async (trx: any) => {
+    return this.db.transaction().execute(async (trx) => {
       const repos = repositories(trx);
       await repos.obligations.lockAssetObligations(tenantId, params.assetId);
       if (model === "scheduled") {
