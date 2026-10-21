@@ -5,11 +5,13 @@ import { money } from "@tpirs/domain";
 import { computeFee } from "@tpirs/domain";
 import { LedgerService } from "./ledger-service.js";
 import type { TenantConfig } from "@tpirs/config";
+import type { Kysely } from "kysely";
+import type { Transaction } from "kysely";
 
 export class ObligationService {
-  constructor(private readonly db: Database, private readonly ledgerService: LedgerService) {}
+  constructor(private readonly db: Kysely<Database>, private readonly ledgerService: LedgerService) {}
 
-  async ensurePaidForBusinessDay(
+  ensurePaidForBusinessDay(
     tenantId: string,
     config: TenantConfig,
     params: {
@@ -26,7 +28,7 @@ export class ObligationService {
     const currency = params.amount.currency;
     const model = config.obligations.model;
 
-    return (this.db as any).transaction().execute(async (trx: any) => {
+    return this.db.transaction().execute(async (trx: Transaction<Database>) => {
       const repos = repositories(trx);
       await repos.obligations.lockAssetObligations(tenantId, params.assetId);
 
@@ -38,7 +40,7 @@ export class ObligationService {
           if (params.assetTypeKey) {
             try {
               const fee = computeFee({
-                rules: config.obligations.feeRules as any,
+                rules: config.obligations.feeRules,
                 assetTypeKey: params.assetTypeKey,
                 businessDate: bd,
                 currency,
@@ -92,7 +94,7 @@ export class ObligationService {
           let feeAmount = params.amount;
           try {
             const fee = computeFee({
-              rules: config.obligations.feeRules as any,
+              rules: config.obligations.feeRules,
               assetTypeKey: params.assetTypeKey,
               businessDate: bd,
               currency,
@@ -175,7 +177,7 @@ export class ObligationService {
     });
   }
 
-  async allocateFromWallet(
+  allocateFromWallet(
     tenantId: string,
     config: TenantConfig,
     params: {
@@ -185,7 +187,7 @@ export class ObligationService {
     },
   ) {
     const model = config.obligations.model;
-    return (this.db as any).transaction().execute(async (trx: any) => {
+    return this.db.transaction().execute(async (trx: Transaction<Database>) => {
       const repos = repositories(trx);
       await repos.obligations.lockAssetObligations(tenantId, params.assetId);
       if (model === "scheduled") {

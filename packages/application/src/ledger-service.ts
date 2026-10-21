@@ -1,7 +1,9 @@
 import { repositories } from "@tpirs/db";
-import type { AnyDb } from "@tpirs/db";
 import { validateBalancedTransaction, type LedgerPosting } from "@tpirs/domain";
 import { money } from "@tpirs/domain";
+import type { Database } from "@tpirs/db";
+import type { Kysely } from "kysely";
+import type { Transaction } from "kysely";
 
 export class LedgerOperationError extends Error {
   constructor(message: string) {
@@ -30,31 +32,31 @@ interface PostTransactionParams {
 }
 
 export class LedgerService {
-  constructor(private readonly db: AnyDb) {}
+  constructor(private readonly db: Kysely<Database>) {}
 
   async postTransaction(tenantId: string, params: PostTransactionParams) {
     validateBalanced(this.toDomainPostings(params.postings));
 
     if (params.idempotencyKey) {
-      const existing = await (this.db as any).transaction().execute(async (trx: any) => {
+      const existing = await this.db.transaction().execute(async (trx: Transaction<Database>) => {
         const repos = repositories(trx);
         return repos.ledger.findTransactionByIdempotencyKey(tenantId, params.idempotencyKey!);
       });
       if (existing) {
-        return (this.db as any).transaction().execute(async (trx: any) => {
+        return this.db.transaction().execute(async (trx: Transaction<Database>) => {
           const repos = repositories(trx);
           return repos.ledger.findTransactionWithEntries(tenantId, existing.id);
         });
       }
     }
 
-    return (this.db as any).transaction().execute(async (trx: any) => {
+    return this.db.transaction().execute(async (trx: Transaction<Database>) => {
       const repos = repositories(trx);
       return this.postInternal(repos, tenantId, params);
     });
   }
 
-  async requestReversal(
+  requestReversal(
     tenantId: string,
     params: {
       originalTransactionId: string;
@@ -66,7 +68,7 @@ export class LedgerService {
     if (params.isSystemAdmin) {
       throw new LedgerOperationError("system admin cannot touch ledger data");
     }
-    return (this.db as any).transaction().execute(async (trx: any) => {
+    return this.db.transaction().execute(async (trx: Transaction<Database>) => {
       const repos = repositories(trx);
       return repos.reversals.create(tenantId, {
         originalTransactionId: params.originalTransactionId,
@@ -76,7 +78,7 @@ export class LedgerService {
     });
   }
 
-  async approveReversal(
+  approveReversal(
     tenantId: string,
     params: {
       reversalRequestId: string;
@@ -91,7 +93,7 @@ export class LedgerService {
     if (!params.hasFinanceApproval) {
       throw new LedgerOperationError("finance approval required");
     }
-    return (this.db as any).transaction().execute(async (trx: any) => {
+    return this.db.transaction().execute(async (trx: Transaction<Database>) => {
       const repos = repositories(trx);
       const request = await repos.reversals.findById(tenantId, params.reversalRequestId);
       if (!request) throw new LedgerOperationError("reversal request not found");
@@ -111,15 +113,21 @@ export class LedgerService {
 
       const allAccounts = await repos.accounts.getAll(tenantId);
       const accountById = new Map(allAccounts.map((a) => [a.id, a.code]));
-      const postings: PostingSpec[] = original.entries.map((entry: any) => ({
-        accountCode: accountById.get(entry.account_id)!,
-        direction: entry.direction === "debit" ? "credit" : "debit",
-        amount: money(entry.currency, Number(entry.amount_minor)),
-        assetId: entry.asset_id,
-        paymentId: entry.payment_id,
-        obligationPeriodId: entry.obligation_period_id,
-        memo: `Reversal of ${request.originalTransactionId}`,
-      }));
+      const postings: PostingSpec[] = original.entries.map((entry) => {
+        const accountCode = accountById.get(entry.accountId);
+        if (!accountCode) {
+          throw new LedgerOperationError("unknown account for reversal");
+        }
+        return {
+          accountCode,
+          direction: entry.direction === "debit" ? "credit" : "debit",
+          amount: money(entry.currency, Number(entry.amountMinor)),
+          assetId: entry.assetId,
+          paymentId: entry.paymentId,
+          obligationPeriodId: entry.obligationPeriodId,
+          memo: `Reversal of ${request.originalTransactionId}`,
+        };
+      });
 
       const reversal = await this.postInternal(repos, tenantId, {
         postings,
@@ -145,10 +153,11 @@ export class LedgerService {
     params: PostTransactionParams,
   ) {
     validateBalanced(this.toDomainPostings(params.postings));
-    const accounts = await repos.accounts.ensureStandardAccounts(
-      tenantId,
-      params.postings[0]!.amount.currency,
-    );
+    const firstPosting = params.postings[0];
+    if (!firstPosting) {
+      throw new LedgerOperationError("no postings");
+    }
+    const accounts = await repos.accounts.ensureStandardAccounts(tenantId, firstPosting.amount.currency);
     const accountMap = new Map(Object.entries(accounts));
     const postingInputs = params.postings.map((p) => {
       const account = accountMap.get(p.accountCode);
