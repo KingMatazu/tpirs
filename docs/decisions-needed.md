@@ -77,3 +77,47 @@ payments exist. When they do, the field must be additive and never render
 - Recommendation: add `paymentStatus` only with explicit values `PAID` /
   `NOT_IN_OFFLINE_LIST` semantics from the verification design; absence stays
   non-accusatory.
+
+## D7: Multi-currency and FX
+
+**Status:** resolved for v1 (deferred). 
+Multi-currency and FX are deferred. The schema is ready for it (each ledger entry stores its currency code, with a database constraint requiring it to match both accounts’ currency), but v1 uses one currency per tenant with no FX and no cross-currency postings.
+
+- Recommendation: defer until a concrete requirement arises; the currency-matching constraint allows adding multi-currency later without a migration.
+
+## D8: Surplus wallet credit refund policy
+
+**Status:** open (business decision for the first tenant).
+
+Surplus from allocations stays as wallet credit. It is auto-applied only when prepay is enabled, never beyond the configured horizon. The business policy for refunding surplus wallet credit is still to be decided.
+
+- Recommendation: decide during first-tenant onboarding; track as a config flag/policy when needed.
+
+## D9: Partial payments under pay_per_use
+
+**Status:** resolved for v1.
+Default is **no** partial payments under `pay_per_use`. The full fee is required for the current business day; a shortfall stays as wallet credit and the day stays unpaid.
+
+- Recommendation: keep this as default; if needed later, make it configurable per tenant.
+
+## D11: Partially paid periods in scheduled mode
+
+**Status:** open.
+
+Does a partially paid period count as paid in scheduled mode? The default is no.
+
+- Recommendation: default to no; if needed, make it configurable per tenant.
+
+## D12: Arrears age cap and lapse timing
+
+**Status:** open.
+
+Arrears age cap and the lapse timing for scheduled mode need to be defined.
+
+- Recommendation: define defaults in config with clear semantics; allow per-tenant override.
+
+## D13: Partial reversals
+
+**Status:** deferred.
+
+Partial reversals are deferred to a later phase. In v1, reversals are full-transaction only.

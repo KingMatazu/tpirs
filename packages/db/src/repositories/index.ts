@@ -18,9 +18,11 @@ export * from "./device.js";
 export * from "./owner.js";
 export * from "./role.js";
 export * from "./session.js";
+import { AccountRepository, LedgerRepository, ObligationRepository, ReversalRepository } from "./ledger.js";
 export * from "./tenant.js";
 export * from "./user.js";
 export * from "./zone.js";
+export * from "./ledger.js";
 
 /** Bundles every repository over one transaction, so callers share a scope. */
 export function repositories(db: Transaction<Database>): {
@@ -34,6 +36,10 @@ export function repositories(db: Transaction<Database>): {
   owners: OwnerRepository;
   assets: AssetRepository;
   assetPhotos: AssetPhotoRepository;
+  accounts: AccountRepository;
+  ledger: LedgerRepository;
+  obligations: ObligationRepository;
+  reversals: ReversalRepository;
 } {
   return {
     tenants: new TenantRepository(db),
@@ -46,5 +52,9 @@ export function repositories(db: Transaction<Database>): {
     owners: new OwnerRepository(db),
     assets: new AssetRepository(db),
     assetPhotos: new AssetPhotoRepository(db),
+    accounts: new AccountRepository(db),
+    ledger: new LedgerRepository(db),
+    obligations: new ObligationRepository(db),
+    reversals: new ReversalRepository(db),
   };
 }

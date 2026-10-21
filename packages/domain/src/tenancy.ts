@@ -37,6 +37,7 @@ export type Permission =
   | "payment:manage"
   | "ledger:read"
   | "ledger:reverse"
+  | "ledger:approve"
   | "dispute:read"
   | "dispute:resolve"
   | "reconciliation:read"
@@ -60,6 +61,7 @@ export const ALL_PERMISSIONS: readonly Permission[] = [
   "payment:manage",
   "ledger:read",
   "ledger:reverse",
+  "ledger:approve",
   "dispute:read",
   "dispute:resolve",
   "reconciliation:read",
@@ -121,6 +123,7 @@ export const SYSTEM_ROLES: readonly SystemRoleDefinition[] = [
       "payment:manage",
       "ledger:read",
       "ledger:reverse",
+      "ledger:approve",
       "reconciliation:read",
       "reconciliation:run",
       "report:read",
