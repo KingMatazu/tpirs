@@ -85,6 +85,7 @@ export class ObligationService {
           sourceId: params.sourceId ?? params.paymentId ?? null,
           description: "Obligation allocation",
         });
+        if (!tx) throw new Error("transaction failed");
         await repos.obligations.markPaid(tenantId, period.id, tx.transaction.id, BigInt(params.amount.amount));
         return { period, transaction: tx };
       } else {
