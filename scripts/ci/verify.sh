@@ -6,6 +6,6 @@ set -eu
 corepack enable >/dev/null 2>&1 || true
 pnpm install --frozen-lockfile
 
-pnpm lint
-pnpm typecheck
-pnpm build
+pnpm lint --continue
+pnpm typecheck --continue
+pnpm build --continue
