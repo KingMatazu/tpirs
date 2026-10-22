@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { money } from "@tpirs/domain";
 import { PortError } from "@tpirs/ports";
 import type {
@@ -10,12 +9,10 @@ import type {
   Settlement,
   WebhookVerification,
 } from "@tpirs/ports";
+import { mockWebhookSignature } from "./signature.js";
 
-export const MOCK_WEBHOOK_SECRET = "mock-webhook-secret";
-
-export function mockWebhookSignature(rawBody: string, secret = MOCK_WEBHOOK_SECRET): string {
-  return createHash("sha256").update(`${secret}:${rawBody}`).digest("hex");
-}
+export { mockWebhookSignature, MOCK_WEBHOOK_SECRET } from "./signature.js";
+export { mockPaymentProviderFixture } from "./fixture.js";
 
 export interface MockPaymentProvider extends PaymentProvider {
   /** Intents created through the API (test inspection). */
@@ -41,6 +38,9 @@ export function createMockPaymentProvider(): MockPaymentProvider {
     supportsVirtualAccounts: true,
     supportsPaymentReferences: true,
     supportsSettlementFetch: true,
+    // The mock implements every mechanism so tests can exercise each intake
+    // path; intent references come first because that is the platform default.
+    attributionKinds: ["intent_reference", "virtual_account", "narration"],
   };
 
   return {
@@ -62,7 +62,10 @@ export function createMockPaymentProvider(): MockPaymentProvider {
       const intent: PaymentIntent = {
         providerId: `mock-intent-${String(counter)}`,
         status: "pending",
-        instruction: { type: "reference", value: request.reference },
+        attribution: {
+          kind: "intent_reference",
+          instruction: { type: "reference", value: request.reference },
+        },
         raw: { request },
       };
       intents.push(intent);

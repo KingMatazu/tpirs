@@ -1,9 +1,43 @@
 import type { Money } from "@tpirs/domain";
 
+/**
+ * How a payment is tied back to the asset it belongs to (ADR 0018).
+ *
+ * - `intent_reference`: the adapter issues a reference for one intent and the
+ *   webhook returns it, so no payer-typed text is involved.
+ * - `virtual_account`: a persistent account per asset.
+ * - `narration`: a shared account plus a reference the payer types, matched
+ *   tolerantly. Supported for gateways with no better mechanism, never assumed.
+ */
+export type PaymentAttributionKind = "intent_reference" | "virtual_account" | "narration";
+
+export const PAYMENT_ATTRIBUTION_KINDS: readonly PaymentAttributionKind[] = [
+  "intent_reference",
+  "virtual_account",
+  "narration",
+];
+
+export function isPaymentAttributionKind(value: string): value is PaymentAttributionKind {
+  return (PAYMENT_ATTRIBUTION_KINDS as readonly string[]).includes(value);
+}
+
 export interface PaymentProviderCapabilities {
+  /**
+   * Convenience flag, true only when `attributionKinds` includes
+   * `virtual_account`. `attributionKinds` is the source of truth; the
+   * conformance suite asserts the two cannot disagree.
+   */
   readonly supportsVirtualAccounts: boolean;
+  /** True when the adapter can attribute a payment by a reference the payer holds. */
   readonly supportsPaymentReferences: boolean;
   readonly supportsSettlementFetch: boolean;
+  /**
+   * Attribution mechanisms the adapter implements, ordered by preference. The
+   * platform may only create intents for a declared kind, and an adapter that
+   * cannot issue an intent reference must say so here rather than falling back
+   * to narration silently.
+   */
+  readonly attributionKinds: readonly PaymentAttributionKind[];
 }
 
 export interface PaymentIntentRequest {
@@ -23,11 +57,21 @@ export interface PaymentInstruction {
   readonly expiresAt?: Date;
 }
 
+export interface PaymentIntentAttribution {
+  readonly kind: PaymentAttributionKind;
+  /**
+   * What to show the payer. Absent when the adapter issues nothing for this
+   * kind, for example a shared account the platform already knows.
+   */
+  readonly instruction?: PaymentInstruction;
+}
+
 export interface PaymentIntent {
   readonly providerId: string;
   readonly status: "pending" | "completed" | "failed" | "abandoned";
   readonly authorizationUrl?: string;
-  readonly instruction?: PaymentInstruction;
+  /** How this intent's payment will be attributed, and what the payer must use. */
+  readonly attribution: PaymentIntentAttribution;
   readonly raw: unknown;
 }
 

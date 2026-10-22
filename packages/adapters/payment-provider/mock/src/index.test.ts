@@ -1,11 +1,61 @@
 import { describe, expect, it } from "vitest";
-import { createPaymentProviderConformanceSuite } from "@tpirs/contracts";
+import {
+  createPaymentProviderConformanceSuite,
+  createPaymentProviderFixtureSuite,
+} from "@tpirs/contracts";
 import { money } from "@tpirs/domain";
-import { createMockPaymentProvider, mockWebhookSignature } from "./index.js";
+import {
+  createMockPaymentProvider,
+  mockPaymentProviderFixture,
+  mockWebhookSignature,
+} from "./index.js";
 
 createPaymentProviderConformanceSuite({ describe, it, expect }, () => ({
   port: createMockPaymentProvider(),
 }));
+
+createPaymentProviderFixtureSuite(
+  { describe, it, expect },
+  () => ({ port: createMockPaymentProvider() }),
+  mockPaymentProviderFixture,
+);
+
+describe("createMockPaymentProvider intents", () => {
+  it("attributes an intent by reference and records it for inspection", async () => {
+    const provider = createMockPaymentProvider();
+    const intent = await provider.createPaymentIntent({
+      idempotencyKey: "intent-1",
+      amount: money("NGN", 5000),
+      reference: "ref-abc",
+    });
+
+    expect(intent.attribution.kind).toBe("intent_reference");
+    expect(intent.attribution.instruction).toEqual({ type: "reference", value: "ref-abc" });
+    expect(provider.intents).toHaveLength(1);
+  });
+
+  it("rejects a non-positive amount", async () => {
+    const provider = createMockPaymentProvider();
+    await expect(
+      provider.createPaymentIntent({
+        idempotencyKey: "intent-2",
+        amount: money("NGN", 0),
+        reference: "ref-zero",
+      }),
+    ).rejects.toThrow("Amount must be a positive integer");
+  });
+
+  it("rejects an empty reference", async () => {
+    const provider = createMockPaymentProvider();
+    await expect(
+      provider.createPaymentIntent({
+        idempotencyKey: "intent-3",
+        amount: money("NGN", 100),
+        reference: "   ",
+      }),
+    ).rejects.toThrow("Reference must not be empty");
+  });
+});
 
 describe("createMockPaymentProvider webhook normalization", () => {
   it("verifies valid signatures and normalizes valid payloads", async () => {
