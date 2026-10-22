@@ -18,8 +18,10 @@ import type {
   TenantMenu,
   TenantMenuOption,
   TenantObligationRules,
+  TenantPayments,
   TenantProviderBinding,
   TenantReconciliation,
+  UnderpaymentPolicy,
 } from "./schema.js";
 import { Validator } from "./validator.js";
 
@@ -28,7 +30,15 @@ const OBLIGATION_FREQUENCIES: readonly ObligationFrequency[] = ["daily", "weekly
 const ARREARS_POLICIES: readonly ArrearsPolicy[] = ["none", "accrue"];
 const ALLOCATION_ORDERS: readonly AllocationOrder[] = ["oldest_first", "today_first"];
 const DEFAULT_ALLOCATION_ORDER: AllocationOrder = "oldest_first";
+const UNDERPAYMENT_POLICIES: readonly UnderpaymentPolicy[] = ["wallet", "suspense"];
+const DEFAULT_UNDERPAYMENT_POLICY: UnderpaymentPolicy = "wallet";
 const ATTRIBUTE_TYPES = ["string", "number", "date", "enum"] as const;
+
+/**
+ * Placeholders the receipt renderer fills. A template must use all of them and
+ * nothing else: an unknown name would reach a driver as a literal `{typo}`.
+ */
+const RECEIPT_PLACEHOLDERS = ["amount", "assetRef", "date", "receiptNo"] as const;
 
 function isIsoDate(value: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`));
@@ -452,6 +462,10 @@ function validateChannels(v: Validator, value: unknown): TenantChannels | undefi
     );
     return undefined;
   }
+  const smsReceiptTemplate = v.string(obj.smsReceiptTemplate, "smsReceiptTemplate");
+  if (smsReceiptTemplate !== undefined && !validateReceiptTemplate(v, smsReceiptTemplate)) {
+    return undefined;
+  }
   const menus: TenantMenu[] = [];
   v.each(obj.menus, "menus", (item) => {
     const menu = validateMenu(v, item);
@@ -461,11 +475,44 @@ function validateChannels(v: Validator, value: unknown): TenantChannels | undefi
     ussdCode === undefined ||
     smsKeyword === undefined ||
     otpMessageTemplate === undefined ||
+    smsReceiptTemplate === undefined ||
     !Array.isArray(obj.menus)
   ) {
     return undefined;
   }
-  return { ussdCode, smsKeyword, otpMessageTemplate, menus };
+  return { ussdCode, smsKeyword, otpMessageTemplate, smsReceiptTemplate, menus };
+}
+
+/**
+ * A receipt template must fill every placeholder the renderer knows about and
+ * may not invent others. Catches `{amout}` at startup, not in a driver's inbox.
+ */
+function validateReceiptTemplate(v: Validator, template: string): boolean {
+  const found = new Set<string>();
+  for (const match of template.matchAll(/\{([^{}]*)\}/g)) {
+    const name = match[1] ?? "";
+    if (!(RECEIPT_PLACEHOLDERS as readonly string[]).includes(name)) {
+      const allowed = RECEIPT_PLACEHOLDERS.map((p) => `{${p}}`).join(", ");
+      v.issue(
+        "schema_error",
+        `channels.smsReceiptTemplate has unknown placeholder '{${name}}'; allowed placeholders: ${allowed}`,
+        "smsReceiptTemplate",
+      );
+      return false;
+    }
+    found.add(name);
+  }
+  const missing = RECEIPT_PLACEHOLDERS.filter((p) => !found.has(p));
+  if (missing.length > 0) {
+    const list = missing.map((p) => `{${p}}`).join(", ");
+    v.issue(
+      "schema_error",
+      `channels.smsReceiptTemplate must contain the ${list} placeholder${missing.length > 1 ? "s" : ""}`,
+      "smsReceiptTemplate",
+    );
+    return false;
+  }
+  return true;
 }
 
 function validateCashRules(v: Validator, value: unknown): TenantCashRules | undefined {
@@ -486,6 +533,18 @@ function validateCashRules(v: Validator, value: unknown): TenantCashRules | unde
     return undefined;
   }
   return { enabled, floatCeilingMinor, depositDeadlineHours, freezeOnShortfall };
+}
+
+function validatePayments(v: Validator, value: unknown): TenantPayments | undefined {
+  const obj = v.object(value, "payments");
+  if (obj === undefined) return undefined;
+  const underpaymentPolicy = v.enum(
+    obj.underpaymentPolicy,
+    "underpaymentPolicy",
+    UNDERPAYMENT_POLICIES,
+  );
+  if (underpaymentPolicy === undefined) return undefined;
+  return { underpaymentPolicy };
 }
 
 function validateFeatureFlags(v: Validator, value: unknown): TenantFeatureFlags | undefined {
@@ -557,6 +616,12 @@ export function validateTenantConfig(input: unknown): TenantConfig {
   });
   const channels = validateChannels(root.child("channels"), rootObj.channels);
   const cashRules = validateCashRules(root.child("cashRules"), rootObj.cashRules);
+  // Omitting the section means the default policy; a present but malformed
+  // section is an error, never silently defaulted.
+  const payments =
+    rootObj.payments === undefined
+      ? { underpaymentPolicy: DEFAULT_UNDERPAYMENT_POLICY }
+      : validatePayments(root.child("payments"), rootObj.payments);
   const featureFlags = validateFeatureFlags(root.child("featureFlags"), rootObj.featureFlags);
   const reconciliation = validateReconciliation(
     root.child("reconciliation"),
@@ -606,6 +671,7 @@ export function validateTenantConfig(input: unknown): TenantConfig {
     obligations === undefined ||
     channels === undefined ||
     cashRules === undefined ||
+    payments === undefined ||
     featureFlags === undefined ||
     reconciliation === undefined ||
     compliance === undefined
@@ -623,6 +689,7 @@ export function validateTenantConfig(input: unknown): TenantConfig {
     providers,
     channels,
     cashRules,
+    payments,
     featureFlags,
     reconciliation,
     compliance,

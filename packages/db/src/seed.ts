@@ -39,6 +39,7 @@ function baseConfig(overrides: {
   bikeFee: number;
   tuktukFee: number;
   dataResidency: string;
+  underpaymentPolicy: TenantConfig["payments"]["underpaymentPolicy"];
 }): TenantConfig {
   return {
     identity: {
@@ -123,6 +124,7 @@ function baseConfig(overrides: {
       ussdCode: overrides.ussdCode,
       smsKeyword: "LEVY",
       otpMessageTemplate: `${overrides.appName}: your verification code is {code}.`,
+      smsReceiptTemplate: `${overrides.appName} receipt {receiptNo}: {amount} paid for {assetRef} on {date}.`,
       menus: [
         {
           key: "main",
@@ -137,6 +139,7 @@ function baseConfig(overrides: {
       depositDeadlineHours: 24,
       freezeOnShortfall: true,
     },
+    payments: { underpaymentPolicy: overrides.underpaymentPolicy },
     featureFlags: { disputes: true, prepay: false, offlineMode: true, anomalyAlerts: true },
     reconciliation: { schedule: "0 2 * * *", toleranceMinor: 100, notifyRole: "finance_admin" },
     compliance: {
@@ -168,6 +171,7 @@ const FAKE_TENANTS: readonly FakeTenant[] = [
       bikeFee: 20000,
       tuktukFee: 30000,
       dataResidency: "alpha",
+      underpaymentPolicy: "wallet",
     }),
     zones: ["Central", "Harbour"],
     users: [
@@ -211,6 +215,7 @@ const FAKE_TENANTS: readonly FakeTenant[] = [
       bikeFee: 500,
       tuktukFee: 800,
       dataResidency: "beta",
+      underpaymentPolicy: "suspense",
     }),
     zones: ["North", "South"],
     users: [

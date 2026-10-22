@@ -75,6 +75,7 @@ channels:
   ussdCode: "*000*0#"
   smsKeyword: "LEVY"
   otpMessageTemplate: "Template Levy: your verification code is {code}."
+  smsReceiptTemplate: "Template Levy receipt {receiptNo}: {amount} paid for {assetRef} on {date}."
   menus:
     - key: "main"
       promptKey: "ussd.main.prompt"
@@ -91,6 +92,11 @@ cashRules:
   floatCeilingMinor: 5000000
   depositDeadlineHours: 24
   freezeOnShortfall: true
+
+# Omit this section for the default (`wallet`). `suspense` sends every short
+# payment to finance for review instead of crediting the asset wallet.
+payments:
+  underpaymentPolicy: "wallet"
 
 featureFlags:
   disputes: true

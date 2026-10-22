@@ -59,6 +59,14 @@ export type ObligationFrequency = "daily" | "weekly" | "monthly";
 export type ArrearsPolicy = "none" | "accrue";
 export type AllocationOrder = "oldest_first" | "today_first";
 
+/**
+ * What happens to a payment that is short of the fee (ADR 0019).
+ * `wallet` credits the asset wallet and leaves the day unpaid; `suspense` sends
+ * the payment to finance review. Currency mismatches and unattributable
+ * payments always go to suspense regardless of this setting.
+ */
+export type UnderpaymentPolicy = "wallet" | "suspense";
+
 export interface TenantFeeRule {
   readonly key: string;
   /**
@@ -111,6 +119,13 @@ export interface TenantChannels {
   readonly smsKeyword: string;
   /** SMS template for owner phone verification; must contain the {code} placeholder. */
   readonly otpMessageTemplate: string;
+  /**
+   * SMS receipt sent once per applied payment. Must contain exactly the
+   * placeholders the receipt renderer fills: {amount}, {assetRef}, {date} and
+   * {receiptNo}. Unknown placeholders are rejected at load time so a typo is a
+   * startup failure rather than a literal brace in a driver's SMS.
+   */
+  readonly smsReceiptTemplate: string;
   readonly menus: readonly TenantMenu[];
 }
 
@@ -119,6 +134,12 @@ export interface TenantCashRules {
   readonly floatCeilingMinor: number;
   readonly depositDeadlineHours: number;
   readonly freezeOnShortfall: boolean;
+}
+
+/** Payment intake behaviour that is not a provider binding. */
+export interface TenantPayments {
+  /** Defaults to `wallet` when the section is omitted. */
+  readonly underpaymentPolicy: UnderpaymentPolicy;
 }
 
 export interface TenantFeatureFlags {
@@ -149,6 +170,7 @@ export interface TenantConfig {
   readonly providers: readonly TenantProviderBinding[];
   readonly channels: TenantChannels;
   readonly cashRules: TenantCashRules;
+  readonly payments: TenantPayments;
   readonly featureFlags: TenantFeatureFlags;
   readonly reconciliation: TenantReconciliation;
   readonly compliance: TenantCompliance;

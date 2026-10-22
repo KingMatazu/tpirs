@@ -57,7 +57,13 @@ function configFor(slug: string, feeRules: TenantConfig["obligations"]["feeRules
       feeRules,
     },
     providers: [],
-    channels: { ussdCode: "*1#", smsKeyword: "LEVY", otpMessageTemplate: "code {code}", menus: [] },
+    channels: {
+      ussdCode: "*1#",
+      smsKeyword: "LEVY",
+      otpMessageTemplate: "code {code}",
+      smsReceiptTemplate: "Receipt {receiptNo}: {amount} for {assetRef} on {date}.",
+      menus: [],
+    },
     cashRules: {
       enabled: true,
       floatCeilingMinor: 1,

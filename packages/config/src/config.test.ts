@@ -1,4 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { loadTenantConfigFromString } from "./loader.js";
 import { validateTenantConfig } from "./validate.js";
 import { TenantConfigValidationError } from "./errors.js";
@@ -73,6 +76,7 @@ channels:
   ussdCode: "*347*9#"
   smsKeyword: "LEVY"
   otpMessageTemplate: "Example: your code is {code}"
+  smsReceiptTemplate: "Example receipt {receiptNo}: {amount} paid for {assetRef} on {date}."
   menus:
     - key: "main"
       promptKey: "ussd.main.prompt"
@@ -85,6 +89,8 @@ cashRules:
   floatCeilingMinor: 5000000
   depositDeadlineHours: 24
   freezeOnShortfall: true
+payments:
+  underpaymentPolicy: "suspense"
 featureFlags:
   disputes: true
   prepay: false
@@ -108,6 +114,8 @@ describe("loadTenantConfigFromString", () => {
     expect(config.assetTypes).toHaveLength(2);
     expect(config.obligations.model).toBe("pay_per_use");
     expect(config.providers[0]?.secrets?.apiKey).toBe("tenant/example/paystack-key");
+    expect(config.payments.underpaymentPolicy).toBe("suspense");
+    expect(config.channels.smsReceiptTemplate).toContain("{receiptNo}");
   });
 
   it("rejects invalid YAML", () => {
@@ -172,6 +180,7 @@ describe("validateTenantConfig", () => {
             ussdCode: "*1#",
             smsKeyword: "X",
             otpMessageTemplate: "code {code}",
+            smsReceiptTemplate: "Receipt {receiptNo}: {amount} for {assetRef} on {date}.",
             menus: [],
           },
           cashRules: {
@@ -309,6 +318,46 @@ describe("validateTenantConfig", () => {
     expect(config.obligations.allocationOrder).toBe("oldest_first");
   });
 
+  it("defaults the underpayment policy to wallet", () => {
+    const config = configWith()();
+    expect(config.payments.underpaymentPolicy).toBe("wallet");
+  });
+
+  it("accepts an explicit underpayment policy", () => {
+    const config = configWith((raw) => {
+      raw.payments = { underpaymentPolicy: "suspense" };
+    })();
+    expect(config.payments.underpaymentPolicy).toBe("suspense");
+  });
+
+  it("rejects an unknown underpayment policy", () => {
+    const run = configWith((raw) => {
+      raw.payments = { underpaymentPolicy: "refund" };
+    });
+    expect(run).toThrow(/underpaymentPolicy must be one of/);
+  });
+
+  it("rejects a receipt template that omits a required placeholder", () => {
+    for (const placeholder of ["{amount}", "{assetRef}", "{date}", "{receiptNo}"]) {
+      const run = configWith((raw) => {
+        const channels = raw.channels as Record<string, unknown>;
+        channels.smsReceiptTemplate = String(channels.smsReceiptTemplate).replace(placeholder, "");
+      });
+      expect(run).toThrow(/smsReceiptTemplate must contain/);
+    }
+  });
+
+  it("rejects a receipt placeholder the renderer cannot fill", () => {
+    const run = configWith((raw) => {
+      const channels = raw.channels as Record<string, unknown>;
+      channels.smsReceiptTemplate = String(channels.smsReceiptTemplate).replace(
+        "{amount}",
+        "{amout}",
+      );
+    });
+    expect(run).toThrow(/unknown placeholder '\{amout\}'/);
+  });
+
   it("rejects a default language not in enabled languages", () => {
     const run = configWith((raw) => {
       (raw.locale as Record<string, unknown>).defaultLanguage = "fr";
@@ -330,5 +379,15 @@ describe("validateTenantConfig", () => {
         expect(error.issues.length).toBeGreaterThanOrEqual(2);
       }
     }
+  });
+});
+
+describe("tenants/_template", () => {
+  it("validates against the current schema", () => {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const path = resolve(here, "../../../tenants/_template/tenant.config.yaml");
+    const config = loadTenantConfigFromString(readFileSync(path, "utf8"));
+    expect(config.identity.slug).toBe("template-state");
+    expect(config.payments.underpaymentPolicy).toBe("wallet");
   });
 });

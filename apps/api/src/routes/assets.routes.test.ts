@@ -95,6 +95,7 @@ function validConfig(slug: string): unknown {
       ussdCode: "*1#",
       smsKeyword: "LEVY",
       otpMessageTemplate: "Asset Test code: {code}",
+      smsReceiptTemplate: "Receipt {receiptNo}: {amount} for {assetRef} on {date}.",
       menus: [],
     },
     cashRules: {

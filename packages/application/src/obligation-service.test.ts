@@ -75,6 +75,7 @@ function testConfig(
       ussdCode: "*1#",
       smsKeyword: "LEVY",
       otpMessageTemplate: "code {code}",
+      smsReceiptTemplate: "Receipt {receiptNo}: {amount} for {assetRef} on {date}.",
       menus: [],
     },
     cashRules: {

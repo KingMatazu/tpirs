@@ -74,7 +74,13 @@ function validConfig(slug: string): TenantConfig {
       ],
     },
     providers: [],
-    channels: { ussdCode: "*1#", smsKeyword: "X", otpMessageTemplate: "code {code}", menus: [] },
+    channels: {
+      ussdCode: "*1#",
+      smsKeyword: "X",
+      otpMessageTemplate: "code {code}",
+      smsReceiptTemplate: "Receipt {receiptNo}: {amount} for {assetRef} on {date}.",
+      menus: [],
+    },
     cashRules: {
       enabled: true,
       floatCeilingMinor: 1,
