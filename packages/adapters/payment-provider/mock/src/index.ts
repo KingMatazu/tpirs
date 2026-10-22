@@ -1,5 +1,6 @@
 import { money } from "@tpirs/domain";
-import { PortError } from "@tpirs/ports";
+import type { Money } from "@tpirs/domain";
+import { assertPaymentIntentRequest, PortError } from "@tpirs/ports";
 import type {
   NormalizedPaymentEvent,
   PaymentIntent,
@@ -48,15 +49,10 @@ export function createMockPaymentProvider(): MockPaymentProvider {
     intents,
     capabilities: () => capabilities,
     createPaymentIntent(request: PaymentIntentRequest): Promise<PaymentIntent> {
-      if (request.amount.amount <= 0) {
-        return Promise.reject(
-          new PortError("PaymentProvider", "invalid_request", "Amount must be a positive integer"),
-        );
-      }
-      if (request.reference.trim().length === 0) {
-        return Promise.reject(
-          new PortError("PaymentProvider", "invalid_request", "Reference must not be empty"),
-        );
+      try {
+        assertPaymentIntentRequest(request);
+      } catch (error) {
+        return Promise.reject(error instanceof Error ? error : new Error(String(error)));
       }
       counter += 1;
       const intent: PaymentIntent = {
@@ -96,12 +92,31 @@ export function createMockPaymentProvider(): MockPaymentProvider {
       ) {
         throw new PortError("PaymentProvider", "invalid_request", "Webhook payload is malformed");
       }
+      const paidAt = new Date(parsed.paidAt);
+      if (Number.isNaN(paidAt.getTime())) {
+        throw new PortError(
+          "PaymentProvider",
+          "invalid_request",
+          "Webhook paid-at timestamp is not a date",
+        );
+      }
+      let value: Money;
+      try {
+        value = money(amount.currency, amount.amount);
+      } catch (error) {
+        throw new PortError(
+          "PaymentProvider",
+          "invalid_request",
+          "Webhook amount is not a valid Money value",
+          { cause: error },
+        );
+      }
       return {
         providerEventId: parsed.providerEventId,
         providerReference: parsed.providerReference,
-        amount: money(amount.currency, amount.amount),
+        amount: value,
         status: parsed.status,
-        paidAt: new Date(parsed.paidAt),
+        paidAt,
         raw: parsed,
       };
     },

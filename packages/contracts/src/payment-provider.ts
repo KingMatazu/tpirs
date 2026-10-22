@@ -1,5 +1,11 @@
 import { money } from "@tpirs/domain";
-import { PortError, PAYMENT_ATTRIBUTION_KINDS } from "@tpirs/ports";
+import {
+  assertNormalizedPaymentEvent,
+  assertPaymentIntent,
+  assertPaymentProviderCapabilities,
+  PAYMENT_ATTRIBUTION_KINDS,
+  PortError,
+} from "@tpirs/ports";
 import type { NormalizedPaymentEvent, PaymentProvider } from "@tpirs/ports";
 import type { AdapterFactory, ConformanceHarness } from "./harness.js";
 import { conformanceFixtures, withAdapter } from "./harness.js";
@@ -16,6 +22,7 @@ export function createPaymentProviderConformanceSuite(
     it("declares capabilities and a non-empty name", () =>
       withAdapter(factory, (provider) => {
         const capabilities = provider.capabilities();
+        assertPaymentProviderCapabilities(capabilities, provider.name);
         expect(typeof capabilities.supportsVirtualAccounts).toBe("boolean");
         expect(typeof capabilities.supportsPaymentReferences).toBe("boolean");
         expect(typeof capabilities.supportsSettlementFetch).toBe("boolean");
@@ -57,6 +64,7 @@ export function createPaymentProviderConformanceSuite(
           amount: money(conformanceFixtures.currency, 5000),
           reference: "conf-ref-2",
         });
+        assertPaymentIntent(intent, provider.capabilities(), provider.name);
         expect(declared).toContain(intent.attribution.kind);
         const instruction = intent.attribution.instruction;
         if (instruction !== undefined) {
@@ -149,6 +157,7 @@ export function createPaymentProviderFixtureSuite(
     it("normalizes the recorded delivery to the documented event", () =>
       withAdapter(factory, (provider) => {
         const event = provider.normalizeWebhook(fixture.valid.rawBody);
+        assertNormalizedPaymentEvent(event, provider.name);
         expect(event.providerEventId).toBe(fixture.expected.providerEventId);
         expect(event.providerReference).toBe(fixture.expected.providerReference);
         expect(event.amount).toEqual(fixture.expected.amount);

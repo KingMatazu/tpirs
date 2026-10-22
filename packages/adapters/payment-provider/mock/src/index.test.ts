@@ -4,6 +4,7 @@ import {
   createPaymentProviderFixtureSuite,
 } from "@tpirs/contracts";
 import { money } from "@tpirs/domain";
+import { PortError } from "@tpirs/ports";
 import {
   createMockPaymentProvider,
   mockPaymentProviderFixture,
@@ -42,7 +43,7 @@ describe("createMockPaymentProvider intents", () => {
         amount: money("NGN", 0),
         reference: "ref-zero",
       }),
-    ).rejects.toThrow("Amount must be a positive integer");
+    ).rejects.toThrow(PortError);
   });
 
   it("rejects an empty reference", async () => {
@@ -53,7 +54,7 @@ describe("createMockPaymentProvider intents", () => {
         amount: money("NGN", 100),
         reference: "   ",
       }),
-    ).rejects.toThrow("Reference must not be empty");
+    ).rejects.toThrow(PortError);
   });
 });
 
@@ -96,5 +97,50 @@ describe("createMockPaymentProvider webhook normalization", () => {
     expect(provider.normalizeWebhook(body).providerEventId).toBe(
       provider.normalizeWebhook(body).providerEventId,
     );
+  });
+
+  it("rejects a paid-at timestamp that is not a date", () => {
+    const provider = createMockPaymentProvider();
+    const body = JSON.stringify({
+      providerEventId: "evt-3",
+      providerReference: "ref-3",
+      amount: { amount: 100, currency: "NGN" },
+      status: "success",
+      paidAt: "yesterday",
+    });
+    expect(() => provider.normalizeWebhook(body)).toThrow(PortError);
+  });
+
+  it("surfaces an invalid amount as a PortError rather than a domain error", () => {
+    const provider = createMockPaymentProvider();
+    const fractional = JSON.stringify({
+      providerEventId: "evt-4",
+      providerReference: "ref-4",
+      amount: { amount: 10.5, currency: "NGN" },
+      status: "success",
+      paidAt: "2026-10-20T09:00:00Z",
+    });
+    const badCurrency = JSON.stringify({
+      providerEventId: "evt-5",
+      providerReference: "ref-5",
+      amount: { amount: 100, currency: "naira" },
+      status: "success",
+      paidAt: "2026-10-20T09:00:00Z",
+    });
+
+    expect(() => provider.normalizeWebhook(fractional)).toThrow(PortError);
+    expect(() => provider.normalizeWebhook(badCurrency)).toThrow(PortError);
+  });
+
+  it("rejects a payload without a success or failure status", () => {
+    const provider = createMockPaymentProvider();
+    const body = JSON.stringify({
+      providerEventId: "evt-6",
+      providerReference: "ref-6",
+      amount: { amount: 100, currency: "NGN" },
+      status: "pending",
+      paidAt: "2026-10-20T09:00:00Z",
+    });
+    expect(() => provider.normalizeWebhook(body)).toThrow(PortError);
   });
 });

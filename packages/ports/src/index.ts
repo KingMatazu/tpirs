@@ -2,6 +2,7 @@ export * from "./errors.js";
 export * from "./clock.js";
 export * from "./business-calendar.js";
 export * from "./payment-provider.js";
+export * from "./payment-provider-rules.js";
 export * from "./sms-provider.js";
 export * from "./ussd-provider.js";
 export * from "./object-storage.js";
