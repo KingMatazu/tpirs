@@ -73,22 +73,22 @@ Postgres is the one deliberate fixed choice. Any managed or self-hosted Postgres
 
 ## 3. Ports and adapters (the swap map)
 
-| Port                         | Responsibility                                                          | v1 adapters                                    | Alternatives to be possible                                |
-| ---------------------------- | ----------------------------------------------------------------------- | ---------------------------------------------- | ---------------------------------------------------------- |
-| `PaymentProvider`            | create payment intent, verify and normalize webhooks, fetch settlements | Paystack, Remita, Mock                         | Flutterwave, bank-statement CSV import, any future gateway |
-| `SmsProvider`                | send SMS, delivery receipts, inbound SMS                                | Africa's Talking, Termii, Mock                 | Twilio, any aggregator                                     |
-| `UssdProvider`               | translate provider callbacks to the internal session engine             | Africa's Talking, Mock                         | other aggregators or telco direct                          |
-| `ObjectStorage`              | photos, exports, stickers                                               | S3-compatible, local disk                      | any S3-compatible store, Azure/GCS                         |
-| `JobQueue`                   | background jobs, retries, schedules                                     | Redis queue, Postgres-based queue              | SQS, others                                                |
-| `Cache` / `LockService`      | caching, distributed locks                                              | Redis, in-memory                               | others                                                     |
-| `IdentityProvider`           | staff authentication                                                    | built-in password plus TOTP and device binding | OIDC/SSO (Keycloak, Azure AD, etc.)                        |
-| `SecretsProvider`            | read credentials                                                        | environment, cloud secrets manager             | Vault, others                                              |
-| `Telemetry`                  | logs, metrics, traces, errors                                           | OpenTelemetry plus a Sentry exporter           | any OTel-compatible backend                                |
-| `Clock` / `BusinessCalendar` | now, business day, holidays                                             | system clock plus tenant timezone              | test clock                                                 |
-| `FeeEngine`                  | compute what is owed for an asset on a date                             | flat, per-asset-type, effective-dated rules    | zone-based, tiered, custom plugin                          |
-| `AssetSchemaRegistry`        | per-tenant asset types and validated attributes                         | vehicle (bike, tuk-tuk)                        | market stall, bus, any new type                            |
-| `ReceiptRenderer`            | SMS text, PDF/printable receipts                                        | templates from tenant config                   | custom per tenant                                          |
-| `ExportService`              | CSV/PDF/XLSX reports                                                    | CSV, PDF                                       | any format                                                 |
+| Port                         | Responsibility                                                          | v1 adapters                                    | Alternatives to be possible                                                                     |
+| ---------------------------- | ----------------------------------------------------------------------- | ---------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `PaymentProvider`            | create payment intent, verify and normalize webhooks, fetch settlements | Paystack, Remita, Mock                         | Flutterwave, any future gateway (bank-statement CSV is a separate `SettlementImport` port, D21) |
+| `SmsProvider`                | send SMS, delivery receipts, inbound SMS                                | Africa's Talking, Termii, Mock                 | Twilio, any aggregator                                                                          |
+| `UssdProvider`               | translate provider callbacks to the internal session engine             | Africa's Talking, Mock                         | other aggregators or telco direct                                                               |
+| `ObjectStorage`              | photos, exports, stickers                                               | S3-compatible, local disk                      | any S3-compatible store, Azure/GCS                                                              |
+| `JobQueue`                   | background jobs, retries, schedules                                     | Redis queue, Postgres-based queue              | SQS, others                                                                                     |
+| `Cache` / `LockService`      | caching, distributed locks                                              | Redis, in-memory                               | others                                                                                          |
+| `IdentityProvider`           | staff authentication                                                    | built-in password plus TOTP and device binding | OIDC/SSO (Keycloak, Azure AD, etc.)                                                             |
+| `SecretsProvider`            | read credentials                                                        | environment, cloud secrets manager             | Vault, others                                                                                   |
+| `Telemetry`                  | logs, metrics, traces, errors                                           | OpenTelemetry plus a Sentry exporter           | any OTel-compatible backend                                                                     |
+| `Clock` / `BusinessCalendar` | now, business day, holidays                                             | system clock plus tenant timezone              | test clock                                                                                      |
+| `FeeEngine`                  | compute what is owed for an asset on a date                             | flat, per-asset-type, effective-dated rules    | zone-based, tiered, custom plugin                                                               |
+| `AssetSchemaRegistry`        | per-tenant asset types and validated attributes                         | vehicle (bike, tuk-tuk)                        | market stall, bus, any new type                                                                 |
+| `ReceiptRenderer`            | SMS text, PDF/printable receipts                                        | templates from tenant config                   | custom per tenant                                                                               |
+| `ExportService`              | CSV/PDF/XLSX reports                                                    | CSV, PDF                                       | any format                                                                                      |
 
 Frontend swappability: the admin dashboard and field app are separate clients of the OpenAPI contract. Generated API clients live in `packages/api-client`. Theming comes from design tokens, never hardcoded colors or logos.
 
@@ -239,7 +239,9 @@ _Acceptance:_ property tests (debits equal credits); allocation tests across tim
 
 ### Phase 4: Payments
 
-- `PaymentProvider` real adapters: Paystack and Remita; plus mock and bank-statement import.
+- `PaymentProvider` real adapters: Paystack and Remita, plus the mock. Bank-statement
+  import is a separate `SettlementImport` port in Phase 8 (acceptance check for this
+  phase covers the adapters' sandboxes or recorded fixtures).
 - Per-asset payment instruction assignment (virtual account or reference, depending on adapter capabilities declared by the adapter).
 - Webhook pipeline: verify, dedupe, store raw, async process, suspense, retries, dead-letter queue.
 - SMS receipt through `SmsProvider` using tenant templates.

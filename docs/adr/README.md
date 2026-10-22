@@ -18,3 +18,8 @@ Format: context, decision, consequences, alternatives considered.
 - [0013](./0013-reversal-dual-approval.md) Reversal by mirrored entries with dual approval
 - [0014](./0014-fast-check-property-tests.md) `fast-check` for property tests, pinned exactly
 - [0015](./0015-pg-type-parsers.md) `pg` type parsers for `int8` and `date`
+- [0016](./0016-payment-intake-outbox.md) Payment intake as a stored event with an outbox
+- [0017](./0017-webhook-endpoint-tokens.md) Webhook tenant resolution by endpoint token
+- [0018](./0018-payment-attribution-intent.md) Attributing a payment to an asset by intent
+- [0019](./0019-underpayment-wallet-credit.md) Underpayment as declaration-gated wallet credit
+- [0020](./0020-postgres-job-queue.md) A Postgres-backed job queue for background work
