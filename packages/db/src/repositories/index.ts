@@ -5,6 +5,19 @@ import { AssetRepository } from "./asset.js";
 import { AuditRepository } from "./audit.js";
 import { DeviceRepository } from "./device.js";
 import { OwnerRepository } from "./owner.js";
+import {
+  AccountRepository,
+  LedgerRepository,
+  ObligationRepository,
+  ReversalRepository,
+} from "./ledger.js";
+import {
+  PaymentInstructionRepository,
+  PaymentRepository,
+  SmsLogRepository,
+  WebhookEndpointRepository,
+  WebhookEventRepository,
+} from "./payments.js";
 import { RoleRepository } from "./role.js";
 import { SessionRepository } from "./session.js";
 import { TenantRepository } from "./tenant.js";
@@ -15,19 +28,14 @@ export * from "./asset-photo.js";
 export * from "./asset.js";
 export * from "./audit.js";
 export * from "./device.js";
+export * from "./ledger.js";
 export * from "./owner.js";
+export * from "./payments.js";
 export * from "./role.js";
 export * from "./session.js";
-import {
-  AccountRepository,
-  LedgerRepository,
-  ObligationRepository,
-  ReversalRepository,
-} from "./ledger.js";
 export * from "./tenant.js";
 export * from "./user.js";
 export * from "./zone.js";
-export * from "./ledger.js";
 
 /** Bundles every repository over one transaction, so callers share a scope. */
 export function repositories(db: Transaction<Database>): {
@@ -45,6 +53,11 @@ export function repositories(db: Transaction<Database>): {
   ledger: LedgerRepository;
   obligations: ObligationRepository;
   reversals: ReversalRepository;
+  paymentInstructions: PaymentInstructionRepository;
+  payments: PaymentRepository;
+  webhookEvents: WebhookEventRepository;
+  smsLog: SmsLogRepository;
+  webhookEndpoints: WebhookEndpointRepository;
 } {
   return {
     tenants: new TenantRepository(db),
@@ -61,5 +74,10 @@ export function repositories(db: Transaction<Database>): {
     ledger: new LedgerRepository(db),
     obligations: new ObligationRepository(db),
     reversals: new ReversalRepository(db),
+    paymentInstructions: new PaymentInstructionRepository(db),
+    payments: new PaymentRepository(db),
+    webhookEvents: new WebhookEventRepository(db),
+    smsLog: new SmsLogRepository(db),
+    webhookEndpoints: new WebhookEndpointRepository(db),
   };
 }

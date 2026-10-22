@@ -223,6 +223,83 @@ export interface ReversalRequestTable {
   updatedAt: Generated<Timestamp>;
 }
 
+export interface WebhookEndpointTable {
+  id: Generated<string>;
+  tenantId: string;
+  provider: string;
+  tokenHash: string;
+  createdAt: Generated<Timestamp>;
+  revokedAt: Timestamp | null;
+}
+
+export interface PaymentInstructionTable {
+  id: Generated<string>;
+  tenantId: string;
+  assetId: string;
+  provider: string;
+  reference: string;
+  kind: "intent_reference" | "virtual_account" | "narration";
+  status: Generated<"active" | "consumed" | "expired" | "revoked">;
+  amountMinor: bigint | null;
+  currency: string | null;
+  idempotencyKey: string | null;
+  expiresAt: Timestamp | null;
+  createdAt: Generated<Timestamp>;
+  updatedAt: Generated<Timestamp>;
+}
+
+export interface PaymentTable {
+  id: Generated<string>;
+  tenantId: string;
+  assetId: string | null;
+  instructionId: string | null;
+  provider: string;
+  providerEventId: string;
+  providerReference: string | null;
+  attributionKind: "intent_reference" | "virtual_account" | "narration" | null;
+  status: "applied" | "credited" | "suspense" | "rejected";
+  amountMinor: bigint;
+  currency: string;
+  businessDate: string | null;
+  obligationPeriodId: string | null;
+  transactionId: string | null;
+  receiptNumber: string | null;
+  failureReason: string | null;
+  metadata: Json;
+  createdAt: Generated<Timestamp>;
+  updatedAt: Generated<Timestamp>;
+}
+
+export interface WebhookEventTable {
+  id: Generated<string>;
+  tenantId: string;
+  provider: string;
+  providerEventId: string;
+  rawBody: string;
+  signatureVerified: boolean;
+  receivedAt: Generated<Timestamp>;
+  processedAt: Timestamp | null;
+  attempts: Generated<number>;
+  lastError: string | null;
+  paymentId: string | null;
+}
+
+export interface SmsLogTable {
+  id: Generated<string>;
+  tenantId: string;
+  paymentId: string | null;
+  obligationPeriodId: string | null;
+  kind: "receipt" | "underpayment_notice";
+  recipient: string;
+  body: string;
+  status: Generated<"pending" | "sent" | "failed">;
+  attempts: Generated<number>;
+  providerMessageId: string | null;
+  lastError: string | null;
+  createdAt: Generated<Timestamp>;
+  sentAt: Timestamp | null;
+}
+
 export interface Database {
   tenants: TenantTable;
   zones: ZoneTable;
@@ -241,6 +318,11 @@ export interface Database {
   ledgerEntries: LedgerEntryTable;
   obligationPeriods: ObligationPeriodTable;
   reversalRequests: ReversalRequestTable;
+  webhookEndpoints: WebhookEndpointTable;
+  paymentInstructions: PaymentInstructionTable;
+  payments: PaymentTable;
+  webhookEvents: WebhookEventTable;
+  smsLog: SmsLogTable;
 }
 
 export type TenantRow = Selectable<TenantTable>;
@@ -258,6 +340,11 @@ export type TransactionRow = Selectable<TransactionTable>;
 export type LedgerEntryRow = Selectable<LedgerEntryTable>;
 export type ObligationPeriodRow = Selectable<ObligationPeriodTable>;
 export type ReversalRequestRow = Selectable<ReversalRequestTable>;
+export type WebhookEndpointRow = Selectable<WebhookEndpointTable>;
+export type PaymentInstructionRow = Selectable<PaymentInstructionTable>;
+export type PaymentRow = Selectable<PaymentTable>;
+export type WebhookEventRow = Selectable<WebhookEventTable>;
+export type SmsLogRow = Selectable<SmsLogTable>;
 
 export interface DbOptions {
   readonly connectionString: string;
