@@ -20,7 +20,14 @@ export default tseslint.config(
     languageOptions: {
       globals: { ...globals.node },
       parserOptions: {
-        projectService: true,
+        projectService: {
+          // The domain package keeps its property-test harness out of the
+          // build project (it must not be emitted into dist), so the project
+          // service cannot resolve it from tsconfig.json. The test project
+          // includes it, so lint it with that project instead.
+          allowDefaultProject: ["packages/domain/src/test-support/*.ts"],
+          defaultProject: "packages/domain/tsconfig.test.json",
+        },
         tsconfigRootDir: import.meta.dirname,
       },
     },

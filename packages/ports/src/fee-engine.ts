@@ -1,18 +1,21 @@
-import type { AssetTypeId, BusinessDate, Money, TenantId, ZoneId } from "@tpirs/domain";
+import type { AssetTypeId, BusinessDate, TenantId, ZoneId } from "@tpirs/domain";
 
-export interface FeeQuoteRequest {
+export interface FeeResolveRequest {
   readonly tenantId: TenantId;
-  readonly assetTypeId: AssetTypeId;
-  readonly date: BusinessDate;
+  readonly assetType: AssetTypeId;
   readonly zoneId?: ZoneId;
+  readonly businessDate: BusinessDate;
 }
 
-export interface FeeQuote {
-  readonly amount: Money;
+export interface ResolvedFee {
+  /** Amount in integer minor units of `currency`. */
+  readonly amountMinor: number;
+  readonly currency: string;
+  /** Identifier of the rule that priced the fee, for the obligation snapshot. */
   readonly ruleId: string;
 }
 
 export interface FeeEngine {
   /** Throws PortError("not_found") when no effective-dated rule matches. */
-  quote(request: FeeQuoteRequest): Promise<FeeQuote>;
+  resolveFee(request: FeeResolveRequest): Promise<ResolvedFee>;
 }

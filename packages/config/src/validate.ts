@@ -1,5 +1,6 @@
 import { TenantConfigError, TenantConfigValidationError } from "./errors.js";
 import type {
+  AllocationOrder,
   ArrearsPolicy,
   ObligationFrequency,
   ObligationModel,
@@ -25,6 +26,8 @@ import { Validator } from "./validator.js";
 const OBLIGATION_MODELS: readonly ObligationModel[] = ["pay_per_use", "scheduled"];
 const OBLIGATION_FREQUENCIES: readonly ObligationFrequency[] = ["daily", "weekly", "monthly"];
 const ARREARS_POLICIES: readonly ArrearsPolicy[] = ["none", "accrue"];
+const ALLOCATION_ORDERS: readonly AllocationOrder[] = ["oldest_first", "today_first"];
+const DEFAULT_ALLOCATION_ORDER: AllocationOrder = "oldest_first";
 const ATTRIBUTE_TYPES = ["string", "number", "date", "enum"] as const;
 
 function isIsoDate(value: string): boolean {
@@ -219,7 +222,8 @@ function validateFeeRule(v: Validator, value: unknown): TenantFeeRule | undefine
   const obj = v.object(value, "feeRule");
   if (obj === undefined) return undefined;
   const key = v.string(obj.key, "key");
-  const assetTypeKey = v.string(obj.assetTypeKey, "assetTypeKey");
+  const assetTypeKey =
+    obj.assetTypeKey === undefined ? undefined : v.string(obj.assetTypeKey, "assetTypeKey");
   const amountMinor = v.integer(obj.amountMinor, "amountMinor", { min: 0 });
   const effectiveFrom = v.string(obj.effectiveFrom, "effectiveFrom");
   if (effectiveFrom !== undefined && !isIsoDate(effectiveFrom)) {
@@ -227,31 +231,91 @@ function validateFeeRule(v: Validator, value: unknown): TenantFeeRule | undefine
     return undefined;
   }
   if (obj.effectiveTo === undefined) {
-    if (
-      key === undefined ||
-      assetTypeKey === undefined ||
-      amountMinor === undefined ||
-      effectiveFrom === undefined
-    ) {
+    if (key === undefined || amountMinor === undefined || effectiveFrom === undefined) {
       return undefined;
     }
-    return { key, assetTypeKey, amountMinor, effectiveFrom };
+    return {
+      key,
+      ...(assetTypeKey === undefined ? {} : { assetTypeKey }),
+      amountMinor,
+      effectiveFrom,
+    };
   }
   const effectiveTo = v.string(obj.effectiveTo, "effectiveTo");
   if (effectiveTo !== undefined && !isIsoDate(effectiveTo)) {
     v.issue("schema_error", "feeRule.effectiveTo must be YYYY-MM-DD", "effectiveTo");
     return undefined;
   }
-  if (
-    key === undefined ||
-    assetTypeKey === undefined ||
-    amountMinor === undefined ||
-    effectiveFrom === undefined ||
-    effectiveTo === undefined
-  ) {
+  if (key === undefined || amountMinor === undefined || effectiveFrom === undefined) {
     return undefined;
   }
-  return { key, assetTypeKey, amountMinor, effectiveFrom, effectiveTo };
+  if (effectiveTo === undefined) {
+    return undefined;
+  }
+  return {
+    key,
+    ...(assetTypeKey === undefined ? {} : { assetTypeKey }),
+    amountMinor,
+    effectiveFrom,
+    effectiveTo,
+  };
+}
+
+/** Scope key for rules that price every asset type. */
+const DEFAULT_FEE_SCOPE = "*";
+
+/** Treats a rule without an end date as running to the end of time. */
+const OPEN_ENDED_DATE = "9999-12-31";
+
+function feeRuleWindowEnd(rule: TenantFeeRule): string {
+  return rule.effectiveTo ?? OPEN_ENDED_DATE;
+}
+
+function feeRulesOverlap(a: TenantFeeRule, b: TenantFeeRule): boolean {
+  return a.effectiveFrom <= feeRuleWindowEnd(b) && b.effectiveFrom <= feeRuleWindowEnd(a);
+}
+
+/**
+ * Fee rules for the same scope must not overlap: the engine resolves a single
+ * rule per asset type and date, so an overlap is an ambiguous price. It is
+ * rejected at load time rather than silently resolved at payment time.
+ */
+function validateFeeRuleWindows(v: Validator, feeRules: readonly TenantFeeRule[]): void {
+  const byScope = new Map<string, TenantFeeRule[]>();
+  for (const rule of feeRules) {
+    if (rule.effectiveTo !== undefined && rule.effectiveTo < rule.effectiveFrom) {
+      v.issue(
+        "schema_error",
+        `obligations.feeRules: rule '${rule.key}' ends before it starts`,
+        "feeRules",
+      );
+      continue;
+    }
+    const scope = rule.assetTypeKey ?? DEFAULT_FEE_SCOPE;
+    const bucket = byScope.get(scope);
+    if (bucket === undefined) {
+      byScope.set(scope, [rule]);
+    } else {
+      bucket.push(rule);
+    }
+  }
+
+  for (const [scope, bucket] of byScope) {
+    for (let i = 0; i < bucket.length; i += 1) {
+      for (let j = i + 1; j < bucket.length; j += 1) {
+        const a = bucket[i];
+        const b = bucket[j];
+        if (a === undefined || b === undefined) continue;
+        if (feeRulesOverlap(a, b)) {
+          v.issue(
+            "schema_error",
+            `obligations.feeRules: rules '${a.key}' and '${b.key}' overlap for scope '${scope}'`,
+            "feeRules",
+          );
+        }
+      }
+    }
+  }
 }
 
 function validateObligations(v: Validator, value: unknown): TenantObligationRules | undefined {
@@ -261,6 +325,10 @@ function validateObligations(v: Validator, value: unknown): TenantObligationRule
   const frequency = v.enum(obj.frequency, "frequency", OBLIGATION_FREQUENCIES);
   const prepaidAllowed = v.boolean(obj.prepaidAllowed, "prepaidAllowed");
   const arrearsPolicy = v.enum(obj.arrearsPolicy, "arrearsPolicy", ARREARS_POLICIES);
+  const allocationOrder =
+    obj.allocationOrder === undefined
+      ? DEFAULT_ALLOCATION_ORDER
+      : v.enum(obj.allocationOrder, "allocationOrder", ALLOCATION_ORDERS);
   const graceDays = v.integer(obj.graceDays, "graceDays", { min: 0 });
   const feeRules: TenantFeeRule[] = [];
   v.each(obj.feeRules, "feeRules", (item) => {
@@ -272,6 +340,7 @@ function validateObligations(v: Validator, value: unknown): TenantObligationRule
     frequency === undefined ||
     prepaidAllowed === undefined ||
     arrearsPolicy === undefined ||
+    allocationOrder === undefined ||
     graceDays === undefined ||
     !Array.isArray(obj.feeRules)
   ) {
@@ -285,7 +354,16 @@ function validateObligations(v: Validator, value: unknown): TenantObligationRule
     );
     return undefined;
   }
-  return { model, frequency, prepaidAllowed, arrearsPolicy, graceDays, feeRules };
+  validateFeeRuleWindows(v, feeRules);
+  return {
+    model,
+    frequency,
+    prepaidAllowed,
+    arrearsPolicy,
+    allocationOrder,
+    graceDays,
+    feeRules,
+  };
 }
 
 function validateProvider(v: Validator, value: unknown): TenantProviderBinding | undefined {
@@ -491,11 +569,27 @@ export function validateTenantConfig(input: unknown): TenantConfig {
     root.issue("schema_error", "assetTypes must define at least one asset type", "assetTypes");
   }
   if (obligations !== undefined) {
+    const hasDefaultRule = obligations.feeRules.some((rule) => rule.assetTypeKey === undefined);
     for (const rule of obligations.feeRules) {
-      if (!assetTypeKeys.has(rule.assetTypeKey)) {
+      if (rule.assetTypeKey !== undefined && !assetTypeKeys.has(rule.assetTypeKey)) {
         root.issue(
           "invalid_reference",
           `obligations.feeRules references unknown assetTypeKey '${rule.assetTypeKey}'`,
+          "feeRules",
+        );
+      }
+    }
+    if (obligations.feeRules.length === 0) {
+      root.issue("schema_error", "obligations.feeRules must define at least one rule", "feeRules");
+    }
+    // Every declared asset type must be priceable: either by its own rule or by
+    // a default rule that applies to all types.
+    for (const key of assetTypeKeys) {
+      const hasTypeRule = obligations.feeRules.some((rule) => rule.assetTypeKey === key);
+      if (!hasTypeRule && !hasDefaultRule) {
+        root.issue(
+          "schema_error",
+          `obligations.feeRules has no rule for asset type '${key}'`,
           "feeRules",
         );
       }

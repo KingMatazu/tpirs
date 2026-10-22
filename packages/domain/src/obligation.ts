@@ -1,7 +1,10 @@
+import { addDays, addMonths } from "./business-date.js";
 import type { BusinessDate } from "./business-date.js";
 
 export type ObligationModel = "pay_per_use" | "scheduled";
 export type ArrearsPolicy = "none" | "accrue";
+export type ObligationFrequency = "daily" | "weekly" | "monthly";
+export type AllocationOrder = "oldest_first" | "today_first";
 
 export interface ObligationAllocationKey {
   readonly periodStartDate: string;
@@ -20,6 +23,10 @@ export function obligationPeriodKey(businessDate: BusinessDate): string {
   return businessDate;
 }
 
+/**
+ * Total order over obligation periods. The order is total (no two distinct
+ * periods compare equal) so allocation is deterministic and replayable.
+ */
 export function compareObligationsForAllocation(
   a: ObligationAllocationKey,
   b: ObligationAllocationKey,
@@ -49,4 +56,31 @@ export function shouldCreateObligationForPayPerUse(hasPayment: boolean): boolean
 
 export function allowsPrepay(prepaidAllowed: boolean, prepayFlagEnabled: boolean): boolean {
   return prepaidAllowed && prepayFlagEnabled;
+}
+
+/** Steps a business date by one period of the tenant's frequency. */
+export function stepPeriod(date: BusinessDate, frequency: ObligationFrequency): BusinessDate {
+  switch (frequency) {
+    case "daily":
+      return addDays(date, 1);
+    case "weekly":
+      return addDays(date, 7);
+    case "monthly":
+      return addMonths(date, 1);
+  }
+}
+
+/** Steps a business date backwards by one period of the tenant's frequency. */
+export function stepPeriodBackwards(
+  date: BusinessDate,
+  frequency: ObligationFrequency,
+): BusinessDate {
+  switch (frequency) {
+    case "daily":
+      return addDays(date, -1);
+    case "weekly":
+      return addDays(date, -7);
+    case "monthly":
+      return addMonths(date, -1);
+  }
 }

@@ -71,6 +71,22 @@ export function validateBalancedTransaction(postings: readonly LedgerPosting[]):
   }
 }
 
+/**
+ * Mirrors a set of postings: every debit becomes a credit and every credit a
+ * debit, with the same accounts, amounts and currency.
+ *
+ * A reversal is exactly this transformation, so it lives in the domain as a
+ * pure function rather than inside the ledger service. Mirroring a balanced
+ * transaction always yields a balanced transaction, and the two net to zero
+ * for every account.
+ */
+export function mirrorPostings(postings: readonly LedgerPosting[]): readonly LedgerPosting[] {
+  return postings.map((posting) => ({
+    ...posting,
+    direction: posting.direction === "debit" ? ("credit" as const) : ("debit" as const),
+  }));
+}
+
 export const STANDARD_ACCOUNTS: readonly {
   readonly code: string;
   readonly accountType: AccountType;

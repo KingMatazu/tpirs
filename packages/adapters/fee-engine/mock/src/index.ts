@@ -1,12 +1,13 @@
-import { businessDate, compareBusinessDates, money } from "@tpirs/domain";
+import { selectFeeRule } from "@tpirs/domain";
+import type { FeeRule } from "@tpirs/domain";
 import { PortError } from "@tpirs/ports";
-import type { FeeEngine, FeeQuote, FeeQuoteRequest } from "@tpirs/ports";
+import type { FeeEngine, FeeResolveRequest, ResolvedFee } from "@tpirs/ports";
 import { conformanceFixtures } from "@tpirs/contracts";
 
 export interface MockFeeRule {
   readonly tenantId: string;
   readonly assetTypeId: string;
-  readonly amount: number;
+  readonly amountMinor: number;
   readonly currency: string;
   /** YYYY-MM-DD */
   readonly effectiveFrom: string;
@@ -17,11 +18,15 @@ export interface MockFeeEngine extends FeeEngine {
   addRule(rule: MockFeeRule): void;
 }
 
+/**
+ * Fixed fee table used by the mock. The values are stable so tests can assert
+ * on them without reading tenant configuration.
+ */
 export const defaultMockFeeRules: readonly MockFeeRule[] = [
   {
     tenantId: "conformance-tenant",
     assetTypeId: conformanceFixtures.assetTypeKey,
-    amount: 5000,
+    amountMinor: 5000,
     currency: conformanceFixtures.currency,
     effectiveFrom: "2020-01-01",
     ruleId: "mock-fee-bike",
@@ -33,35 +38,48 @@ export function createMockFeeEngine(
 ): MockFeeEngine {
   const allRules = [...rules];
 
+  function toDomainRule(rule: MockFeeRule): FeeRule {
+    return {
+      ruleId: rule.ruleId,
+      assetType: rule.assetTypeId,
+      amountMinor: rule.amountMinor,
+      currency: rule.currency,
+      effectiveFrom: rule.effectiveFrom,
+    };
+  }
+
   return {
-    quote(request: FeeQuoteRequest): Promise<FeeQuote> {
-      const requestDate = businessDate(request.date);
-      const candidates = allRules
-        .filter(
-          (rule) =>
-            rule.tenantId === request.tenantId &&
-            rule.assetTypeId === request.assetTypeId &&
-            compareBusinessDates(requestDate, businessDate(rule.effectiveFrom)) >= 0,
-        )
-        .sort((a, b) =>
-          compareBusinessDates(businessDate(b.effectiveFrom), businessDate(a.effectiveFrom)),
+    resolveFee(request: FeeResolveRequest): Promise<ResolvedFee> {
+      const tenantRules = allRules.filter((rule) => rule.tenantId === request.tenantId);
+      if (tenantRules.length === 0) {
+        return Promise.reject(
+          new PortError("FeeEngine", "not_found", `No fee rules for tenant "${request.tenantId}"`),
         );
-      const match = candidates[0];
-      if (match === undefined) {
+      }
+
+      const selection = selectFeeRule(tenantRules.map(toDomainRule), {
+        assetType: request.assetType,
+        ...(request.zoneId === undefined ? {} : { zoneId: request.zoneId }),
+        businessDate: request.businessDate,
+      });
+      if (selection === undefined) {
         return Promise.reject(
           new PortError(
             "FeeEngine",
             "not_found",
-            `No fee rule for tenant "${request.tenantId}" asset type "${request.assetTypeId}" on ${request.date}`,
+            `No fee rule for tenant "${request.tenantId}" asset type "${request.assetType}" on ${request.businessDate}`,
           ),
         );
       }
+
       return Promise.resolve({
-        amount: money(match.currency, match.amount),
-        ruleId: match.ruleId,
+        amountMinor: selection.rule.amountMinor,
+        currency: selection.rule.currency,
+        ruleId: selection.rule.ruleId,
       });
     },
-    addRule(rule) {
+
+    addRule(rule: MockFeeRule): void {
       allRules.push(rule);
     },
   };

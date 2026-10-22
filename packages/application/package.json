@@ -32,6 +32,7 @@
     "@tpirs/asset-schema-registry-config": "workspace:*",
     "@tpirs/cache-mock": "workspace:*",
     "@tpirs/clock-mock": "workspace:*",
+    "@tpirs/fee-engine-config": "workspace:*",
     "@tpirs/object-storage-mock": "workspace:*",
     "@tpirs/sms-provider-mock": "workspace:*",
     "@types/qrcode": "^1.5.6",

@@ -9,6 +9,7 @@ import type { AnyDb } from "@tpirs/db";
 import { createDbIdentityProvider } from "@tpirs/identity-provider-db";
 import { hashPassword } from "@tpirs/crypto";
 import { validateTenantConfig } from "@tpirs/config";
+import type { TenantConfig } from "@tpirs/config";
 
 const TEST_URL = process.env.TEST_DATABASE_URL;
 const migrationsDir = path.resolve(import.meta.dirname, "../../../../packages/db/migrations");
@@ -23,7 +24,7 @@ const config: AppConfig = {
   databaseUrl: "",
 };
 
-function validConfig(slug: string): unknown {
+function validConfig(slug: string): TenantConfig {
   return validateTenantConfig({
     identity: {
       name: "Test State",
@@ -63,7 +64,14 @@ function validConfig(slug: string): unknown {
       prepaidAllowed: false,
       arrearsPolicy: "none",
       graceDays: 0,
-      feeRules: [],
+      feeRules: [
+        {
+          key: "bike-daily",
+          assetTypeKey: "bike",
+          amountMinor: 20000,
+          effectiveFrom: "2026-01-01",
+        },
+      ],
     },
     providers: [],
     channels: { ussdCode: "*1#", smsKeyword: "X", otpMessageTemplate: "code {code}", menus: [] },

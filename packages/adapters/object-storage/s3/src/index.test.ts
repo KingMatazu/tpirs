@@ -21,7 +21,7 @@ function makeStorage() {
   return createS3ObjectStorage({
     bucket,
     region,
-    endpoint,
+    ...(endpoint === undefined ? {} : { endpoint }),
     ...(accessKeyId === undefined ? {} : { accessKeyId }),
     ...(secretAccessKey === undefined ? {} : { secretAccessKey }),
     forcePathStyle: true,

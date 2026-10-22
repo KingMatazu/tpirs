@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { tenantId } from "@tpirs/domain";
 import { createAssetSchemaRegistryConformanceSuite } from "@tpirs/contracts";
 import { createMockAssetSchemaRegistry } from "./index.js";
 
@@ -9,7 +10,7 @@ createAssetSchemaRegistryConformanceSuite({ describe, it, expect }, () => ({
 describe("createMockAssetSchemaRegistry", () => {
   it("rejects values of the wrong type", async () => {
     const registry = createMockAssetSchemaRegistry();
-    const result = await registry.validateAttributes("conformance-tenant", "bike", {
+    const result = await registry.validateAttributes(tenantId("conformance-tenant"), "bike", {
       plate_number: 123,
     });
     expect(result.ok).toBe(false);

@@ -7,6 +7,22 @@ type Json = ColumnType<unknown, unknown, unknown>;
 /** pg returns `Date` for timestamptz; inserts/updates accept a Date. */
 type Timestamp = Date;
 
+/**
+ * `pg` ships two defaults that disagree with the schema types declared above:
+ *
+ * - `int8` (bigint) is returned as a **string**, so money would silently
+ *   travel as text and `"20000" - "0"` would produce a float.
+ * - `date` is returned as a **JS Date** in the driver's local timezone, so
+ *   `2026-06-15` becomes an instant that no longer equals the business date
+ *   it names.
+ *
+ * Both parsers are overridden so the runtime matches the declared types.
+ * `numeric` is left alone: `sum()` over bigint returns numeric, which the
+ * repositories convert explicitly (see `accountBalance`).
+ */
+pg.types.setTypeParser(pg.types.builtins.INT8, (value) => BigInt(value));
+pg.types.setTypeParser(pg.types.builtins.DATE, (value) => value);
+
 export interface TenantTable {
   id: Generated<string>;
   slug: string;

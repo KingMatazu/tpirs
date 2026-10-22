@@ -141,6 +141,21 @@ export class AssetRepository {
     return rows.map(toRecord);
   }
 
+  /**
+   * Every asset in the tenant, unpaginated. Used by background jobs that must
+   * touch all assets (for example scheduled period generation); request
+   * handlers use `search` instead.
+   */
+  async listAll(tenantId: string): Promise<readonly AssetRecord[]> {
+    const rows = await this.db
+      .selectFrom("assets")
+      .select(ASSET_COLUMNS)
+      .where("tenantId", "=", tenantId)
+      .orderBy("id", "asc")
+      .execute();
+    return rows.map(toRecord);
+  }
+
   /** Updates status and/or attributes; returns the updated asset. */
   async update(
     id: string,

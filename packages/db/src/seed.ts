@@ -97,6 +97,7 @@ function baseConfig(overrides: {
       frequency: "daily",
       prepaidAllowed: false,
       arrearsPolicy: "none",
+      allocationOrder: "oldest_first",
       graceDays: 0,
       feeRules: [
         {

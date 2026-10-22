@@ -1,75 +1,111 @@
 import type { BusinessDate } from "./business-date.js";
-import type { Money } from "./money.js";
-import { money } from "./money.js";
 
+/**
+ * An effective-dated fee rule.
+ *
+ * Rules are configuration, never code: a tenant prices its assets by shipping
+ * rules, not by shipping a new release (build brief section 1.3). The engine
+ * is pure so the same selection runs in production, in tests, and in any
+ * adapter that needs to reproduce a quote.
+ */
 export interface FeeRule {
-  readonly key: string;
-  readonly assetTypeKey: string;
+  readonly ruleId: string;
+  /** Asset type this rule prices. Omitted means a default rule for every type. */
+  readonly assetType?: string;
+  /** Zone this rule prices. Omitted means the rule is not zone-scoped. */
+  readonly zoneId?: string;
   readonly amountMinor: number;
+  readonly currency: string;
+  /** Inclusive YYYY-MM-DD. */
   readonly effectiveFrom: string;
+  /** Inclusive YYYY-MM-DD. Omitted means the rule never expires. */
   readonly effectiveTo?: string;
 }
 
-export interface FeeComputationInput {
-  readonly rules: readonly FeeRule[];
-  readonly assetTypeKey: string;
-  readonly businessDate: BusinessDate | string;
-  readonly currency: string;
+/**
+ * Precedence tiers, most specific first. A rule that falls in no tier for the
+ * query is ignored (for example a rule scoped to a different zone).
+ */
+export type FeeRulePrecedence = "asset_type_and_zone" | "asset_type" | "default";
+
+export interface FeeRuleQuery {
+  readonly assetType: string;
+  readonly zoneId?: string;
+  readonly businessDate: BusinessDate;
 }
 
-export interface FeeComputationResult {
-  readonly amount: Money;
-  readonly ruleKey: string;
-  readonly feeAmountSnapshotMinor: number;
+export interface FeeRuleSelection {
+  readonly rule: FeeRule;
+  readonly precedence: FeeRulePrecedence;
 }
 
-export class FeeRuleNotFoundError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "FeeRuleNotFoundError";
+const PRECEDENCE_ORDER: readonly FeeRulePrecedence[] = [
+  "asset_type_and_zone",
+  "asset_type",
+  "default",
+];
+
+/** A rule applies when the business date falls inside its effective window. */
+function isApplicable(rule: FeeRule, businessDate: string): boolean {
+  if (rule.effectiveFrom > businessDate) return false;
+  if (rule.effectiveTo !== undefined && businessDate > rule.effectiveTo) return false;
+  return true;
+}
+
+/**
+ * Classifies a rule against a query, or returns undefined when the rule does
+ * not apply (wrong asset type, or scoped to a zone other than the queried one).
+ */
+function precedenceOf(rule: FeeRule, query: FeeRuleQuery): FeeRulePrecedence | undefined {
+  if (rule.assetType === query.assetType) {
+    if (rule.zoneId !== undefined) {
+      return rule.zoneId === query.zoneId ? "asset_type_and_zone" : undefined;
+    }
+    return "asset_type";
   }
+  if (rule.assetType === undefined && rule.zoneId === undefined) {
+    return "default";
+  }
+  return undefined;
 }
 
-function toComparableDate(d: BusinessDate | string): BusinessDate {
-  // Assume already validated/normalized format YYYY-MM-DD
-  return d as BusinessDate;
-}
-
-export function resolveFeeRule(
+/**
+ * Selects the fee rule that prices an asset on a business date.
+ *
+ * The most specific applicable tier wins (type+zone, then type, then default).
+ * Within a tier the latest `effectiveFrom` on or before the date wins. Ties are
+ * broken by `ruleId` so the result is deterministic; overlapping rules are
+ * rejected when the tenant config loads, so ties only arise in hand-built rule
+ * sets.
+ */
+export function selectFeeRule(
   rules: readonly FeeRule[],
-  assetTypeKey: string,
-  businessDate: BusinessDate | string,
-): FeeRule | undefined {
-  const date = toComparableDate(businessDate);
-  const candidates = rules
-    .filter((r) => r.assetTypeKey === assetTypeKey)
-    .filter((r) => {
-      const fromOk = r.effectiveFrom <= date;
-      if (!fromOk) return false;
-      if (r.effectiveTo) {
-        return date <= r.effectiveTo;
-      }
-      return true;
-    })
-    .sort((a, b) => {
-      if (a.effectiveFrom < b.effectiveFrom) return 1; // latest first
-      if (a.effectiveFrom > b.effectiveFrom) return -1;
-      return 0;
-    });
-  return candidates[0];
-}
+  query: FeeRuleQuery,
+): FeeRuleSelection | undefined {
+  const businessDate = query.businessDate;
+  let best: { rule: FeeRule; precedence: FeeRulePrecedence; rank: number } | undefined;
 
-export function computeFee(input: FeeComputationInput): FeeComputationResult {
-  const rule = resolveFeeRule(input.rules, input.assetTypeKey, input.businessDate);
-  if (!rule) {
-    throw new FeeRuleNotFoundError(
-      `No fee rule found for asset type ${input.assetTypeKey} on ${input.businessDate}`,
-    );
+  for (const rule of rules) {
+    if (!isApplicable(rule, businessDate)) continue;
+    const precedence = precedenceOf(rule, query);
+    if (precedence === undefined) continue;
+    const rank = PRECEDENCE_ORDER.indexOf(precedence);
+
+    if (best === undefined || rank < best.rank) {
+      best = { rule, precedence, rank };
+      continue;
+    }
+    if (rank > best.rank) continue;
+
+    if (rule.effectiveFrom > best.rule.effectiveFrom) {
+      best = { rule, precedence, rank };
+      continue;
+    }
+    if (rule.effectiveFrom === best.rule.effectiveFrom && rule.ruleId < best.rule.ruleId) {
+      best = { rule, precedence, rank };
+    }
   }
-  const amount = money(input.currency, rule.amountMinor);
-  return {
-    amount,
-    ruleKey: rule.key,
-    feeAmountSnapshotMinor: rule.amountMinor,
-  };
+
+  if (best === undefined) return undefined;
+  return { rule: best.rule, precedence: best.precedence };
 }

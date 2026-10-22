@@ -57,10 +57,15 @@ export interface TenantAssetAttribute {
 export type ObligationModel = "pay_per_use" | "scheduled";
 export type ObligationFrequency = "daily" | "weekly" | "monthly";
 export type ArrearsPolicy = "none" | "accrue";
+export type AllocationOrder = "oldest_first" | "today_first";
 
 export interface TenantFeeRule {
   readonly key: string;
-  readonly assetTypeKey: string;
+  /**
+   * Asset type this rule prices. Omitted means a default rule that prices every
+   * asset type. Rules for the same asset type must not overlap in time.
+   */
+  readonly assetTypeKey?: string;
   readonly amountMinor: number;
   readonly effectiveFrom: string;
   readonly effectiveTo?: string;
@@ -71,6 +76,12 @@ export interface TenantObligationRules {
   readonly frequency: ObligationFrequency;
   readonly prepaidAllowed: boolean;
   readonly arrearsPolicy: ArrearsPolicy;
+  /**
+   * Which period a payment settles first under the `scheduled` model.
+   * `oldest_first` drains the earliest outstanding period; `today_first`
+   * settles the current business day before earlier ones.
+   */
+  readonly allocationOrder: AllocationOrder;
   readonly graceDays: number;
   readonly feeRules: readonly TenantFeeRule[];
 }

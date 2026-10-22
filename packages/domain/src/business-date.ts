@@ -41,6 +41,20 @@ export function addDays(date: BusinessDate, days: number): BusinessDate {
   return businessDate(shifted.toISOString().slice(0, 10));
 }
 
+/**
+ * Adds whole months, clamping the day to the last day of the target month so
+ * 2026-01-31 plus one month is 2026-02-28 rather than an invalid date.
+ */
+export function addMonths(date: BusinessDate, months: number): BusinessDate {
+  const [year, month, day] = date.split("-").map(Number) as [number, number, number];
+  const targetMonthIndex = month - 1 + months;
+  const targetYear = year + Math.floor(targetMonthIndex / 12);
+  const normalizedMonth = ((targetMonthIndex % 12) + 12) % 12;
+  const lastDay = new Date(Date.UTC(targetYear, normalizedMonth + 1, 0)).getUTCDate();
+  const shifted = new Date(Date.UTC(targetYear, normalizedMonth, Math.min(day, lastDay)));
+  return businessDate(shifted.toISOString().slice(0, 10));
+}
+
 export function compareBusinessDates(a: BusinessDate, b: BusinessDate): -1 | 0 | 1 {
   if (a < b) return -1;
   if (a > b) return 1;

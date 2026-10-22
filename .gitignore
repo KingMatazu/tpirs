@@ -10,4 +10,5 @@ coverage/
 docker-data/
 infra/staging-data/
 .test-data/
+build.log
 .DS_Store

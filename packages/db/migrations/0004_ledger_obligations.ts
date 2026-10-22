@@ -60,7 +60,9 @@ export async function up(db: Kysely<unknown>): Promise<void> {
     )
   `.execute(db);
   await sql`create index transactions_tenant_idx on transactions (tenant_id)`.execute(db);
-  await sql`create index transactions_posted_idx on transactions (tenant_id, posted_at)`.execute(db);
+  await sql`create index transactions_posted_idx on transactions (tenant_id, posted_at)`.execute(
+    db,
+  );
 
   await sql`
     create table ledger_entries (
@@ -80,8 +82,12 @@ export async function up(db: Kysely<unknown>): Promise<void> {
     )
   `.execute(db);
   await sql`create index ledger_entries_tenant_idx on ledger_entries (tenant_id)`.execute(db);
-  await sql`create index ledger_entries_transaction_idx on ledger_entries (transaction_id)`.execute(db);
-  await sql`create index ledger_entries_account_idx on ledger_entries (tenant_id, account_id)`.execute(db);
+  await sql`create index ledger_entries_transaction_idx on ledger_entries (transaction_id)`.execute(
+    db,
+  );
+  await sql`create index ledger_entries_account_idx on ledger_entries (tenant_id, account_id)`.execute(
+    db,
+  );
   await sql`create index ledger_entries_asset_idx on ledger_entries (asset_id)`.execute(db);
 
   // Currency consistency: entry currency must match account currency
@@ -125,9 +131,13 @@ export async function up(db: Kysely<unknown>): Promise<void> {
       unique (tenant_id, asset_id, period_key)
     )
   `.execute(db);
-  await sql`create index obligation_periods_tenant_idx on obligation_periods (tenant_id)`.execute(db);
+  await sql`create index obligation_periods_tenant_idx on obligation_periods (tenant_id)`.execute(
+    db,
+  );
   await sql`create index obligation_periods_asset_idx on obligation_periods (asset_id)`.execute(db);
-  await sql`create index obligation_periods_status_idx on obligation_periods (tenant_id, status)`.execute(db);
+  await sql`create index obligation_periods_status_idx on obligation_periods (tenant_id, status)`.execute(
+    db,
+  );
 
   await sql`
     create table reversal_requests (
@@ -149,7 +159,9 @@ export async function up(db: Kysely<unknown>): Promise<void> {
     )
   `.execute(db);
   await sql`create index reversal_requests_tenant_idx on reversal_requests (tenant_id)`.execute(db);
-  await sql`create index reversal_requests_status_idx on reversal_requests (tenant_id, status)`.execute(db);
+  await sql`create index reversal_requests_status_idx on reversal_requests (tenant_id, status)`.execute(
+    db,
+  );
 
   // Append-only enforcement for ledger
   await sql`
@@ -193,7 +205,13 @@ export async function up(db: Kysely<unknown>): Promise<void> {
       for each row execute function check_reversal_approval()
   `.execute(db);
 
-  const tenantTables = ["accounts", "transactions", "ledger_entries", "obligation_periods", "reversal_requests"];
+  const tenantTables = [
+    "accounts",
+    "transactions",
+    "ledger_entries",
+    "obligation_periods",
+    "reversal_requests",
+  ];
   for (const table of tenantTables) {
     await sql`alter table ${sql.table(table)} enable row level security`.execute(db);
     await sql`

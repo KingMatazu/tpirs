@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { loadTenantConfigFromString } from "./loader.js";
 import { validateTenantConfig } from "./validate.js";
 import { TenantConfigValidationError } from "./errors.js";
+import type { TenantConfig } from "./schema.js";
 
 const validYaml = `
 identity:
@@ -57,6 +58,10 @@ obligations:
       assetTypeKey: "bike"
       amountMinor: 20000
       effectiveFrom: "2026-01-01"
+    - key: "tuktuk-daily"
+      assetTypeKey: "tuktuk"
+      amountMinor: 30000
+      effectiveFrom: "2026-01-01"
 providers:
   - port: "PaymentProvider"
     adapter: "mock"
@@ -111,7 +116,7 @@ describe("loadTenantConfigFromString", () => {
 });
 
 describe("validateTenantConfig", () => {
-  function configWith(mutate: (raw: Record<string, unknown>) => void): () => void {
+  function configWith(mutate?: (raw: Record<string, unknown>) => void): () => TenantConfig {
     return () => {
       const raw = JSON.parse(
         JSON.stringify({
@@ -153,7 +158,14 @@ describe("validateTenantConfig", () => {
             prepaidAllowed: false,
             arrearsPolicy: "none",
             graceDays: 0,
-            feeRules: [],
+            feeRules: [
+              {
+                key: "bike-daily",
+                assetTypeKey: "bike",
+                amountMinor: 1,
+                effectiveFrom: "2026-01-01",
+              },
+            ],
           },
           providers: [],
           channels: {
@@ -178,8 +190,8 @@ describe("validateTenantConfig", () => {
           compliance: { retentionDays: 1, dataResidency: "x", consentTextKey: "c" },
         }),
       ) as Record<string, unknown>;
-      mutate(raw);
-      validateTenantConfig(raw);
+      mutate?.(raw);
+      return validateTenantConfig(raw);
     };
   }
 
@@ -205,6 +217,96 @@ describe("validateTenantConfig", () => {
       ];
     });
     expect(run).toThrow(/unknown assetTypeKey/);
+  });
+
+  it("rejects an empty fee rule list", () => {
+    const run = configWith((raw) => {
+      (raw.obligations as Record<string, unknown>).feeRules = [];
+    });
+    expect(run).toThrow(/must define at least one rule/);
+  });
+
+  it("rejects an asset type with no fee rule and no default rule", () => {
+    const run = configWith((raw) => {
+      (raw.assetTypes as unknown[]).push({
+        key: "tuktuk",
+        label: "Tuk-tuk",
+        attributes: [],
+        qrFormat: "X-K{id}",
+        shortCodeFormat: "K{id}",
+        stickerSpec: "60x60mm",
+      });
+    });
+    expect(run).toThrow(/no rule for asset type 'tuktuk'/);
+  });
+
+  it("accepts a default rule that prices every asset type", () => {
+    const run = configWith((raw) => {
+      (raw.assetTypes as unknown[]).push({
+        key: "tuktuk",
+        label: "Tuk-tuk",
+        attributes: [],
+        qrFormat: "X-K{id}",
+        shortCodeFormat: "K{id}",
+        stickerSpec: "60x60mm",
+      });
+      (raw.obligations as Record<string, unknown>).feeRules = [
+        { key: "default-daily", amountMinor: 1, effectiveFrom: "2026-01-01" },
+      ];
+    });
+    expect(run).not.toThrow();
+  });
+
+  it("rejects overlapping fee rules for the same asset type", () => {
+    const run = configWith((raw) => {
+      (raw.obligations as Record<string, unknown>).feeRules = [
+        {
+          key: "old",
+          assetTypeKey: "bike",
+          amountMinor: 1,
+          effectiveFrom: "2026-01-01",
+          effectiveTo: "2026-06-30",
+        },
+        { key: "new", assetTypeKey: "bike", amountMinor: 2, effectiveFrom: "2026-06-01" },
+      ];
+    });
+    expect(run).toThrow(/overlap for scope 'bike'/);
+  });
+
+  it("accepts non-overlapping effective-dated fee rules", () => {
+    const run = configWith((raw) => {
+      (raw.obligations as Record<string, unknown>).feeRules = [
+        {
+          key: "old",
+          assetTypeKey: "bike",
+          amountMinor: 1,
+          effectiveFrom: "2026-01-01",
+          effectiveTo: "2026-06-30",
+        },
+        { key: "new", assetTypeKey: "bike", amountMinor: 2, effectiveFrom: "2026-07-01" },
+      ];
+    });
+    expect(run).not.toThrow();
+  });
+
+  it("rejects a fee rule that ends before it starts", () => {
+    const run = configWith((raw) => {
+      (raw.obligations as Record<string, unknown>).feeRules = [
+        {
+          key: "backwards",
+          assetTypeKey: "bike",
+          amountMinor: 1,
+          effectiveFrom: "2026-06-30",
+          effectiveTo: "2026-01-01",
+        },
+      ];
+    });
+    expect(run).toThrow(/ends before it starts/);
+  });
+
+  it("defaults the allocation order to oldest_first", () => {
+    const config = configWith()();
+    expect(config.obligations.allocationOrder).toBe("oldest_first");
   });
 
   it("rejects a default language not in enabled languages", () => {

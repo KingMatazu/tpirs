@@ -1,0 +1,31 @@
+name: nightly
+
+# Deep property-test run. The per-commit CI runs the same properties with
+# FAST_CHECK_RUNS=100 to keep the feedback loop fast; this job explores a much
+# larger input space once a day, so a rare counterexample is found before it
+# reaches a release. See docs/adr/0014-fast-check-property-tests.md.
+on:
+  schedule:
+    # 03:17 UTC. Deliberately off the hour: every scheduled workflow on
+    # GitHub fires at the top of the hour, and the queue there is long.
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  property-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.1.3
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Property tests (deep run)
+        env:
+          FAST_CHECK_RUNS: 2000
+        run: pnpm --filter @tpirs/domain test

@@ -81,7 +81,14 @@ function validConfig(slug: string): unknown {
       prepaidAllowed: false,
       arrearsPolicy: "none",
       graceDays: 0,
-      feeRules: [],
+      feeRules: [
+        {
+          key: "bike-daily",
+          assetTypeKey: "bike",
+          amountMinor: 20000,
+          effectiveFrom: "2026-01-01",
+        },
+      ],
     },
     providers: [],
     channels: {
