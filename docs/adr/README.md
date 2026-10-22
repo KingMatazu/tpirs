@@ -12,3 +12,9 @@ Format: context, decision, consequences, alternatives considered.
 - [0007](./0007-public-verify-system-scope.md) Public QR verification resolves assets under the system scope
 - [0008](./0008-photo-serving-through-api.md) Asset photos are served through the API, not presigned URLs
 - [0009](./0009-svg-sticker-qrcode.md) SVG sticker export generated with the `qrcode` library
+- [0010](./0010-ledger-posting-model.md) Double-entry ledger, wallet-first crediting, single unit of work
+- [0011](./0011-fee-engine-port.md) One fee engine port, one pure rule-selection function
+- [0012](./0012-ledger-immutability.md) Ledger immutability and the deferred balance constraint
+- [0013](./0013-reversal-dual-approval.md) Reversal by mirrored entries with dual approval
+- [0014](./0014-fast-check-property-tests.md) `fast-check` for property tests, pinned exactly
+- [0015](./0015-pg-type-parsers.md) `pg` type parsers for `int8` and `date`
