@@ -12,3 +12,7 @@ Phase 3 added the ledger schema and its invariants: migration `0004` creates the
 ## Phase 4: Payments
 
 Migration 0006_payments introduces webhook endpoints, payment intents, payments, payment_attributions, and sms_log with tenant-scoped RLS and SECURITY DEFINER helpers for cross-tenant webhook resolution and suspense access. Migration 0007_job_queue adds a Postgres-backed jobs table with lease/heartbeat, retry/backoff, and a list_pending_sms SECURITY DEFINER function for the outbox sweeper. Payments are attributed by intent (ADR 0018); partial payments credit the asset wallet first (ADR 0019); receipts go through a transactional outbox and the Postgres job queue (ADR 0020); webhooks are tokenised per endpoint (ADR 0017).
+
+## Phase 5: Driver channels
+
+Migration 0008_channel_messages adds `channel_messages` for queued USSD/SMS replies with tenant-scoped RLS, and the `channel_messages` repository counts sends per recipient per business day for the SMS cost guard. Migration 0009_session_kinds distinguishes access and refresh sessions for the dashboard session model. Migration 0010_pending_channel_messages adds the cross-tenant pending listing used by the worker's outbox sweeper (`list_pending_channel_messages`, SECURITY DEFINER), mirroring `list_pending_sms`. Channel tenancy uses the existing webhook endpoint tokens (ADR 0017); composition and delivery are described in ADRs 0021 and 0022.

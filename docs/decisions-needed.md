@@ -56,18 +56,21 @@ mode (several states in one deployment).
 
 ## D5: Rate limiting on the public verify endpoint
 
-**Status:** open (deferred to Phase 5).
+**Status:** resolved (Phase 5, ADR 0024).
 
-`GET /v1/verify/:token` is unauthenticated by design (ADR 0007) and has no rate
-limit yet; token verification is HMAC-checked before any database access, so
-abuse costs CPU then a bounded lookup, but field-scale abuse controls belong
-with the driver channels phase.
+`GET /v1/verify/:token` is unauthenticated by design (ADR 0007). Phase 5 adds a
+shared fixed-window limiter over the `Cache`/`Clock` ports, the same one used by
+USSD and inbound SMS.
 
-- Options: fixed-window per-IP counters via the `Cache` port; token-bucket per
-  network; upstream WAF rules.
-- Recommendation: per-IP fixed window through the existing `Cache`/`LockService`
-  ports when USSD/SMS rate limiting lands in Phase 5, sharing one limiter
-  implementation.
+- Decision: **60 requests per source IP per minute**, expressed as a platform
+  constant, not tenant config. Tenant identity is unknown until after the asset
+  lookup, and by then the work the limit protects has already happened. A
+  tenant-configured limit would also let one tenant widen a platform-wide abuse
+  control.
+- Exceeding the limit returns `429` with the standard error envelope and a
+  `Retry-After` header.
+- If the verify endpoint ever becomes tenant-scoped before lookup, the limit can
+  move behind a configurable key without changing the limiter.
 
 ## D6: Payment status in verify responses
 
@@ -376,3 +379,34 @@ code against. They are answered before the adapter is called production-ready.
 7. **Fees.** Who bears gateway fees, and whether the amount credited to the
    state account is net or gross; a net settlement changes the reconciliation
    tolerance, not the ledger.
+
+## D22: Channel webhook tenancy and endpoint tokens
+
+**Status:** resolved (Phase 5, ADR 0022).
+
+Driver channels (USSD/SMS) need tenant isolation without letting callbacks
+reveal which tenants/adapters exist.
+
+- Decision: **per-tenant endpoint token in the URL** (`POST /webhooks/{provider}/{endpointToken}`), hashed and resolved via a `SECURITY DEFINER` function (`resolve_webhook_endpoint`) the same way payment webhooks behave (ADR 0017). The tenant and enabled channels are unknown until lookup.
+- An unknown token, a revoked token, and a channel/adapter the tenant has not enabled all return 404 identically (anti-enumeration).
+- The adapter key in the URL must equal the tenant's configured binding for that port; otherwise 404.
+- Channel callbacks use `application/x-www-form-urlencoded` (and JSON) and pass raw bodies/headers to adapters for provider-specific parsing.
+
+## D23: USSD session state model
+
+**Status:** resolved (Phase 5, ADR 0023).
+
+- Decision: **stateless replay of cumulative `text`.** The pure domain engine (`advanceUssdSession`) reconstructs navigation from the menu graph and cumulative input. No server-side session store is required; retries are safe and the same engine runs in the UI simulator.
+- Menu graph and messages come from tenant config (`channels.menus`, `channels.messages`), not code.
+
+## D24: Inbound SMS callback parsing and polling
+
+**Status:** resolved (Phase 5, ADR 0021).
+
+- Decision: **primary webhook parsing, polling fallback.** Adapters may support webhook callbacks (`parseInboundCallback`) and/or polling for inbound messages. The factory/wiring supports both; real adapters may return empty polling results when push-only.
+
+## D25: Driver message catalogs and i18n keys
+
+**Status:** resolved (Phase 5).
+
+- Decision: **message catalogs live in `channels.messages` keyed by language and message key** (`packages/config/src/channel-contract.ts` defines canonical keys: operational messages, asset input key, and per-action keys). Templates may use placeholders (e.g., `{amount}`, `{assetRef}`, `{date}`, `{receiptNo}`, `{code}`) validated at load time. All driver-facing copy comes from config/i18n, never hardcoded literals.

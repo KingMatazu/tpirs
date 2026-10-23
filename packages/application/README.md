@@ -11,3 +11,11 @@ Phase 3 added the financial services:
 
 Both services are idempotent per payment: a replayed webhook or a retried job
 returns the original transactions instead of posting again.
+
+## Phase 5: Driver channels
+
+- **`ussd-service.ts`** — receives a tenant-resolved callback, applies the shared rate limiter and per-session locks, runs the pure `advanceUssdSession` engine over tenant menus, and returns the provider-shaped reply. The cache is consulted before the limiter so a genuine retry does not burn quota.
+- **`driver-channel-service.ts`** — the driver-facing commands shared by USSD and SMS: check status for an asset reference or short code, report the current business day, and issue payment instructions. All copy comes from tenant message catalogs; under `pay_per_use` a day with no payment is never described as a debt.
+- **`inbound-sms-service.ts`** — parses a provider callback, resolves the keyword from tenant config, applies the cost guard, and enqueues any reply transactionally (ADR 0021).
+- **`sms-cost-guard.ts`**, **`rate-limiter.ts`** — per-tenant/per-recipient daily caps and a shared fixed-window limiter over `Cache`/`Clock` (ADR 0024).
+- **`channel-renderer.ts`**, **`channel-outbox-sweeper.ts`**, **`channel-delivery-service.ts`** — render configured templates and deliver queued replies from the worker through the tenant's `SmsProvider`.

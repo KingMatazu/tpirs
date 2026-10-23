@@ -23,3 +23,7 @@ Format: context, decision, consequences, alternatives considered.
 - [0018](./0018-payment-attribution-intent.md) Attributing a payment to an asset by intent
 - [0019](./0019-underpayment-wallet-credit.md) Underpayment as declaration-gated wallet credit
 - [0020](./0020-postgres-job-queue.md) A Postgres-backed job queue for background work
+- [0021](./0021-channel-outbox.md) Channel messages outbox for SMS/USSD replies
+- [0022](./0022-tenant-channel-adapter-composition.md) Tenant-scoped channel adapter composition
+- [0023](./0023-stateless-ussd-session-replay.md) Stateless USSD session engine via cumulative text replay
+- [0024](./0024-rate-limiting-abuse-controls.md) Rate limiting and abuse controls for channels and public verify

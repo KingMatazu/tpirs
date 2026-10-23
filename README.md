@@ -5,17 +5,23 @@ per-use levy system for bikes and tuk-tuks; the same codebase is resold to other
 states by writing configuration, not code.
 
 See `AGENTS.md` for the full build brief (design principles, ports and adapters,
-phases, and the quality bar). This README covers how to run the repo in Phase 0.
+phases, and the quality bar). This README covers how to run the repo. Phases 0–5
+are implemented; Phase 5 adds USSD/SMS driver channels (see
+`docs/runbooks/driver-channels.md`).
 
 ## Layout
 
 ```
 apps/api            HTTP delivery layer (Fastify)
-apps/worker         background job runner (stub in Phase 0)
-packages/domain     pure business logic (Money, IDs, errors)
+apps/worker         background job runner (payments and channel delivery)
+packages/domain     pure business logic (Money, IDs, ledger, allocation, USSD)
 packages/ports      port interfaces (hexagonal boundaries)
 packages/contracts  conformance suites every adapter must pass
 packages/adapters   one folder per adapter (mock + real)
+packages/application use-case services wiring domain + ports
+packages/channel-providers tenant config and secrets to channel adapters
+packages/config     tenant config schema, loader, and validation
+packages/i18n       message catalogs and templating
 packages/db         Kysely connection, migrations, seed
 tenants             per-tenant config only
 docs                ADRs, runbooks, decisions-needed

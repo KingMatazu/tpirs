@@ -23,3 +23,11 @@ The property suites (`*.property.test.ts`) use `fast-check` through the
 harness in `src/test-support/`, which is excluded from the build so it is
 never emitted into `dist`. `FAST_CHECK_RUNS` raises the number of generated
 cases; the nightly CI job runs a deep pass (ADR 0014).
+
+## Phase 5: Driver channels
+
+- **`ussd.ts`** — `advanceUssdSession`, the pure state machine behind USSD.
+  Input is the provider's cumulative `text`, so a session is replayed rather
+  than stored server-side and a retried callback is idempotent (ADR 0023).
+  It walks the tenant's typed menu graph and returns a `continue`/`end` result;
+  it knows nothing about aggregators, HTTP, or config loading.
