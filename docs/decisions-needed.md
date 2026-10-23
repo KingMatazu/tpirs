@@ -410,3 +410,101 @@ reveal which tenants/adapters exist.
 **Status:** resolved (Phase 5).
 
 - Decision: **message catalogs live in `channels.messages` keyed by language and message key** (`packages/config/src/channel-contract.ts` defines canonical keys: operational messages, asset input key, and per-action keys). Templates may use placeholders (e.g., `{amount}`, `{assetRef}`, `{date}`, `{receiptNo}`, `{code}`) validated at load time. All driver-facing copy comes from config/i18n, never hardcoded literals.
+
+## D26: Browser session storage for the dashboard
+
+**Status:** resolved (UI track, ahead of Phase 9).
+
+The admin dashboard (`apps/admin`) is a React + Vite SPA talking to
+`packages/api-client`, with no server rendering. The browser must hold a staff
+session without exposing it to any script running in the page, and a page
+reload must not force a manual re-login.
+
+- Options: (a) access and refresh tokens in `localStorage`; (b) all auth in an
+  httpOnly cookie on every endpoint; (c) short-lived bearer in memory plus a
+  refresh token in a narrowly scoped httpOnly cookie.
+- Decision: **(c)**.
+  - The access token lives in memory only (a zustand store), is never
+    persisted, and dies on tab close and on reload.
+  - The refresh token is an `httpOnly`, `Secure`, `SameSite=strict` cookie
+    scoped to `/v1/auth/refresh`; the browser never exposes it to page script.
+  - The server rotates the refresh token on every use and keeps revocation
+    keyed to the staff session, so a stolen previous refresh token is
+    single-use.
+  - After a reload, the first API call that receives a 401 triggers one
+    transparent refresh-and-retry before failing; the user experiences a
+    silent re-login. A missing TOTP-verified session still fails closed.
+- Rejected: (a) because any XSS in a dependency can read and replay the tokens
+  at leisure; (b) because a cookie valid on every endpoint widens the CSRF
+  surface and duplicates the API's own bearer checking. This record is
+  dashboard-only by design: the field PWA and its offline constraints are
+  deferred entirely (D29).
+
+## D27: UI form library and component base
+
+**Status:** resolved (UI track).
+
+- Components: **shadcn-style copy-in layer — Tailwind for styling, Radix UI
+  primitives for behavior**, themed exclusively through CSS custom properties
+  emitted by `packages/ui-tokens`. shadcn/ui is Radix + Tailwind, not an
+  alternative to them: Tailwind owns visuals; Radix owns focus trapping,
+  keyboard navigation, and ARIA for dialogs, dropdowns, popovers, and toasts.
+  Stripping Radix would mean hand-rolling buggy accessibility at the exact
+  places the dashboard leans on it (dual-approval dialogs, roles-aware
+  navigation, error toasts).
+- Forms: **react-hook-form + zod.** The UI submits small, money-sensitive
+  forms (resolve a suspense item, correct an asset); zod schemas are derived
+  from the generated OpenAPI types, so client validation cannot drift from
+  the contract.
+- Bundled picks recorded here because they arrive in the same change:
+  **TanStack Query** for server state (cursor pages, retries, mutations),
+  **zustand** for session and navigation state, **lucide** for icons, and
+  `Intl.NumberFormat`/`Intl.DateTimeFormat` fed from tenant config for
+  currency and date rendering — no date library for display, and business-day
+  math stays server-side where it belongs.
+- Rejected: MUI and Ant Design (they ship their own design system — a second
+  source of visual truth that fights `ui-tokens` and hardcodes colors);
+  Formik (in maintenance mode); writing forms with no library (pushes
+  money-affecting submissions toward hand-rolled state, where duplicate
+  submissions happen).
+- UI end-to-end tests use **Playwright**; alternative considered: Cypress.
+  Recorded here per the "record every dependency" rule.
+
+## D28: OpenAPI document and api-client generation
+
+**Status:** resolved (UI track).
+
+The API routes are hand-written Fastify today (AGENTS.md: API-first arrives
+incrementally). The dashboard cannot exist without a typed client, and a
+hand-maintained OpenAPI YAML would drift from the code.
+
+- Decision: **code-first.** Route handlers add the JSON Schemas Fastify wants
+  anyway; `@fastify/swagger` emits the OpenAPI 3 document from them, so the
+  running server _is_ the contract and cannot diverge from the doc.
+  - `packages/api-client` is generated with `openapi-typescript` (types) and
+    `openapi-fetch` (a ~1 KB type-safe fetch wrapper). The package re-exports
+    the generated client plus the shared plumbing: idempotency-key attachment
+    on money-affecting POSTs, request-ID extraction, and the standard
+    error-envelope parser.
+- Rejected: contract-first, hand-maintained YAML feeding both sides (reads
+  nicely in review but drifts from continuously evolving hand-written
+  routes); Orval (generates opinionated TanStack Query hooks — another
+  codegen layer to debug); tRPC (superb types but abandons REST/OpenAPI,
+  which the brief names as the source of truth); a hand-rolled client
+  (drifts — the very problem this decision exists to prevent).
+
+## D29: Field PWA offline store
+
+**Status:** open — deferred entirely with officer tooling.
+
+The officer field app (web PWA or native) and its offline-cache design are
+deferred out of the current UI track along with the officer-facing screens
+(scan log, disputes inbox). No offline-store work happens until the officer
+track reopens, and nothing in `apps/admin` depends on it. The recommendation
+on record for when that work restarts: IndexedDB via the `idb` wrapper with
+three stores — a paid-set cache replayed verbatim from the delta sync feed
+(status computed at render time by _presence in the set_, so the store
+cannot hold or derive UNPAID); an append-only outbox of idempotent commands
+keyed by client-generated UUIDs and deduplicated server-side (no
+last-write-wins merging — offline scans and disputes are facts, not state);
+and sync state holding the monotonic `since` cursor.
