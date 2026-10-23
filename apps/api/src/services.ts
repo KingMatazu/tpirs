@@ -2,11 +2,20 @@ import { validateTenantConfig } from "@tpirs/config";
 import type { TenantConfig } from "@tpirs/config";
 import { createQrTokenSigner } from "@tpirs/crypto";
 import type { AnyDb } from "@tpirs/db";
-import type { AssetService, OtpService, OwnerService } from "@tpirs/application";
+import type { AssetService, OtpService, OwnerService, PaymentService } from "@tpirs/application";
 import type { QrTokenSigner } from "@tpirs/domain";
 import { createAssetService, createOtpService, createOwnerService } from "@tpirs/application";
+import { createPaymentService } from "@tpirs/application";
 import { createConfigAssetSchemaRegistry } from "@tpirs/asset-schema-registry-config";
-import type { Cache, Clock, ObjectStorage, SecretsProvider, SmsProvider } from "@tpirs/ports";
+import { createConfigFeeEngine } from "@tpirs/fee-engine-config";
+import type {
+  Cache,
+  Clock,
+  ObjectStorage,
+  PaymentProvider,
+  SecretsProvider,
+  SmsProvider,
+} from "@tpirs/ports";
 import { readTenantConfig } from "./tenants.js";
 
 /**
@@ -33,12 +42,18 @@ export interface ServiceDeps {
   readonly clock: Clock;
   /** Secret reference holding the per-deployment QR signing key. */
   readonly qrKeyRef: string;
+  /**
+   * Payment adapters by provider name. The composition root decides which real
+   * gateways exist; core code never learns a gateway's name.
+   */
+  readonly paymentProviders?: Readonly<Record<string, PaymentProvider>>;
 }
 
 export interface Services {
   readonly asset: AssetService;
   readonly owner: OwnerService;
   readonly otp: OtpService;
+  readonly payment: PaymentService;
   /** Verifies presented QR tokens; also used by the public verify route. */
   readonly qrSigner: QrTokenSigner;
 }
@@ -63,5 +78,14 @@ export async function buildServices(deps: ServiceDeps): Promise<Services> {
   const owner = createOwnerService({ db: deps.db });
   const otp = createOtpService({ cache: deps.cache, sms: deps.sms, clock: deps.clock });
 
-  return { asset, owner, otp, qrSigner };
+  const paymentProviders = deps.paymentProviders ?? {};
+  const payment = createPaymentService({
+    db: deps.db,
+    loadConfig,
+    feeEngine: createConfigFeeEngine({ loadConfig }),
+    providerFor: (name) => paymentProviders[name],
+    now: () => deps.clock.now(),
+  });
+
+  return { asset, owner, otp, payment, qrSigner };
 }

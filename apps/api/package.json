@@ -26,6 +26,7 @@
     "@tpirs/crypto": "workspace:*",
     "@tpirs/db": "workspace:*",
     "@tpirs/domain": "workspace:*",
+    "@tpirs/fee-engine-config": "workspace:*",
     "@tpirs/identity-provider-db": "workspace:*",
     "@tpirs/ports": "workspace:*",
     "@tpirs/sms-provider-mock": "workspace:*",
@@ -34,6 +35,7 @@
   },
   "devDependencies": {
     "@tpirs/object-storage-mock": "workspace:*",
+    "@tpirs/payment-provider-mock": "workspace:*",
     "@tpirs/secrets-provider-mock": "workspace:*",
     "@tpirs/telemetry-mock": "workspace:*",
     "vitest": "^3.2.4"

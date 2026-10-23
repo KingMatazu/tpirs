@@ -333,6 +333,39 @@ describeIntegration("payment intake repositories (integration)", () => {
     expect(notSuspended).toBeUndefined();
   });
 
+  it("fills in the asset and attribution when finance resolves an unattributable payment", async () => {
+    // Intake stores an unattributable payment with no asset and no attribution,
+    // which is exactly the state the applied-payment check constraint forbids.
+    const paymentId = await withTenant(db, tenantId, async (tx) => {
+      const payment = await repositories(tx).payments.create(tenantId, {
+        provider: "mock",
+        providerEventId: `evt-unattributed-${stamp}`,
+        providerReference: `unknown-${stamp}`,
+        status: "suspense",
+        amountMinor: 20_000n,
+        currency: "NGN",
+        failureReason: "unattributable",
+      });
+      expect(payment.assetId).toBeNull();
+      expect(payment.attributionKind).toBeNull();
+      return payment.id;
+    });
+
+    const applied = await withTenant(db, tenantId, async (tx) =>
+      repositories(tx).payments.applyFromSuspense(tenantId, paymentId, {
+        businessDate: "2026-06-15",
+        obligationPeriodId,
+        transactionId: ledgerTransactionId,
+        receiptNumber: `RCT-ATTRIB-${stamp}`,
+        assetId,
+        attributionKind: "narration",
+      }),
+    );
+    expect(applied?.status).toBe("applied");
+    expect(applied?.assetId).toBe(assetId);
+    expect(applied?.attributionKind).toBe("narration");
+  });
+
   it("enqueues one receipt per payment and one per obligation period", async () => {
     const paymentId = await createCreditedPayment("sms");
 

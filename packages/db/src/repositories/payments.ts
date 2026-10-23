@@ -251,12 +251,24 @@ export class PaymentRepository {
       obligationPeriodId: string;
       transactionId: string;
       receiptNumber: string;
+      /**
+       * Finance attributes a previously unattributable payment to an asset, so
+       * the asset and attribution must be filled in here: an applied payment is
+       * complete by constraint, and intake may have left both null. A payment
+       * that intake already attributed keeps what it recorded.
+       */
+      assetId?: string;
+      attributionKind?: NonNullable<PaymentRow["attributionKind"]>;
     },
   ): Promise<PaymentRow | undefined> {
     return this.db
       .updateTable("payments")
       .set({
         status: "applied",
+        ...(params.assetId === undefined ? {} : { assetId: params.assetId }),
+        ...(params.attributionKind === undefined
+          ? {}
+          : { attributionKind: params.attributionKind }),
         businessDate: params.businessDate,
         obligationPeriodId: params.obligationPeriodId,
         transactionId: params.transactionId,

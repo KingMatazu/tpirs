@@ -102,6 +102,9 @@ importers:
       '@tpirs/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@tpirs/fee-engine-config':
+        specifier: workspace:*
+        version: link:../../packages/adapters/fee-engine/config
       '@tpirs/identity-provider-db':
         specifier: workspace:*
         version: link:../../packages/adapters/identity-provider/db
@@ -121,6 +124,9 @@ importers:
       '@tpirs/object-storage-mock':
         specifier: workspace:*
         version: link:../../packages/adapters/object-storage/mock
+      '@tpirs/payment-provider-mock':
+        specifier: workspace:*
+        version: link:../../packages/adapters/payment-provider/mock
       '@tpirs/secrets-provider-mock':
         specifier: workspace:*
         version: link:../../packages/adapters/secrets-provider/mock
@@ -557,6 +563,9 @@ importers:
       '@tpirs/object-storage-mock':
         specifier: workspace:*
         version: link:../adapters/object-storage/mock
+      '@tpirs/payment-provider-mock':
+        specifier: workspace:*
+        version: link:../adapters/payment-provider/mock
       '@tpirs/sms-provider-mock':
         specifier: workspace:*
         version: link:../adapters/sms-provider/mock
