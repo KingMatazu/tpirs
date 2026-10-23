@@ -10,12 +10,17 @@
     "start": "node dist/index.js",
     "typecheck": "tsc -b && tsc -p tsconfig.test.json",
     "lint": "eslint src",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run"
   },
   "dependencies": {
     "@tpirs/adapters-otel-telemetry": "workspace:*",
+    "@tpirs/application": "workspace:*",
+    "@tpirs/config": "workspace:*",
+    "@tpirs/db": "workspace:*",
     "@tpirs/domain": "workspace:*",
-    "@tpirs/ports": "workspace:*"
+    "@tpirs/job-queue-postgres": "workspace:*",
+    "@tpirs/ports": "workspace:*",
+    "@tpirs/sms-provider-mock": "workspace:*"
   },
   "devDependencies": {
     "vitest": "^3.2.4"

@@ -33,6 +33,7 @@
     "@tpirs/cache-mock": "workspace:*",
     "@tpirs/clock-mock": "workspace:*",
     "@tpirs/fee-engine-config": "workspace:*",
+    "@tpirs/job-queue-mock": "workspace:*",
     "@tpirs/object-storage-mock": "workspace:*",
     "@tpirs/payment-provider-mock": "workspace:*",
     "@tpirs/sms-provider-mock": "workspace:*",

@@ -142,12 +142,27 @@ importers:
       '@tpirs/adapters-otel-telemetry':
         specifier: workspace:*
         version: link:../../packages/adapters/telemetry/otel
+      '@tpirs/application':
+        specifier: workspace:*
+        version: link:../../packages/application
+      '@tpirs/config':
+        specifier: workspace:*
+        version: link:../../packages/config
+      '@tpirs/db':
+        specifier: workspace:*
+        version: link:../../packages/db
       '@tpirs/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@tpirs/job-queue-postgres':
+        specifier: workspace:*
+        version: link:../../packages/adapters/job-queue/postgres
       '@tpirs/ports':
         specifier: workspace:*
         version: link:../../packages/ports
+      '@tpirs/sms-provider-mock':
+        specifier: workspace:*
+        version: link:../../packages/adapters/sms-provider/mock
     devDependencies:
       vitest:
         specifier: ^3.2.4
@@ -333,6 +348,22 @@ importers:
       '@tpirs/domain':
         specifier: workspace:*
         version: link:../../../domain
+      '@tpirs/ports':
+        specifier: workspace:*
+        version: link:../../../ports
+    devDependencies:
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.7(@types/node@24.19.2)(jiti@2.6.1)(tsx@4.23.15)(yaml@2.9.1)
+
+  packages/adapters/job-queue/postgres:
+    dependencies:
+      '@tpirs/contracts':
+        specifier: workspace:*
+        version: link:../../../contracts
+      '@tpirs/db':
+        specifier: workspace:*
+        version: link:../../../db
       '@tpirs/ports':
         specifier: workspace:*
         version: link:../../../ports
@@ -560,6 +591,9 @@ importers:
       '@tpirs/fee-engine-config':
         specifier: workspace:*
         version: link:../adapters/fee-engine/config
+      '@tpirs/job-queue-mock':
+        specifier: workspace:*
+        version: link:../adapters/job-queue/mock
       '@tpirs/object-storage-mock':
         specifier: workspace:*
         version: link:../adapters/object-storage/mock

@@ -427,6 +427,19 @@ export class SmsLogRepository {
       .executeTakeFirst();
   }
 
+  /**
+   * Reads one message. Tenant-scoped, so a delivery worker that is handed an id
+   * from another tenant simply finds nothing.
+   */
+  async findById(tenantId: string, id: string): Promise<SmsLogRow | undefined> {
+    return this.db
+      .selectFrom("smsLog")
+      .selectAll()
+      .where("tenantId", "=", tenantId)
+      .where("id", "=", id)
+      .executeTakeFirst();
+  }
+
   /** Claims pending messages for delivery, skipping rows another worker holds. */
   async claimPending(tenantId: string, limit: number): Promise<SmsLogRow[]> {
     return this.db
