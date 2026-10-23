@@ -1,3 +1,5 @@
+import type { UssdAction } from "@tpirs/domain";
+import { ACTION_MESSAGE_KEYS, OPERATIONAL_MESSAGE_KEYS } from "./channel-contract.js";
 import { TenantConfigError, TenantConfigValidationError } from "./errors.js";
 import type {
   AllocationOrder,
@@ -17,10 +19,13 @@ import type {
   TenantLocale,
   TenantMenu,
   TenantMenuOption,
+  TenantMessages,
   TenantObligationRules,
   TenantPayments,
   TenantProviderBinding,
   TenantReconciliation,
+  TenantSmsSettings,
+  TenantUssdSettings,
   UnderpaymentPolicy,
 } from "./schema.js";
 import { Validator } from "./validator.js";
@@ -33,6 +38,25 @@ const DEFAULT_ALLOCATION_ORDER: AllocationOrder = "oldest_first";
 const UNDERPAYMENT_POLICIES: readonly UnderpaymentPolicy[] = ["wallet", "suspense"];
 const DEFAULT_UNDERPAYMENT_POLICY: UnderpaymentPolicy = "wallet";
 const ATTRIBUTE_TYPES = ["string", "number", "date", "enum"] as const;
+const MENU_NODE_TYPES = ["menu", "input", "action"] as const;
+const USSD_ACTIONS: readonly UssdAction[] = ["status", "pay", "pay_from_balance", "cancel"];
+
+/**
+ * Conservative technical defaults. Operations limits are configuration, not
+ * code: a tenant can raise or lower them without a deployment.
+ */
+const DEFAULT_USSD_SETTINGS: TenantUssdSettings = {
+  sessionTimeoutSeconds: 180,
+  maxInputLength: 32,
+  maxSteps: 12,
+  rateLimit: { perMsisdnPerMinute: 20, perIpPerMinute: 120 },
+};
+
+const DEFAULT_SMS_SETTINGS: TenantSmsSettings = {
+  maxSendsPerDay: 5000,
+  maxSendsPerRecipientPerDay: 10,
+  rateLimit: { perMsisdnPerMinute: 6 },
+};
 
 /**
  * Placeholders the receipt renderer fills. A template must use all of them and
@@ -420,35 +444,264 @@ function validateProvider(v: Validator, value: unknown): TenantProviderBinding |
   return binding;
 }
 
+function validateMessagePlaceholders(v: Validator, text: string, key: string): void {
+  for (const match of text.matchAll(/\{([^{}]*)\}/g)) {
+    const name = match[1] ?? "";
+    if (name.trim() === "") {
+      v.issue("schema_error", `channels.${key} must not contain an empty placeholder`, key);
+      return;
+    }
+  }
+}
+
+function validateMessages(
+  v: Validator,
+  value: unknown,
+  enabledLanguages: readonly string[],
+): TenantMessages | undefined {
+  const obj = v.object(value, "messages");
+  if (obj === undefined) return undefined;
+  const messages: Record<string, Record<string, string>> = {};
+  for (const [language, rawCatalog] of Object.entries(obj)) {
+    if (!enabledLanguages.includes(language)) {
+      v.issue(
+        "invalid_reference",
+        `channels.messages.${language} is not in locale.enabledLanguages`,
+        `messages.${language}`,
+      );
+      continue;
+    }
+    const catalogObj = v.object(rawCatalog, `messages.${language}`);
+    if (catalogObj === undefined) continue;
+    const catalog: Record<string, string> = {};
+    for (const [key, rawText] of Object.entries(catalogObj)) {
+      if (typeof rawText !== "string" || rawText.trim() === "") {
+        v.issue(
+          "schema_error",
+          `channels.messages.${language}.${key} must be a non-empty string`,
+          `messages.${language}.${key}`,
+        );
+        continue;
+      }
+      validateMessagePlaceholders(v, rawText, `messages.${language}.${key}`);
+      catalog[key] = rawText;
+    }
+    messages[language] = catalog;
+  }
+  return messages;
+}
+
 function validateMenuOption(v: Validator, value: unknown): TenantMenuOption | undefined {
   const obj = v.object(value, "menuOption");
   if (obj === undefined) return undefined;
   const key = v.string(obj.key, "key");
   const labelKey = v.string(obj.labelKey, "labelKey");
   if (key === undefined || labelKey === undefined) return undefined;
-  if (obj.next === undefined) return { key, labelKey };
-  const next = v.string(obj.next, "next");
-  if (next === undefined) return undefined;
-  return { key, labelKey, next };
+  const hasNext = obj.next !== undefined;
+  const hasAction = obj.action !== undefined;
+  if (hasNext === hasAction) {
+    v.issue("schema_error", "menu options must have exactly one of next or action", "option");
+    return undefined;
+  }
+  if (hasNext) {
+    const next = v.string(obj.next, "next");
+    if (next === undefined) return undefined;
+    return { key, labelKey, next };
+  }
+  const action = v.enum(obj.action, "action", USSD_ACTIONS);
+  if (action === undefined) return undefined;
+  return { key, labelKey, action };
 }
 
-function validateMenu(v: Validator, value: unknown): TenantMenu | undefined {
+function validateUssdInput(
+  v: Validator,
+  value: unknown,
+): { readonly key: string; readonly pattern?: string; readonly errorKey: string } | undefined {
+  const obj = v.object(value, "input");
+  if (obj === undefined) return undefined;
+  const key = v.string(obj.key, "input.key");
+  const errorKey = v.string(obj.errorKey, "input.errorKey");
+  let pattern: string | undefined;
+  if (obj.pattern !== undefined) {
+    const parsed = v.string(obj.pattern, "input.pattern");
+    if (parsed === undefined) return undefined;
+    try {
+      new RegExp(parsed);
+    } catch {
+      v.issue(
+        "schema_error",
+        "channels.input.pattern must be a valid regular expression",
+        "input.pattern",
+      );
+      return undefined;
+    }
+    pattern = parsed;
+  }
+  if (key === undefined || errorKey === undefined) return undefined;
+  return pattern === undefined ? { key, errorKey } : { key, errorKey, pattern };
+}
+
+function validateMenuNode(v: Validator, value: unknown): TenantMenu | undefined {
   const obj = v.object(value, "menu");
   if (obj === undefined) return undefined;
   const key = v.string(obj.key, "key");
+  if (key === undefined) return undefined;
+
+  const explicitType =
+    obj.type === undefined ? undefined : v.enum(obj.type, "type", MENU_NODE_TYPES);
+  const inferredType =
+    explicitType ??
+    (obj.input !== undefined ? "input" : obj.action !== undefined ? "action" : "menu");
+
+  if (inferredType === "action") {
+    const action = v.enum(obj.action, "action", USSD_ACTIONS);
+    if (action === undefined) return undefined;
+    return { type: "action", key, action };
+  }
+
+  if (inferredType === "input") {
+    const promptKey = v.string(obj.promptKey, "promptKey");
+    const next = v.string(obj.next, "next");
+    const input = validateUssdInput(v, obj.input);
+    if (promptKey === undefined || next === undefined || input === undefined) return undefined;
+    return { type: "input", key, promptKey, input, next };
+  }
+
   const promptKey = v.string(obj.promptKey, "promptKey");
+  const invalidKey =
+    obj.invalidKey === undefined ? undefined : v.string(obj.invalidKey, "invalidKey");
   const options: TenantMenuOption[] = [];
+  if (!Array.isArray(obj.options)) {
+    v.issue("schema_error", "menu options must be an array", "options");
+    return undefined;
+  }
   v.each(obj.options, "options", (item) => {
     const option = validateMenuOption(v, item);
     if (option !== undefined) options.push(option);
   });
-  if (key === undefined || promptKey === undefined || !Array.isArray(obj.options)) {
+  if (promptKey === undefined) return undefined;
+  if (options.length === 0) {
+    v.issue("schema_error", "menu must define at least one option", "options");
     return undefined;
   }
-  return { key, promptKey, options };
+  return invalidKey === undefined
+    ? { type: "menu", key, promptKey, options }
+    : { type: "menu", key, promptKey, invalidKey, options };
 }
 
-function validateChannels(v: Validator, value: unknown): TenantChannels | undefined {
+function requireMessage(
+  v: Validator,
+  messages: TenantMessages | undefined,
+  key: string,
+  enabledLanguages: readonly string[],
+): void {
+  if (messages === undefined) return;
+  for (const language of enabledLanguages) {
+    if (messages[language]?.[key] === undefined) {
+      v.issue(
+        "invalid_reference",
+        `message '${key}' is missing for language '${language}'`,
+        `messages.${language}.${key}`,
+      );
+    }
+  }
+}
+
+function validateUssdSettings(v: Validator, value: unknown): TenantUssdSettings | undefined {
+  if (value === undefined) return DEFAULT_USSD_SETTINGS;
+  const obj = v.object(value, "ussd");
+  if (obj === undefined) return undefined;
+
+  const sessionTimeoutSeconds =
+    obj.sessionTimeoutSeconds === undefined
+      ? DEFAULT_USSD_SETTINGS.sessionTimeoutSeconds
+      : v.integer(obj.sessionTimeoutSeconds, "sessionTimeoutSeconds", { min: 30 });
+  const maxInputLength =
+    obj.maxInputLength === undefined
+      ? DEFAULT_USSD_SETTINGS.maxInputLength
+      : v.integer(obj.maxInputLength, "maxInputLength", { min: 1 });
+  const maxSteps =
+    obj.maxSteps === undefined
+      ? DEFAULT_USSD_SETTINGS.maxSteps
+      : v.integer(obj.maxSteps, "maxSteps", { min: 1 });
+
+  let perMsisdnPerMinute = DEFAULT_USSD_SETTINGS.rateLimit.perMsisdnPerMinute;
+  let perIpPerMinute = DEFAULT_USSD_SETTINGS.rateLimit.perIpPerMinute;
+  if (obj.rateLimit !== undefined) {
+    const rateLimit = v.object(obj.rateLimit, "rateLimit");
+    if (rateLimit === undefined) return undefined;
+    if (rateLimit.perMsisdnPerMinute !== undefined) {
+      const parsed = v.integer(rateLimit.perMsisdnPerMinute, "rateLimit.perMsisdnPerMinute", {
+        min: 1,
+      });
+      if (parsed === undefined) return undefined;
+      perMsisdnPerMinute = parsed;
+    }
+    if (rateLimit.perIpPerMinute !== undefined) {
+      const parsed = v.integer(rateLimit.perIpPerMinute, "rateLimit.perIpPerMinute", { min: 1 });
+      if (parsed === undefined) return undefined;
+      perIpPerMinute = parsed;
+    }
+  }
+
+  if (
+    sessionTimeoutSeconds === undefined ||
+    maxInputLength === undefined ||
+    maxSteps === undefined
+  ) {
+    return undefined;
+  }
+  return {
+    sessionTimeoutSeconds,
+    maxInputLength,
+    maxSteps,
+    rateLimit: { perMsisdnPerMinute, perIpPerMinute },
+  };
+}
+
+function validateSmsSettings(v: Validator, value: unknown): TenantSmsSettings | undefined {
+  if (value === undefined) return DEFAULT_SMS_SETTINGS;
+  const obj = v.object(value, "sms");
+  if (obj === undefined) return undefined;
+
+  const maxSendsPerDay =
+    obj.maxSendsPerDay === undefined
+      ? DEFAULT_SMS_SETTINGS.maxSendsPerDay
+      : v.integer(obj.maxSendsPerDay, "maxSendsPerDay", { min: 1 });
+  const maxSendsPerRecipientPerDay =
+    obj.maxSendsPerRecipientPerDay === undefined
+      ? DEFAULT_SMS_SETTINGS.maxSendsPerRecipientPerDay
+      : v.integer(obj.maxSendsPerRecipientPerDay, "maxSendsPerRecipientPerDay", { min: 1 });
+
+  let perMsisdnPerMinute = DEFAULT_SMS_SETTINGS.rateLimit.perMsisdnPerMinute;
+  if (obj.rateLimit !== undefined) {
+    const rateLimit = v.object(obj.rateLimit, "rateLimit");
+    if (rateLimit === undefined) return undefined;
+    if (rateLimit.perMsisdnPerMinute !== undefined) {
+      const parsed = v.integer(rateLimit.perMsisdnPerMinute, "rateLimit.perMsisdnPerMinute", {
+        min: 1,
+      });
+      if (parsed === undefined) return undefined;
+      perMsisdnPerMinute = parsed;
+    }
+  }
+
+  if (maxSendsPerDay === undefined || maxSendsPerRecipientPerDay === undefined) {
+    return undefined;
+  }
+  return {
+    maxSendsPerDay,
+    maxSendsPerRecipientPerDay,
+    rateLimit: { perMsisdnPerMinute },
+  };
+}
+
+function validateChannels(
+  v: Validator,
+  value: unknown,
+  enabledLanguages: readonly string[],
+  defaultLanguage: string,
+): TenantChannels | undefined {
   const obj = v.object(value, "channels");
   if (obj === undefined) return undefined;
   const ussdCode = v.string(obj.ussdCode, "ussdCode");
@@ -466,21 +719,151 @@ function validateChannels(v: Validator, value: unknown): TenantChannels | undefi
   if (smsReceiptTemplate !== undefined && !validateReceiptTemplate(v, smsReceiptTemplate)) {
     return undefined;
   }
+
+  const messages =
+    obj.messages === undefined ? {} : validateMessages(v, obj.messages, enabledLanguages);
+  if (
+    messages !== undefined &&
+    Object.keys(messages).length > 0 &&
+    messages[defaultLanguage] === undefined
+  ) {
+    v.issue(
+      "invalid_reference",
+      `channels.messages must include the default language '${defaultLanguage}'`,
+      `messages.${defaultLanguage}`,
+    );
+  }
+
   const menus: TenantMenu[] = [];
+  const menuKeys = new Set<string>();
   v.each(obj.menus, "menus", (item) => {
-    const menu = validateMenu(v, item);
-    if (menu !== undefined) menus.push(menu);
+    const menu = validateMenuNode(v, item);
+    if (menu === undefined) return;
+    if (menuKeys.has(menu.key)) {
+      v.issue("schema_error", `duplicate menu key '${menu.key}'`, `menus.${menu.key}`);
+      return;
+    }
+    menuKeys.add(menu.key);
+    menus.push(menu);
   });
+
+  let startMenu: string | undefined;
+  if (Array.isArray(obj.menus)) {
+    if (menus.length === 0) {
+      if (obj.startMenu !== undefined) {
+        v.issue("invalid_reference", "channels.startMenu requires at least one menu", "startMenu");
+      }
+    } else if (obj.startMenu === undefined) {
+      startMenu = menus[0]?.key;
+    } else {
+      const parsed = v.string(obj.startMenu, "startMenu");
+      if (parsed !== undefined) {
+        if (!menuKeys.has(parsed)) {
+          v.issue(
+            "invalid_reference",
+            `channels.startMenu references unknown menu '${parsed}'`,
+            "startMenu",
+          );
+        } else {
+          startMenu = parsed;
+        }
+      }
+    }
+  }
+
+  for (const menu of menus) {
+    if (menu.type === "menu") {
+      requireMessage(v, messages, menu.promptKey, enabledLanguages);
+      if (menu.invalidKey !== undefined) {
+        requireMessage(v, messages, menu.invalidKey, enabledLanguages);
+      }
+      const optionKeys = new Set<string>();
+      for (const option of menu.options) {
+        if (optionKeys.has(option.key)) {
+          v.issue(
+            "schema_error",
+            `duplicate option key '${option.key}' in menu '${menu.key}'`,
+            `menus.${menu.key}.options`,
+          );
+        }
+        optionKeys.add(option.key);
+        requireMessage(v, messages, option.labelKey, enabledLanguages);
+        if (option.next !== undefined && !menuKeys.has(option.next)) {
+          v.issue(
+            "invalid_reference",
+            `menu '${menu.key}' option '${option.key}' references unknown menu '${option.next}'`,
+            `menus.${menu.key}.options.${option.key}`,
+          );
+        }
+      }
+    } else if (menu.type === "input") {
+      requireMessage(v, messages, menu.promptKey, enabledLanguages);
+      requireMessage(v, messages, menu.input.errorKey, enabledLanguages);
+      if (!menuKeys.has(menu.next)) {
+        v.issue(
+          "invalid_reference",
+          `input '${menu.key}' references unknown menu '${menu.next}'`,
+          `menus.${menu.key}.next`,
+        );
+      }
+    }
+  }
+
+  // A tenant that supplies a catalogue must be able to answer every path the
+  // runtime can take, not only the prompts its own menu graph happens to use.
+  // Operational keys cover rate limits, cancels, and malformed sessions; action
+  // keys cover each action the graph can actually reach. A missing key is a
+  // startup failure instead of a broken reply on a driver's phone.
+  const hasCatalogue = messages !== undefined && Object.keys(messages).length > 0;
+  if (hasCatalogue) {
+    for (const key of OPERATIONAL_MESSAGE_KEYS) {
+      requireMessage(v, messages, key, enabledLanguages);
+    }
+    const reachable = new Set<UssdAction>();
+    for (const menu of menus) {
+      if (menu.type === "action") {
+        reachable.add(menu.action);
+      } else if (menu.type === "menu") {
+        for (const option of menu.options) {
+          if (option.action !== undefined) reachable.add(option.action);
+        }
+      }
+    }
+    for (const action of reachable) {
+      if (action === "cancel") continue;
+      for (const key of ACTION_MESSAGE_KEYS[action]) {
+        requireMessage(v, messages, key, enabledLanguages);
+      }
+    }
+  }
+
+  const ussd = validateUssdSettings(v, obj.ussd);
+  const sms = validateSmsSettings(v, obj.sms);
+
   if (
     ussdCode === undefined ||
     smsKeyword === undefined ||
     otpMessageTemplate === undefined ||
     smsReceiptTemplate === undefined ||
-    !Array.isArray(obj.menus)
+    !Array.isArray(obj.menus) ||
+    messages === undefined ||
+    ussd === undefined ||
+    sms === undefined
   ) {
     return undefined;
   }
-  return { ussdCode, smsKeyword, otpMessageTemplate, smsReceiptTemplate, menus };
+
+  const channels: TenantChannels = {
+    ussdCode,
+    smsKeyword,
+    otpMessageTemplate,
+    smsReceiptTemplate,
+    menus,
+    messages,
+    ussd,
+    sms,
+  };
+  return startMenu === undefined ? channels : { ...channels, startMenu };
 }
 
 /**
@@ -614,7 +997,12 @@ export function validateTenantConfig(input: unknown): TenantConfig {
     const provider = validateProvider(root.child("providers"), item);
     if (provider !== undefined) providers.push(provider);
   });
-  const channels = validateChannels(root.child("channels"), rootObj.channels);
+  const channels = validateChannels(
+    root.child("channels"),
+    rootObj.channels,
+    locale?.enabledLanguages ?? [],
+    locale?.defaultLanguage ?? "",
+  );
   const cashRules = validateCashRules(root.child("cashRules"), rootObj.cashRules);
   // Omitting the section means the default policy; a present but malformed
   // section is an error, never silently defaulted.

@@ -77,13 +77,61 @@ channels:
   smsKeyword: "LEVY"
   otpMessageTemplate: "Example: your code is {code}"
   smsReceiptTemplate: "Example receipt {receiptNo}: {amount} paid for {assetRef} on {date}."
+  startMenu: "main"
+  messages:
+    en:
+      ussd.main.prompt: "Example Levy. Reply with an option."
+      ussd.main.pay: "Pay levy"
+      ussd.main.invalid: "Unknown option."
+      ussd.common.error: "Something went wrong."
+      ussd.session.cancelled: "Cancelled."
+      ussd.session.too_many_steps: "Too many steps."
+      ussd.rate.limited: "Too many requests."
+      ussd.session.busy: "Still processing."
+      sms.command.unknown: "Reply with {keyword} and your code."
+      ussd.status.paid: "Paid today for {assetRef}."
+      ussd.pay.created: "Payment request created for {assetRef}."
+      ussd.pay.failed: "Could not start a payment."
+      ussd.pay.covered: "Already covered for {assetRef}."
+      ussd.asset.unknown: "No vehicle matches {assetRef}."
+    ha:
+      ussd.main.prompt: "Kuɗin Jiha. Amsa da zaɓi."
+      ussd.main.pay: "Biya kuɗin"
+      ussd.main.invalid: "Zaɓi mara inganci."
+      ussd.common.error: "Wani abu ya samu matsala."
+      ussd.session.cancelled: "An soke."
+      ussd.session.too_many_steps: "Matakai da yawa."
+      ussd.rate.limited: "Buƙatu da yawa."
+      ussd.session.busy: "Ana aiki da buƙatarka."
+      sms.command.unknown: "Amsa da {keyword} da lambar motarka."
+      ussd.status.paid: "An biya yau don {assetRef}."
+      ussd.pay.created: "An ƙirƙiri buƙatar biya don {assetRef}."
+      ussd.pay.failed: "Ba a iya fara biya ba."
+      ussd.pay.covered: "An riga an biya don {assetRef}."
+      ussd.asset.unknown: "Babu motar da ta dace da {assetRef}."
+  ussd:
+    sessionTimeoutSeconds: 120
+    maxInputLength: 16
+    maxSteps: 8
+    rateLimit:
+      perMsisdnPerMinute: 10
+      perIpPerMinute: 60
+  sms:
+    maxSendsPerDay: 1000
+    maxSendsPerRecipientPerDay: 5
+    rateLimit:
+      perMsisdnPerMinute: 3
   menus:
     - key: "main"
       promptKey: "ussd.main.prompt"
+      invalidKey: "ussd.main.invalid"
       options:
         - key: "1"
           labelKey: "ussd.main.pay"
           next: "pay"
+    - key: "pay"
+      type: "action"
+      action: "pay"
 cashRules:
   enabled: true
   floatCeilingMinor: 5000000
@@ -116,6 +164,10 @@ describe("loadTenantConfigFromString", () => {
     expect(config.providers[0]?.secrets?.apiKey).toBe("tenant/example/paystack-key");
     expect(config.payments.underpaymentPolicy).toBe("suspense");
     expect(config.channels.smsReceiptTemplate).toContain("{receiptNo}");
+    expect(config.channels.startMenu).toBe("main");
+    expect(config.channels.messages?.en?.["ussd.main.prompt"]).toContain("Example Levy");
+    expect(config.channels.ussd?.maxSteps).toBe(8);
+    expect(config.channels.sms?.maxSendsPerDay).toBe(1000);
   });
 
   it("rejects invalid YAML", () => {
@@ -363,6 +415,248 @@ describe("validateTenantConfig", () => {
       (raw.locale as Record<string, unknown>).defaultLanguage = "fr";
     });
     expect(run).toThrow(/defaultLanguage must be in enabledLanguages/);
+  });
+
+  function setValidChannels(
+    raw: Record<string, unknown>,
+    overrides: Record<string, unknown> = {},
+  ): void {
+    raw.channels = {
+      ussdCode: "*1#",
+      smsKeyword: "X",
+      otpMessageTemplate: "code {code}",
+      smsReceiptTemplate: "Receipt {receiptNo}: {amount} for {assetRef} on {date}.",
+      startMenu: "main",
+      messages: {
+        en: {
+          "ussd.main.prompt": "Choose an option.",
+          "ussd.main.pay": "Pay levy",
+          "ussd.main.invalid": "Unknown option.",
+          "ussd.code.prompt": "Enter your code.",
+          "ussd.code.invalid": "Invalid code.",
+          "ussd.common.error": "Something went wrong.",
+          "ussd.session.cancelled": "Cancelled.",
+          "ussd.session.too_many_steps": "Too many steps.",
+          "ussd.rate.limited": "Too many requests.",
+          "ussd.session.busy": "Still processing.",
+          "sms.command.unknown": "Reply with {keyword} and your code.",
+          "ussd.status.paid": "Paid today for {assetRef}.",
+          "ussd.pay.created": "Payment request created for {assetRef}.",
+          "ussd.pay.failed": "Could not start a payment.",
+          "ussd.pay.covered": "Already covered for {assetRef}.",
+          "ussd.asset.unknown": "No vehicle matches {assetRef}.",
+        },
+      },
+      menus: [
+        {
+          key: "main",
+          promptKey: "ussd.main.prompt",
+          invalidKey: "ussd.main.invalid",
+          options: [{ key: "1", labelKey: "ussd.main.pay", next: "pay" }],
+        },
+        { key: "pay", type: "action", action: "pay" },
+      ],
+      ...overrides,
+    };
+  }
+
+  it("accepts a typed menu graph and defaults the start menu", () => {
+    const config = configWith((raw) => {
+      setValidChannels(raw, { startMenu: undefined });
+    })();
+    expect(config.channels.startMenu).toBe("main");
+    expect(config.channels.menus[1]).toEqual({ type: "action", key: "pay", action: "pay" });
+  });
+
+  it("rejects a menu option pointing at an unknown menu", () => {
+    const run = configWith((raw) => {
+      setValidChannels(raw, {
+        menus: [
+          {
+            key: "main",
+            promptKey: "ussd.main.prompt",
+            options: [{ key: "1", labelKey: "ussd.main.pay", next: "ghost" }],
+          },
+        ],
+      });
+    });
+    expect(run).toThrow(/references unknown menu 'ghost'/);
+  });
+
+  it("rejects a start menu that does not exist", () => {
+    const run = configWith((raw) => {
+      setValidChannels(raw, { startMenu: "ghost" });
+    });
+    expect(run).toThrow(/startMenu references unknown menu 'ghost'/);
+  });
+
+  it("rejects a start menu when there are no menus", () => {
+    const run = configWith((raw) => {
+      setValidChannels(raw, { menus: [], messages: {} });
+    });
+    expect(run).toThrow(/startMenu requires at least one menu/);
+  });
+
+  it("rejects duplicate menu keys", () => {
+    const run = configWith((raw) => {
+      setValidChannels(raw, {
+        messages: {},
+        menus: [
+          { key: "main", type: "action", action: "cancel" },
+          { key: "main", type: "action", action: "pay" },
+        ],
+      });
+    });
+    expect(run).toThrow(/duplicate menu key 'main'/);
+  });
+
+  it("rejects duplicate option keys within a menu", () => {
+    const run = configWith((raw) => {
+      setValidChannels(raw, {
+        menus: [
+          {
+            key: "main",
+            promptKey: "ussd.main.prompt",
+            options: [
+              { key: "1", labelKey: "ussd.main.pay", next: "pay" },
+              { key: "1", labelKey: "ussd.main.pay", next: "pay" },
+            ],
+          },
+          { key: "pay", type: "action", action: "pay" },
+        ],
+      });
+    });
+    expect(run).toThrow(/duplicate option key '1'/);
+  });
+
+  it("rejects an option with both next and action", () => {
+    const run = configWith((raw) => {
+      setValidChannels(raw, {
+        menus: [
+          {
+            key: "main",
+            promptKey: "ussd.main.prompt",
+            options: [{ key: "1", labelKey: "ussd.main.pay", next: "pay", action: "pay" }],
+          },
+          { key: "pay", type: "action", action: "pay" },
+        ],
+      });
+    });
+    expect(run).toThrow(/exactly one of next or action/);
+  });
+
+  it("rejects an option with neither next nor action", () => {
+    const run = configWith((raw) => {
+      setValidChannels(raw, {
+        menus: [
+          {
+            key: "main",
+            promptKey: "ussd.main.prompt",
+            options: [{ key: "1", labelKey: "ussd.main.pay" }],
+          },
+        ],
+      });
+    });
+    expect(run).toThrow(/exactly one of next or action/);
+  });
+
+  it("rejects a menu without options", () => {
+    const run = configWith((raw) => {
+      setValidChannels(raw, {
+        menus: [{ key: "main", promptKey: "ussd.main.prompt", options: [] }],
+      });
+    });
+    expect(run).toThrow(/at least one option/);
+  });
+
+  it("rejects a referenced message missing from an enabled language", () => {
+    const run = configWith((raw) => {
+      setValidChannels(raw, {
+        messages: { en: { "ussd.main.prompt": "Choose." } },
+      });
+    });
+    expect(run).toThrow(/message 'ussd.main.pay' is missing for language 'en'/);
+  });
+
+  it("rejects a message catalogue for a language that is not enabled", () => {
+    const run = configWith((raw) => {
+      setValidChannels(raw, {
+        messages: { fr: { "ussd.main.prompt": "Choisissez." } },
+      });
+    });
+    expect(run).toThrow(/not in locale.enabledLanguages/);
+  });
+
+  it("rejects an invalid input pattern", () => {
+    const run = configWith((raw) => {
+      setValidChannels(raw, {
+        menus: [
+          {
+            key: "main",
+            promptKey: "ussd.main.prompt",
+            options: [{ key: "1", labelKey: "ussd.main.pay", next: "code" }],
+          },
+          {
+            key: "code",
+            type: "input",
+            promptKey: "ussd.code.prompt",
+            input: { key: "code", pattern: "(", errorKey: "ussd.code.invalid" },
+            next: "pay",
+          },
+          { key: "pay", type: "action", action: "pay" },
+        ],
+      });
+    });
+    expect(run).toThrow(/valid regular expression/);
+  });
+
+  it("rejects an input node pointing at an unknown menu", () => {
+    const run = configWith((raw) => {
+      setValidChannels(raw, {
+        menus: [
+          {
+            key: "main",
+            type: "input",
+            promptKey: "ussd.code.prompt",
+            input: { key: "code", errorKey: "ussd.code.invalid" },
+            next: "ghost",
+          },
+        ],
+      });
+    });
+    expect(run).toThrow(/input 'main' references unknown menu 'ghost'/);
+  });
+
+  it("defaults USSD and SMS limits when the sections are omitted", () => {
+    const config = configWith()();
+    expect(config.channels.ussd).toEqual({
+      sessionTimeoutSeconds: 180,
+      maxInputLength: 32,
+      maxSteps: 12,
+      rateLimit: { perMsisdnPerMinute: 20, perIpPerMinute: 120 },
+    });
+    expect(config.channels.sms).toEqual({
+      maxSendsPerDay: 5000,
+      maxSendsPerRecipientPerDay: 10,
+      rateLimit: { perMsisdnPerMinute: 6 },
+    });
+  });
+
+  it("defaults channel settings but rejects malformed overrides", () => {
+    const accepted = configWith((raw) => {
+      const channels = raw.channels as Record<string, unknown>;
+      channels.ussd = { maxSteps: 5 };
+      channels.sms = { maxSendsPerRecipientPerDay: 2 };
+    })();
+    expect(accepted.channels.ussd?.maxSteps).toBe(5);
+    expect(accepted.channels.ussd?.maxInputLength).toBe(32);
+    expect(accepted.channels.sms?.maxSendsPerRecipientPerDay).toBe(2);
+
+    const rejected = configWith((raw) => {
+      const channels = raw.channels as Record<string, unknown>;
+      channels.ussd = { maxSteps: 0 };
+    });
+    expect(rejected).toThrow(/maxSteps must be >= 1/);
   });
 
   it("reports every issue at once", () => {

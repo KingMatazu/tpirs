@@ -40,7 +40,13 @@
 
 **Git:** small, phase-scoped commits in conventional style (`chore: phase 0 foundations` matches history). commitlint is configured but not hooked — `lint-staged` is the only commit-time gate.
 
-**Current repo state:** Phases 0–1 committed; Phase 2 (asset registry) complete and committed: photo serving, public `GET /v1/verify/:token` (ADR 0007), SVG sticker export via `qrcode` (ADR 0009), asset-registry e2e suite, seed users `alpha.collector`/`beta.officer`. `PHASE2-TODO-APPLY.md` is untracked scratch — delete it; never commit it. Tenant-config fixtures must include `channels.otpMessageTemplate` (with a `{code}` placeholder) or validation throws.
+**Current repo state:** Phases 0–4 are committed; Phase 5 (driver channels: USSD/SMS) is next. Phase 2 (asset registry) delivered photo serving, public `GET /v1/verify/:token` (ADR 0007), and SVG sticker export via `qrcode` (ADR 0009). Phase 3 delivered the ledger, obligations, and fee engine (ADRs 0010–0015). Phase 4 delivered payment intake, attribution, suspense, receipts, the Postgres job queue, and Paystack/Remita adapter packages (ADRs 0016–0020).
+
+- **Paystack is the chosen payment gateway** for the first deployment. The adapter package passes the shared conformance/fixture suites; live sandbox wiring and the Phase 4 sandbox checks in `docs/decisions-needed.md` are still open. Remita stays as an alternative adapter.
+- **API-first arrives incrementally.** There is no OpenAPI document or `packages/api-client` yet; routes are hand-written Fastify and the contract is formalised as they stabilise, not retrofitted in one step.
+- **`GET /v1/verify/:token` returns `paymentStatus: "unknown"` until Phase 6**, when the delta-sync/verification rules land. Absence must never imply UNPAID.
+- **The two fake tenants are sample data in `packages/db/src/seed.ts`**, not `tenants/<slug>/` config files, so the seed can demonstrate two tenants side by side. Seed users include `alpha.collector`/`beta.officer`.
+- Tenant-config fixtures must include `channels.otpMessageTemplate` (with a `{code}` placeholder) or validation throws.
 
 ## 0. Mission and how to use this brief
 
@@ -92,7 +98,7 @@ Postgres is the one deliberate fixed choice. Any managed or self-hosted Postgres
 
 Frontend swappability: the admin dashboard and field app are separate clients of the OpenAPI contract. Generated API clients live in `packages/api-client`. Theming comes from design tokens, never hardcoded colors or logos.
 
-Adapters built **today**: a mock for every port, plus non-mock adapters for `ObjectStorage` (S3-compatible, local disk), `IdentityProvider` (db), `SecretsProvider` (env), `Telemetry` (OTel), and `AssetSchemaRegistry` (config). The remaining real adapters (Paystack, Remita, Africa's Talking, Termii, Redis queue, …) arrive with their phases.
+Adapters built **today**: a mock for every port, plus non-mock adapters for `ObjectStorage` (S3-compatible, local disk), `IdentityProvider` (db), `SecretsProvider` (env), `Telemetry` (OTel), `AssetSchemaRegistry` (config), `FeeEngine` (config), `JobQueue` (Postgres), and `PaymentProvider` (Paystack — the chosen gateway — plus Remita; both pass conformance against recorded fixtures, with live sandbox wiring still pending). The remaining real adapters (Africa's Talking, Termii, USSD, Redis queue, …) arrive with their phases.
 
 ## 4. Multi-tenancy and white-labelling
 

@@ -1,12 +1,56 @@
 import { PortError } from "@tpirs/ports";
 import type {
   InboundSms,
+  SmsCallbackInput,
   SmsCapabilities,
   SmsDeliveryReceipt,
   SmsMessage,
   SmsProvider,
   SmsSendResult,
 } from "@tpirs/ports";
+
+/** The canonical inbound callback body the mock adapter understands. */
+export const MOCK_INBOUND_SMS_CALLBACK: Readonly<Record<string, unknown>> = {
+  providerMessageId: "mock-inbound-1",
+  from: "+2348000000001",
+  text: "LEVY KJA-123",
+  receivedAt: "2026-06-15T09:00:00.000Z",
+};
+
+/** Builds a callback body from a normalized inbound message, for fixtures. */
+export function createMockInboundSmsCallback(
+  message: InboundSms,
+): Readonly<Record<string, unknown>> {
+  return {
+    providerMessageId: message.providerMessageId,
+    from: message.from,
+    text: message.text,
+    receivedAt: message.receivedAt.toISOString(),
+  };
+}
+
+function readRequiredString(body: Readonly<Record<string, unknown>>, field: string): string {
+  const value = body[field];
+  if (typeof value !== "string" || value.trim() === "") {
+    throw new PortError(
+      "SmsProvider",
+      "invalid_request",
+      `Missing, empty, or non-string inbound SMS field "${field}"`,
+    );
+  }
+  return value;
+}
+
+function readReceivedAt(body: Readonly<Record<string, unknown>>): Date {
+  const value = body["receivedAt"];
+  if (value === undefined) return new Date();
+  const receivedAt =
+    value instanceof Date ? value : typeof value === "string" ? new Date(value) : null;
+  if (receivedAt === null || Number.isNaN(receivedAt.getTime())) {
+    throw new PortError("SmsProvider", "invalid_request", 'Invalid inbound SMS field "receivedAt"');
+  }
+  return receivedAt;
+}
 
 export interface MockSmsProvider extends SmsProvider {
   /** All messages accepted by send(), in order (test inspection). */
@@ -59,6 +103,14 @@ export function createMockSmsProvider(): MockSmsProvider {
     },
     fetchInbound(since) {
       return Promise.resolve(inbound.filter((m) => m.receivedAt >= since));
+    },
+    parseInboundCallback(input: SmsCallbackInput): InboundSms {
+      return {
+        providerMessageId: readRequiredString(input.body, "providerMessageId"),
+        from: readRequiredString(input.body, "from"),
+        text: readRequiredString(input.body, "text"),
+        receivedAt: readReceivedAt(input.body),
+      };
     },
     failNextSend(code) {
       failure = code;

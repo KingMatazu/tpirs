@@ -1,3 +1,4 @@
+import { sql } from "kysely";
 import type { Transaction } from "kysely";
 import type { Database } from "../connection.js";
 import type { AssetRow } from "../connection.js";
@@ -115,6 +116,38 @@ export class AssetRepository {
       .selectFrom("assets")
       .select(ASSET_COLUMNS)
       .where("shortCode", "=", shortCode)
+      .executeTakeFirst();
+    return row === undefined ? undefined : toRecord(row);
+  }
+
+  /**
+   * Resolves the reference a driver types: a sticker short code first, then any
+   * attribute value (for example a plate number).
+   *
+   * Attribute keys are tenant-defined, so no key is hardcoded here. Matching is
+   * case-insensitive because plates are often retyped from memory on a feature
+   * phone. The query runs inside the tenant scope, so one tenant can never
+   * resolve another tenant's asset.
+   */
+  async findByReference(reference: string): Promise<AssetRecord | undefined> {
+    const trimmed = reference.trim();
+    if (trimmed === "") return undefined;
+
+    const byShortCode = await this.findByShortCode(trimmed);
+    if (byShortCode !== undefined) return byShortCode;
+
+    const row = await this.db
+      .selectFrom("assets")
+      .select(ASSET_COLUMNS)
+      .where(
+        sql<boolean>`exists (
+          select 1
+          from jsonb_each_text(assets.attributes) as attribute
+          where upper(attribute.value) = upper(${trimmed})
+        )`,
+      )
+      .orderBy("createdAt", "asc")
+      .limit(1)
       .executeTakeFirst();
     return row === undefined ? undefined : toRecord(row);
   }

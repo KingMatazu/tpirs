@@ -3,6 +3,7 @@ import type { Database } from "../connection.js";
 import { AssetPhotoRepository } from "./asset-photo.js";
 import { AssetRepository } from "./asset.js";
 import { AuditRepository } from "./audit.js";
+import { ChannelMessageRepository } from "./channel-messages.js";
 import { DeviceRepository } from "./device.js";
 import { OwnerRepository } from "./owner.js";
 import {
@@ -27,6 +28,7 @@ import { ZoneRepository } from "./zone.js";
 export * from "./asset-photo.js";
 export * from "./asset.js";
 export * from "./audit.js";
+export * from "./channel-messages.js";
 export * from "./device.js";
 export * from "./ledger.js";
 export * from "./owner.js";
@@ -46,6 +48,7 @@ export function repositories(db: Transaction<Database>): {
   devices: DeviceRepository;
   sessions: SessionRepository;
   audit: AuditRepository;
+  channelMessages: ChannelMessageRepository;
   owners: OwnerRepository;
   assets: AssetRepository;
   assetPhotos: AssetPhotoRepository;
@@ -67,6 +70,7 @@ export function repositories(db: Transaction<Database>): {
     devices: new DeviceRepository(db),
     sessions: new SessionRepository(db),
     audit: new AuditRepository(db),
+    channelMessages: new ChannelMessageRepository(db),
     owners: new OwnerRepository(db),
     assets: new AssetRepository(db),
     assetPhotos: new AssetPhotoRepository(db),

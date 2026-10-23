@@ -1,20 +1,41 @@
 import { validateTenantConfig } from "@tpirs/config";
 import type { TenantConfig } from "@tpirs/config";
+import { createChannelProviderFactory } from "@tpirs/channel-providers";
+import type { ChannelProviderFactory } from "@tpirs/channel-providers";
 import { createQrTokenSigner } from "@tpirs/crypto";
 import type { AnyDb } from "@tpirs/db";
-import type { AssetService, OtpService, OwnerService, PaymentService } from "@tpirs/application";
+import type {
+  AssetService,
+  InboundSmsService,
+  OtpService,
+  OwnerService,
+  PaymentService,
+  RateLimiter,
+  UssdService,
+} from "@tpirs/application";
 import type { QrTokenSigner } from "@tpirs/domain";
-import { createAssetService, createOtpService, createOwnerService } from "@tpirs/application";
-import { createPaymentService } from "@tpirs/application";
+import {
+  createAssetService,
+  createDriverChannelService,
+  createInboundSmsService,
+  createOtpService,
+  createOwnerService,
+  createPaymentService,
+  createRateLimiter,
+  createSmsCostGuard,
+  createUssdService,
+} from "@tpirs/application";
 import { createConfigAssetSchemaRegistry } from "@tpirs/asset-schema-registry-config";
 import { createConfigFeeEngine } from "@tpirs/fee-engine-config";
 import type {
   Cache,
   Clock,
+  LockService,
   ObjectStorage,
   PaymentProvider,
   SecretsProvider,
   SmsProvider,
+  Telemetry,
 } from "@tpirs/ports";
 import { readTenantConfig } from "./tenants.js";
 
@@ -40,6 +61,7 @@ export interface ServiceDeps {
   readonly sms: SmsProvider;
   readonly cache: Cache;
   readonly clock: Clock;
+  readonly locks: LockService;
   /** Secret reference holding the per-deployment QR signing key. */
   readonly qrKeyRef: string;
   /**
@@ -47,6 +69,13 @@ export interface ServiceDeps {
    * gateways exist; core code never learns a gateway's name.
    */
   readonly paymentProviders?: Readonly<Record<string, PaymentProvider>>;
+  /**
+   * Resolves tenant config to channel adapters. Defaults to the standard
+   * factory over `secrets`; tests inject their own transport to avoid the
+   * network entirely.
+   */
+  readonly channelProviders?: ChannelProviderFactory;
+  readonly telemetry?: Telemetry;
 }
 
 export interface Services {
@@ -56,6 +85,14 @@ export interface Services {
   readonly payment: PaymentService;
   /** Verifies presented QR tokens; also used by the public verify route. */
   readonly qrSigner: QrTokenSigner;
+  /** USSD callbacks, from parse to rendered provider response. */
+  readonly ussd: UssdService;
+  /** Inbound SMS commands and their queued replies. */
+  readonly inboundSms: InboundSmsService;
+  /** Shared abuse control for unauthenticated endpoints. */
+  readonly rateLimiter: RateLimiter;
+  /** Tenant config to live channel adapters; used by the webhook routes. */
+  readonly channelProviders: ChannelProviderFactory;
 }
 
 /**
@@ -79,13 +116,54 @@ export async function buildServices(deps: ServiceDeps): Promise<Services> {
   const otp = createOtpService({ cache: deps.cache, sms: deps.sms, clock: deps.clock });
 
   const paymentProviders = deps.paymentProviders ?? {};
+  const feeEngine = createConfigFeeEngine({ loadConfig });
   const payment = createPaymentService({
     db: deps.db,
     loadConfig,
-    feeEngine: createConfigFeeEngine({ loadConfig }),
+    feeEngine,
     providerFor: (name) => paymentProviders[name],
     now: () => deps.clock.now(),
   });
 
-  return { asset, owner, otp, payment, qrSigner };
+  const rateLimiter = createRateLimiter({ cache: deps.cache, clock: deps.clock });
+  const channelProviders =
+    deps.channelProviders ?? createChannelProviderFactory({ secrets: deps.secrets });
+  const driver = createDriverChannelService({
+    db: deps.db,
+    loadConfig,
+    feeEngine,
+    providerFor: (name) => paymentProviders[name],
+    now: () => deps.clock.now(),
+  });
+  const telemetryProps = deps.telemetry === undefined ? {} : { telemetry: deps.telemetry };
+  const ussd = createUssdService({
+    cache: deps.cache,
+    locks: deps.locks,
+    driver,
+    rateLimiter,
+    ...telemetryProps,
+  });
+  const inboundSms = createInboundSmsService({
+    db: deps.db,
+    driver,
+    rateLimiter,
+    costGuard: createSmsCostGuard({
+      db: deps.db,
+      clock: deps.clock,
+      ...telemetryProps,
+    }),
+    ...telemetryProps,
+  });
+
+  return {
+    asset,
+    owner,
+    otp,
+    payment,
+    qrSigner,
+    ussd,
+    inboundSms,
+    rateLimiter,
+    channelProviders,
+  };
 }

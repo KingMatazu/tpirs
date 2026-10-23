@@ -14,7 +14,9 @@
   },
   "dependencies": {
     "@tpirs/adapters-otel-telemetry": "workspace:*",
+    "@tpirs/adapters-env-secrets": "workspace:*",
     "@tpirs/application": "workspace:*",
+    "@tpirs/channel-providers": "workspace:*",
     "@tpirs/config": "workspace:*",
     "@tpirs/db": "workspace:*",
     "@tpirs/domain": "workspace:*",

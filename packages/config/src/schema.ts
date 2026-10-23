@@ -4,6 +4,8 @@
  * All fields are data-only and validated at startup (see validateTenantConfig).
  */
 
+import type { UssdMenuNode, UssdMenuOption } from "@tpirs/domain";
+
 export interface TenantIdentity {
   readonly name: string;
   readonly slug: string;
@@ -102,16 +104,29 @@ export interface TenantProviderBinding {
   readonly options?: Readonly<Record<string, string | number | boolean>>;
 }
 
-export interface TenantMenuOption {
-  readonly key: string;
-  readonly labelKey: string;
-  readonly next?: string;
+export type TenantMenuOption = UssdMenuOption;
+
+export type TenantMenu = UssdMenuNode;
+
+/** Language code to message key to translated text. */
+export type TenantMessages = Readonly<Record<string, Readonly<Record<string, string>>>>;
+
+export interface TenantUssdSettings {
+  readonly sessionTimeoutSeconds: number;
+  readonly maxInputLength: number;
+  readonly maxSteps: number;
+  readonly rateLimit: {
+    readonly perMsisdnPerMinute: number;
+    readonly perIpPerMinute: number;
+  };
 }
 
-export interface TenantMenu {
-  readonly key: string;
-  readonly promptKey: string;
-  readonly options: readonly TenantMenuOption[];
+export interface TenantSmsSettings {
+  readonly maxSendsPerDay: number;
+  readonly maxSendsPerRecipientPerDay: number;
+  readonly rateLimit: {
+    readonly perMsisdnPerMinute: number;
+  };
 }
 
 export interface TenantChannels {
@@ -126,7 +141,16 @@ export interface TenantChannels {
    * startup failure rather than a literal brace in a driver's SMS.
    */
   readonly smsReceiptTemplate: string;
+  /** Typed menu graph used by the pure USSD session engine. */
   readonly menus: readonly TenantMenu[];
+  /** Entry node; omitted when `menus` is empty, otherwise defaults to the first menu. */
+  readonly startMenu?: string;
+  /** Driver-facing copy keyed by language, then message key. */
+  readonly messages?: TenantMessages;
+  /** Session and abuse limits for USSD. */
+  readonly ussd?: TenantUssdSettings;
+  /** Cost and abuse limits for SMS. */
+  readonly sms?: TenantSmsSettings;
 }
 
 export interface TenantCashRules {

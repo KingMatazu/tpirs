@@ -27,11 +27,18 @@ export async function listPendingSms(
 ): Promise<readonly PendingSmsRef[]> {
   return db.transaction().execute(async (trx) => {
     await sql`set local role ${sql.raw(APP_ROLE)}`.execute(trx);
-    // The camel-case plugin renames result keys, so keep the aliases single
-    // lowercase words: `tenant_id` would arrive as `tenantId`.
-    const result = await sql<{ tenant: string; sms: string }>`
-      select tenant_id as tenant, sms_id as sms from list_pending_sms(${limit})
-    `.execute(trx);
-    return result.rows.map((row) => ({ tenantId: row.tenant, smsId: row.sms }));
+    // The message ids are returned by the `SECURITY DEFINER` function as `sms`
+    // (single-lowercase) because the CamelCasePlugin renames result keys, but the
+    // type of `PendingSmsRef` uses camelCase. Cast at the boundary.
+    const result =
+      await sql`select tenant_id as tenant, sms_id as sms from list_pending_sms(${limit})`.execute(
+        trx,
+      );
+    const rows = result.rows as Record<string, unknown>[];
+
+    return rows.map((row) => ({
+      tenantId: String(row["tenant"]),
+      smsId: String(row["sms"]),
+    }));
   });
 }

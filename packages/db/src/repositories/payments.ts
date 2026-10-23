@@ -1,4 +1,5 @@
 import type { Transaction } from "kysely";
+import { sql } from "kysely";
 import { hashToken } from "@tpirs/crypto";
 import type { Database } from "../connection.js";
 import type {
@@ -403,6 +404,15 @@ export interface EnqueueSmsParams {
   readonly obligationPeriodId?: string | null;
 }
 
+export interface CountSentSmsOnDateOptions {
+  /** IANA timezone from tenant config, so the count matches the business day. */
+  readonly timeZone: string;
+  /** Business date in YYYY-MM-DD form. */
+  readonly businessDate: string;
+  /** Restrict the count to one phone number, for the per-recipient limit. */
+  readonly recipient?: string;
+}
+
 export class SmsLogRepository {
   constructor(private readonly db: Transaction<Database>) {}
 
@@ -497,6 +507,27 @@ export class SmsLogRepository {
       .where("paymentId", "=", paymentId)
       .orderBy("createdAt", "asc")
       .execute();
+  }
+
+  /**
+   * Counts delivered messages for one business day, in the tenant's timezone.
+   *
+   * Receipts are transactional - a driver who paid is entitled to one - so the
+   * cost guard never suppresses them. They do count toward the budget: a day's
+   * spend is channel replies plus receipts, so the guard must see both tables.
+   */
+  async countSentOnDate(tenantId: string, options: CountSentSmsOnDateOptions): Promise<number> {
+    const recipientFilter =
+      options.recipient === undefined ? sql`` : sql`and recipient = ${options.recipient}`;
+    const result = await sql<{ count: string }>`
+      select count(*)::text as count
+      from sms_log
+      where tenant_id = ${tenantId}
+        and status = 'sent'
+        and (sent_at at time zone ${options.timeZone})::date = ${options.businessDate}::date
+        ${recipientFilter}
+    `.execute(this.db);
+    return Number(result.rows[0]?.count ?? "0");
   }
 }
 

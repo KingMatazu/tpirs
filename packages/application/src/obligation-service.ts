@@ -537,20 +537,9 @@ export class ObligationService {
 
       const amount = { amount: fee.amountMinor, currency: fee.currency };
       const sourceId = input.sourceId ?? null;
-      // The declaration is one action, so one idempotency key covers both legs:
-      // a replay returns the original transactions and allocates nothing again.
+      // The declaration is one action, so one idempotency key covers it: a
+      // replay returns the original transaction and allocates nothing again.
       const key = input.idempotencyKey ?? null;
-
-      const walletPost = await ledger.postTransaction(tenantId, {
-        idempotencyKey: key === null ? null : `${key}:wallet`,
-        postings: [
-          { accountCode: "GATEWAY_CLEARING", direction: "debit", amount, assetId },
-          { accountCode: "ASSET_WALLET", direction: "credit", amount, assetId },
-        ],
-        sourceType: "declaration",
-        sourceId,
-        description: "Wallet credit released by declaration",
-      });
 
       const allocationPost = await ledger.postTransaction(tenantId, {
         idempotencyKey: key === null ? null : `${key}:allocation`,
@@ -590,7 +579,7 @@ export class ObligationService {
         periodId: period.id,
         allocatedMinor: BigInt(fee.amountMinor),
         shortfallMinor: 0n,
-        walletTransactionId: walletPost.transaction.id,
+        walletTransactionId: null,
         transactionId: allocationPost.transaction.id,
       };
     });

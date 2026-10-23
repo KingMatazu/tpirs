@@ -90,6 +90,8 @@ export interface SessionTable {
   tenantId: string;
   userId: string;
   tokenHash: string;
+  /** "access" for bearer sessions; "refresh" for D26 rotation tokens. */
+  kind: Generated<string>;
   expiresAt: Timestamp;
   revokedAt: Timestamp | null;
   createdAt: Generated<Timestamp>;
@@ -300,6 +302,24 @@ export interface SmsLogTable {
   sentAt: Timestamp | null;
 }
 
+export interface ChannelMessageTable {
+  id: Generated<string>;
+  tenantId: string;
+  channel: "sms" | "ussd";
+  direction: "inbound" | "outbound";
+  kind: "inbound" | "menu" | "status" | "payment" | "receipt" | "notice";
+  recipient: string;
+  body: string;
+  status: Generated<"pending" | "sent" | "failed" | "received">;
+  providerMessageId: string | null;
+  replyToId: string | null;
+  dedupeKey: string | null;
+  attempts: Generated<number>;
+  lastError: string | null;
+  createdAt: Generated<Timestamp>;
+  sentAt: Timestamp | null;
+}
+
 export interface Database {
   tenants: TenantTable;
   zones: ZoneTable;
@@ -323,6 +343,7 @@ export interface Database {
   payments: PaymentTable;
   webhookEvents: WebhookEventTable;
   smsLog: SmsLogTable;
+  channelMessages: ChannelMessageTable;
 }
 
 export type TenantRow = Selectable<TenantTable>;
@@ -345,6 +366,7 @@ export type PaymentInstructionRow = Selectable<PaymentInstructionTable>;
 export type PaymentRow = Selectable<PaymentTable>;
 export type WebhookEventRow = Selectable<WebhookEventTable>;
 export type SmsLogRow = Selectable<SmsLogTable>;
+export type ChannelMessageRow = Selectable<ChannelMessageTable>;
 
 export interface DbOptions {
   readonly connectionString: string;

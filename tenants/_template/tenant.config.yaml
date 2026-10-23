@@ -76,16 +76,90 @@ channels:
   smsKeyword: "LEVY"
   otpMessageTemplate: "Template Levy: your verification code is {code}."
   smsReceiptTemplate: "Template Levy receipt {receiptNo}: {amount} paid for {assetRef} on {date}."
+  startMenu: "main"
+  messages:
+    en:
+      ussd.main.prompt: "Template Levy. Reply with an option."
+      ussd.main.pay: "Pay today's levy"
+      ussd.main.status: "Check payment status"
+      ussd.main.invalid: "Unknown option. Try again."
+      ussd.common.cancel: "Cancel"
+      ussd.common.confirm: "Confirm"
+      ussd.pay.enter: "Enter your vehicle plate or sticker code."
+      ussd.pay.invalid: "That code is not valid. Try again."
+      ussd.pay.confirm: "Pay today's levy for {assetRef}?"
+      ussd.status.enter: "Enter your vehicle plate or sticker code."
+      ussd.status.invalid: "That code is not valid. Try again."
+      ussd.status.paid: "Paid today for {assetRef}."
+      ussd.status.none: "No payment recorded today for {assetRef}."
+      ussd.pay.created: "Payment request created for {assetRef}."
+      ussd.pay.failed: "We could not start a payment. Try again later."
+      ussd.pay.balance: "Paid today from your balance for {assetRef}."
+      ussd.pay.covered: "Your balance already covers today's levy for {assetRef}."
+      ussd.pay.insufficient: "Your balance is short by {amount} for {assetRef}."
+      ussd.asset.unknown: "No vehicle matches {assetRef}."
+      ussd.common.error: "Something went wrong. Try again later."
+      ussd.session.cancelled: "Cancelled. Dial back whenever you need to pay."
+      ussd.session.too_many_steps: "Too many steps. Please start again."
+      ussd.rate.limited: "Too many requests. Please wait a minute and try again."
+      ussd.session.busy: "Your request is still being processed. Please wait."
+      sms.command.unknown: "Reply with {keyword} followed by your plate or sticker code."
+  ussd:
+    sessionTimeoutSeconds: 180
+    maxInputLength: 32
+    maxSteps: 12
+    rateLimit:
+      perMsisdnPerMinute: 20
+      perIpPerMinute: 120
+  sms:
+    maxSendsPerDay: 5000
+    maxSendsPerRecipientPerDay: 10
+    rateLimit:
+      perMsisdnPerMinute: 6
   menus:
     - key: "main"
+      type: "menu"
       promptKey: "ussd.main.prompt"
+      invalidKey: "ussd.main.invalid"
       options:
         - key: "1"
           labelKey: "ussd.main.pay"
-          next: "pay"
+          next: "pay.enter"
         - key: "2"
           labelKey: "ussd.main.status"
-          next: "status"
+          next: "status.enter"
+        - key: "0"
+          labelKey: "ussd.common.cancel"
+          action: "cancel"
+    - key: "pay.enter"
+      type: "input"
+      promptKey: "ussd.pay.enter"
+      input:
+        key: "assetRef"
+        pattern: "^[A-Z0-9]{5,8}$"
+        errorKey: "ussd.pay.invalid"
+      next: "pay.confirm"
+    - key: "pay.confirm"
+      type: "menu"
+      promptKey: "ussd.pay.confirm"
+      options:
+        - key: "1"
+          labelKey: "ussd.common.confirm"
+          action: "pay"
+        - key: "2"
+          labelKey: "ussd.common.cancel"
+          action: "cancel"
+    - key: "status.enter"
+      type: "input"
+      promptKey: "ussd.status.enter"
+      input:
+        key: "assetRef"
+        pattern: "^[A-Z0-9]{5,8}$"
+        errorKey: "ussd.status.invalid"
+      next: "status.run"
+    - key: "status.run"
+      type: "action"
+      action: "status"
 
 cashRules:
   enabled: true

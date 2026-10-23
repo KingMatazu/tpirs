@@ -25,6 +25,7 @@
     "@tpirs/crypto": "workspace:*",
     "@tpirs/db": "workspace:*",
     "@tpirs/domain": "workspace:*",
+    "@tpirs/i18n": "workspace:*",
     "@tpirs/ports": "workspace:*",
     "qrcode": "^1.5.4"
   },

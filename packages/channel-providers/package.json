@@ -1,0 +1,36 @@
+{
+  "name": "@tpirs/channel-providers",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b && tsc -p tsconfig.test.json",
+    "lint": "eslint src",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@tpirs/config": "workspace:*",
+    "@tpirs/ports": "workspace:*",
+    "@tpirs/sms-provider-africastalking": "workspace:*",
+    "@tpirs/sms-provider-mock": "workspace:*",
+    "@tpirs/sms-provider-termii": "workspace:*",
+    "@tpirs/ussd-provider-africastalking": "workspace:*",
+    "@tpirs/ussd-provider-mock": "workspace:*"
+  },
+  "devDependencies": {
+    "@tpirs/secrets-provider-mock": "workspace:*",
+    "vitest": "^3.2.4"
+  }
+}

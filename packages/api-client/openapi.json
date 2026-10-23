@@ -1,0 +1,187 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "tpirs API",
+    "version": "0.0.0",
+    "description": "Revenue collection platform API. Clients must use packages/api-client."
+  },
+  "components": {
+    "schemas": {
+      "def-0": {
+        "type": "object",
+        "required": ["userId", "tenantId", "displayName", "roles"],
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "tenantId": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "title": "StaffUser"
+      },
+      "def-1": {
+        "type": "object",
+        "required": [
+          "id",
+          "assetTypeKey",
+          "status",
+          "zoneId",
+          "ownerId",
+          "attributes",
+          "qrToken",
+          "shortCode"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "assetTypeKey": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["active", "suspended", "retired"]
+          },
+          "zoneId": {
+            "type": "string",
+            "nullable": true
+          },
+          "ownerId": {
+            "type": "string",
+            "nullable": true
+          },
+          "attributes": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "qrToken": {
+            "type": "string"
+          },
+          "shortCode": {
+            "type": "string"
+          }
+        },
+        "title": "Asset"
+      },
+      "def-2": {
+        "type": "object",
+        "required": ["id", "displayName", "phone", "phoneVerifiedAt"],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "phone": {
+            "type": "string"
+          },
+          "phoneVerifiedAt": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "title": "Owner"
+      },
+      "def-3": {
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "amountMinor",
+          "currency",
+          "provider",
+          "providerReference",
+          "assetId",
+          "attributionKind",
+          "businessDate",
+          "receiptNumber",
+          "failureReason",
+          "createdAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["applied", "credited", "suspense", "rejected"]
+          },
+          "amountMinor": {
+            "type": "string"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "providerReference": {
+            "type": "string",
+            "nullable": true
+          },
+          "assetId": {
+            "type": "string",
+            "nullable": true
+          },
+          "attributionKind": {
+            "type": "string",
+            "nullable": true
+          },
+          "businessDate": {
+            "type": "string",
+            "nullable": true
+          },
+          "receiptNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "failureReason": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string"
+          }
+        },
+        "title": "Payment"
+      },
+      "def-4": {
+        "type": "object",
+        "required": ["id", "kind", "recipient", "body", "status", "createdAt"],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "recipient": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          }
+        },
+        "title": "OutboxMessage"
+      }
+    }
+  },
+  "paths": {}
+}
