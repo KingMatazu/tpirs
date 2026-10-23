@@ -452,6 +452,38 @@ importers:
         specifier: ^3.2.4
         version: 3.2.7(@types/node@24.19.2)(jiti@2.6.1)(tsx@4.23.15)(yaml@2.9.1)
 
+  packages/adapters/payment-provider/paystack:
+    dependencies:
+      '@tpirs/contracts':
+        specifier: workspace:*
+        version: link:../../../contracts
+      '@tpirs/domain':
+        specifier: workspace:*
+        version: link:../../../domain
+      '@tpirs/ports':
+        specifier: workspace:*
+        version: link:../../../ports
+    devDependencies:
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.7(@types/node@24.19.2)(jiti@2.6.1)(tsx@4.23.15)(yaml@2.9.1)
+
+  packages/adapters/payment-provider/remita:
+    dependencies:
+      '@tpirs/contracts':
+        specifier: workspace:*
+        version: link:../../../contracts
+      '@tpirs/domain':
+        specifier: workspace:*
+        version: link:../../../domain
+      '@tpirs/ports':
+        specifier: workspace:*
+        version: link:../../../ports
+    devDependencies:
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.7(@types/node@24.19.2)(jiti@2.6.1)(tsx@4.23.15)(yaml@2.9.1)
+
   packages/adapters/receipt-renderer/mock:
     dependencies:
       '@tpirs/contracts':

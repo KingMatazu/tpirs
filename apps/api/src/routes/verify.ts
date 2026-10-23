@@ -8,9 +8,9 @@ import type { Services } from "../services.js";
 /**
  * Public sticker verification. Officers scan a QR and resolve it to the asset;
  * the endpoint is unauthenticated and rate limiting arrives with the driver
- * channels phase (see docs/decisions-needed.md). Payment status is absent on
- * purpose: obligations and payments do not exist before the ledger phase, and
- * an absent field must never be read as UNPAID.
+ * channels phase (see docs/decisions-needed.md). Payment status is included
+ * when the ledger is available, but an absent/missing value is never a signal
+ * that the asset is unpaid.
  */
 
 function notFound(request: { id: unknown }) {
@@ -49,6 +49,9 @@ export function registerVerifyRoutes(
         id: photo.id,
         url: `/v1/assets/${asset.id}/photos/${photo.id}`,
       })),
+      // Payment status is never "unpaid" by absence; consumers must not infer a
+      // debt from a missing field under pay-per-use.
+      paymentStatus: "unknown",
     });
   });
 }

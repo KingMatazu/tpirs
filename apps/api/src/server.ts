@@ -10,6 +10,8 @@ import { registerAuthRoutes } from "./routes/auth.js";
 import { registerConfigRoutes } from "./routes/config.js";
 import { registerAssetRoutes } from "./routes/assets.js";
 import { registerVerifyRoutes } from "./routes/verify.js";
+import { registerWebhookRoutes } from "./routes/webhooks.js";
+import { registerPaymentRoutes } from "./routes/payments.js";
 
 export interface HealthResponse {
   readonly status: "ok";
@@ -33,6 +35,22 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
 
   void app.register(sensible);
 
+  // Capture the raw body before JSON parsing so webhook signatures can be
+  // verified byte-for-byte against the provider's payload.
+  app.addContentTypeParser("application/json", { parseAs: "string" }, (req, body, done) => {
+    (req as unknown as { rawBody: string }).rawBody = body as string;
+    try {
+      const parsed: unknown = JSON.parse(body as string);
+      done(null, parsed);
+    } catch (err) {
+      done(err as Error, undefined);
+    }
+  });
+  app.addContentTypeParser("text/plain", { parseAs: "string" }, (req, body, done) => {
+    (req as unknown as { rawBody: string }).rawBody = body as string;
+    done(null, body);
+  });
+
   app.addHook("onRequest", (request, reply, done) => {
     reply.header("x-request-id", request.id);
     done();
@@ -43,11 +61,20 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     app.addHook("onResponse", auditOnSuccess(options.db));
     registerAuthRoutes(app, { identity: options.identity, db: options.db });
     registerConfigRoutes(app, { identity: options.identity, db: options.db });
+    if (options.services !== undefined) {
+      registerPaymentRoutes(app, { services: options.services });
+    }
   }
 
   if (options.services !== undefined && options.loadConfig !== undefined) {
     registerAssetRoutes(app, { services: options.services, loadConfig: options.loadConfig });
     registerVerifyRoutes(app, { services: options.services, loadConfig: options.loadConfig });
+  }
+
+  // Webhooks are unauthenticated but tokenised; they must be registered even
+  // before identity is fully configured, because providers call them directly.
+  if (options.services !== undefined) {
+    registerWebhookRoutes(app, { services: options.services });
   }
 
   app.addHook("onResponse", (request, reply, done) => {
