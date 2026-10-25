@@ -19,6 +19,10 @@ export interface MockIdentityProvider extends IdentityProvider {
   addUser(user: MockIdentityUser): void;
 }
 
+function issueToken(prefix: string, counter: number): string {
+  return `mock-${prefix}-${String(counter)}`;
+}
+
 export function createMockIdentityProvider(
   initialUsers: readonly MockIdentityUser[] = [
     {
@@ -35,10 +39,28 @@ export function createMockIdentityProvider(
 ): MockIdentityProvider {
   const users = new Map(initialUsers.map((u) => [`${u.identity.tenantId}:${u.username}`, u]));
   const sessions = new Map<string, AuthSession>();
+  const refreshOwners = new Map<string, { userKey: string; session: AuthSession }>();
   let counter = 0;
 
   function unauthorized(message: string): PortError {
     return new PortError("IdentityProvider", "unauthorized", message);
+  }
+
+  function issue(user: MockIdentityUser): AuthSession {
+    counter += 1;
+    const session: AuthSession = {
+      token: issueToken("session", counter),
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      user: user.identity,
+      refreshToken: issueToken("refresh", counter),
+      refreshExpiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+    };
+    sessions.set(session.token, session);
+    refreshOwners.set(session.refreshToken, {
+      userKey: `${user.identity.tenantId}:${user.identity.displayName}`,
+      session,
+    });
+    return session;
   }
 
   return {
@@ -48,14 +70,23 @@ export function createMockIdentityProvider(
       if (user?.password !== request.password) {
         return Promise.reject(unauthorized("Invalid credentials"));
       }
-      counter += 1;
-      const session: AuthSession = {
-        token: `mock-session-${String(counter)}`,
-        expiresAt: new Date(Date.now() + 60 * 60 * 1000),
-        user: user.identity,
-      };
-      sessions.set(session.token, session);
-      return Promise.resolve(session);
+      return Promise.resolve(issue(user));
+    },
+    refreshSession(refreshToken: string): Promise<AuthSession> {
+      const owner = refreshOwners.get(refreshToken);
+      if (owner === undefined) {
+        return Promise.reject(unauthorized("Session is unknown or revoked"));
+      }
+      // Single use: delete the old refresh token so replay fails closed.
+      refreshOwners.delete(refreshToken);
+      const userKey = owner.userKey;
+      // Find the user by scanning initial users; the mock keeps its identity map.
+      for (const user of users.values()) {
+        if (`${user.identity.tenantId}:${user.identity.displayName}` === userKey) {
+          return Promise.resolve(issue(user));
+        }
+      }
+      return Promise.reject(unauthorized("Session is unknown or revoked"));
     },
     verifySession(token): Promise<StaffIdentity> {
       const session = sessions.get(token);
@@ -66,6 +97,8 @@ export function createMockIdentityProvider(
     },
     revokeSession(token) {
       sessions.delete(token);
+      // Best effort: if a refresh token is passed, drop its rotation entry.
+      refreshOwners.delete(token);
       return Promise.resolve();
     },
     addUser(user) {

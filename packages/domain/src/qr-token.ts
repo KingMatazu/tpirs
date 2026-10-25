@@ -1,6 +1,7 @@
 import { DomainError } from "./errors.js";
 import { qrPayload } from "./asset.js";
 import type { QrPayload } from "./asset.js";
+import { readQrPayload } from "./verification.js";
 
 /**
  * Computes and checks the checksum portion of a QR token. Implemented with
@@ -55,6 +56,9 @@ export function parseQrToken(token: string, signer: QrTokenSigner): QrPayload {
   }
   return payload;
 }
+
+/** Re-exports the offline-safe structural parser for the field app. */
+export { readQrPayload };
 
 /**
  * Renders a tenant-configured token format (e.g. `QR-{id}`) by substituting the

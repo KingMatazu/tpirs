@@ -1,16 +1,20 @@
 import type { FastifyInstance } from "fastify";
-import { InvalidQrTokenError } from "@tpirs/domain";
+import { InvalidQrTokenError, paymentStatusFromPeriod } from "@tpirs/domain";
 import { AssetNotFoundError } from "@tpirs/application";
 import type { TenantConfigLoader } from "@tpirs/application";
+import { todayInTimeZone } from "@tpirs/domain";
+import { repositories, withTenant } from "@tpirs/db";
 import { errorEnvelope } from "../errors.js";
 import type { Services } from "../services.js";
+import { verifyTokenSchema } from "../schemas.js";
+
+const VERIFY_RATE_LIMIT = { limit: 60, windowSeconds: 60 } as const;
 
 /**
  * Public sticker verification. Officers scan a QR and resolve it to the asset;
- * the endpoint is unauthenticated and rate limiting arrives with the driver
- * channels phase (see docs/decisions-needed.md). Payment status is included
- * when the ledger is available, but an absent/missing value is never a signal
- * that the asset is unpaid.
+ * the endpoint is unauthenticated (ADR 0007) but rate-limited per source IP
+ * (ADR 0024/D5). Payment status reflects the recorded period for the current
+ * business day and is never inferred as a debt from absence under pay-per-use.
  */
 
 function notFound(request: { id: unknown }) {
@@ -19,11 +23,26 @@ function notFound(request: { id: unknown }) {
 
 export function registerVerifyRoutes(
   app: FastifyInstance,
-  context: { readonly services: Services; readonly loadConfig: TenantConfigLoader },
+  context: {
+    readonly services: Services;
+    readonly loadConfig: TenantConfigLoader;
+    readonly db: import("@tpirs/db").AnyDb;
+  },
 ): void {
-  const { services, loadConfig } = context;
+  const { services, loadConfig, db } = context;
 
-  app.get("/v1/verify/:token", async (request, reply) => {
+  app.get("/v1/verify/:token", { schema: verifyTokenSchema }, async (request, reply) => {
+    const limit = await services.rateLimiter.consume(
+      `verify:ip:${request.ip}`,
+      VERIFY_RATE_LIMIT,
+    );
+    if (!limit.allowed) {
+      void reply.header("Retry-After", String(limit.retryAfterSeconds));
+      return reply
+        .code(429)
+        .send(errorEnvelope("rate_limited", "Too many requests", request.id));
+    }
+
     const { token } = request.params as { token: string };
     let verified: Awaited<ReturnType<typeof services.asset.verifyQrToken>>;
     try {
@@ -38,6 +57,15 @@ export function registerVerifyRoutes(
     const { asset, photos } = verified;
     const config = await loadConfig(asset.tenantId);
     const type = config?.assetTypes.find((t) => t.key === asset.assetTypeKey);
+    const businessDate = todayInTimeZone(config?.locale.timezone ?? "UTC", new Date());
+
+    let paymentStatus: "paid" | "no_payment_recorded" | "unknown" = "unknown";
+    if (config !== undefined) {
+      const period = await withTenant(db, asset.tenantId, async (tx) =>
+        repositories(tx).obligations.findByAssetAndDate(asset.tenantId, asset.id, businessDate),
+      );
+      paymentStatus = paymentStatusFromPeriod(period?.status ?? "none");
+    }
 
     return reply.send({
       status: asset.status,
@@ -49,9 +77,8 @@ export function registerVerifyRoutes(
         id: photo.id,
         url: `/v1/assets/${asset.id}/photos/${photo.id}`,
       })),
-      // Payment status is never "unpaid" by absence; consumers must not infer a
-      // debt from a missing field under pay-per-use.
-      paymentStatus: "unknown",
+      paymentStatus,
+      businessDate,
     });
   });
 }

@@ -11,6 +11,7 @@ import {
   getOwnerSchema,
   listOutboxSchema,
   listPaymentsSchema,
+  listAuditSchema,
   resolveSuspenseSchema,
   searchAssetsSchema,
   verifyTokenSchema,
@@ -118,6 +119,23 @@ describe("declared response schemas serialize complete payloads", () => {
       photos: [{ id: "ph_1", url: "/v1/assets/as_1/photos/ph_1" }],
       paymentStatus: "unknown",
     }));
+    app.get("/v1/audit", { schema: listAuditSchema }, async () => ({
+      entries: [
+        {
+          id: "a_1",
+          action: "asset.register",
+          entityType: "asset",
+          entityId: "as_1",
+          actorUserId: "u1",
+          before: null,
+          after: { plate_number: "AB-123" },
+          requestId: "req-1",
+          ip: "127.0.0.1",
+          createdAt: "2026-10-23T10:00:00.000Z",
+        },
+      ],
+      nextCursor: null,
+    }));
 
     await app.ready();
   });
@@ -218,5 +236,27 @@ describe("declared response schemas serialize complete payloads", () => {
     expect(body.attributes).toEqual({ plate_number: "AB-123" });
     expect(body.photos).toEqual([{ id: "ph_1", url: "/v1/assets/as_1/photos/ph_1" }]);
     expect((response.json() as { paymentStatus: string }).paymentStatus).toBe("unknown");
+  });
+
+  it("serializes audit entries with snapshots preserved", async () => {
+    const response = await app.inject({ method: "GET", url: "/v1/audit" });
+    expect(response.statusCode).toBe(200);
+    const body = response.json() as {
+      entries: Record<string, unknown>[];
+      nextCursor: string | null;
+    };
+    expect(body.nextCursor).toBe(null);
+    expect(body.entries[0]).toEqual({
+      id: "a_1",
+      action: "asset.register",
+      entityType: "asset",
+      entityId: "as_1",
+      actorUserId: "u1",
+      before: null,
+      after: { plate_number: "AB-123" },
+      requestId: "req-1",
+      ip: "127.0.0.1",
+      createdAt: "2026-10-23T10:00:00.000Z",
+    });
   });
 });

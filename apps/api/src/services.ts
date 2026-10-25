@@ -9,6 +9,7 @@ import type {
   InboundSmsService,
   OtpService,
   OwnerService,
+  PaidSetSyncService,
   PaymentService,
   RateLimiter,
   UssdService,
@@ -20,6 +21,7 @@ import {
   createInboundSmsService,
   createOtpService,
   createOwnerService,
+  createPaidSetSyncService,
   createPaymentService,
   createRateLimiter,
   createSmsCostGuard,
@@ -93,6 +95,8 @@ export interface Services {
   readonly rateLimiter: RateLimiter;
   /** Tenant config to live channel adapters; used by the webhook routes. */
   readonly channelProviders: ChannelProviderFactory;
+  /** Paid-set snapshot/delta feed for the offline field app. */
+  readonly paidSetSync: PaidSetSyncService;
 }
 
 /**
@@ -154,6 +158,7 @@ export async function buildServices(deps: ServiceDeps): Promise<Services> {
     }),
     ...telemetryProps,
   });
+  const paidSetSync = createPaidSetSyncService({ db: deps.db, loadConfig, now: () => deps.clock.now() });
 
   return {
     asset,
@@ -165,5 +170,6 @@ export async function buildServices(deps: ServiceDeps): Promise<Services> {
     inboundSms,
     rateLimiter,
     channelProviders,
+    paidSetSync,
   };
 }

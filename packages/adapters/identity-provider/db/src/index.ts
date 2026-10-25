@@ -13,14 +13,34 @@ import type { AnyDb } from "@tpirs/db";
 
 export interface DbIdentityProviderOptions {
   readonly db: AnyDb;
-  /** Session lifetime in seconds. */
+  /** Access token lifetime in seconds. */
   readonly sessionTtlSeconds?: number;
+  /** Refresh token lifetime in seconds (default 30 days). */
+  readonly refreshTtlSeconds?: number;
   /** When true, a TOTP code is required for every authentication. */
   readonly requireTotp?: boolean;
 }
 
 function unauthorized(message: string): PortError {
   return new PortError("IdentityProvider", "unauthorized", message);
+}
+
+function issueToken(): string {
+  return randomUUID() + randomUUID();
+}
+
+function staffIdentity(
+  userId: string,
+  tenantId: string,
+  displayName: string,
+  roles: readonly string[],
+): StaffIdentity {
+  return {
+    userId,
+    tenantId,
+    displayName,
+    roles: [...roles],
+  };
 }
 
 /**
@@ -31,6 +51,7 @@ function unauthorized(message: string): PortError {
 export function createDbIdentityProvider(options: DbIdentityProviderOptions): IdentityProvider {
   const { db } = options;
   const sessionTtlSeconds = options.sessionTtlSeconds ?? 12 * 60 * 60;
+  const refreshTtlSeconds = options.refreshTtlSeconds ?? 30 * 24 * 60 * 60;
   const requireTotp = options.requireTotp ?? false;
 
   async function bindDevice(
@@ -46,6 +67,67 @@ export function createDbIdentityProvider(options: DbIdentityProviderOptions): Id
         platform: device.platform,
       });
     });
+  }
+
+  async function loadIdentity(db: AnyDb, tenantId: string, userId: string): Promise<StaffIdentity> {
+    return withTenant(db, tenantId, async (tx) => {
+      const repos = repositories(tx);
+      const user = await repos.users.findById(userId);
+      if (user?.status !== "active") {
+        throw unauthorized("User is not active");
+      }
+      const roles = await repos.roles.roleKeysForUser(user.id);
+      return staffIdentity(user.id, tenantId, user.displayName, roles);
+    });
+  }
+
+  async function findSessionTenant(
+    tokenHash: string,
+  ): Promise<{ tenantId: string; userId: string; kind: "access" | "refresh" } | undefined> {
+    const row = await db
+      .selectFrom("sessions")
+      .select(["tenantId", "userId", "kind"])
+      .where("tokenHash", "=", tokenHash)
+      .executeTakeFirst();
+    if (row?.tenantId == null) {
+      return undefined;
+    }
+    return { tenantId: row.tenantId, userId: row.userId, kind: row.kind as "access" | "refresh" };
+  }
+
+  async function issueSessionPair(
+    tenantId: string,
+    userId: string,
+  ): Promise<{
+    accessToken: string;
+    accessExpiresAt: Date;
+    refreshToken: string;
+    refreshExpiresAt: Date;
+    identity: StaffIdentity;
+  }> {
+    const identity = await loadIdentity(db, tenantId, userId);
+    const accessToken = issueToken();
+    const refreshToken = issueToken();
+    const accessExpiresAt = new Date(Date.now() + sessionTtlSeconds * 1000);
+    const refreshExpiresAt = new Date(Date.now() + refreshTtlSeconds * 1000);
+    await withTenant(db, tenantId, async (tx) => {
+      const repos = repositories(tx);
+      await repos.sessions.create({
+        tenantId,
+        userId,
+        tokenHash: hashToken(accessToken),
+        kind: "access",
+        expiresAt: accessExpiresAt,
+      });
+      await repos.sessions.create({
+        tenantId,
+        userId,
+        tokenHash: hashToken(refreshToken),
+        kind: "refresh",
+        expiresAt: refreshExpiresAt,
+      });
+    });
+    return { accessToken, accessExpiresAt, refreshToken, refreshExpiresAt, identity };
   }
 
   return {
@@ -72,92 +154,109 @@ export function createDbIdentityProvider(options: DbIdentityProviderOptions): Id
               return { ok: false as const };
             }
           }
-          const token = randomUUID() + randomUUID();
-          const tokenHash = hashToken(token);
-          const expiresAt = new Date(Date.now() + sessionTtlSeconds * 1000);
-          await repos.sessions.create({
-            tenantId: request.tenantId,
-            userId: user.id,
-            tokenHash,
-            expiresAt,
-          });
-          const roles = await repos.roles.roleKeysForUser(user.id);
-          const identity: StaffIdentity = {
-            userId: user.id,
-            tenantId: request.tenantId,
-            displayName: user.displayName,
-            roles: [...roles],
-          };
-          return { ok: true as const, token, expiresAt, identity };
+          return { ok: true as const, userId: user.id };
         });
 
         if (!result.ok) throw unauthorized("Invalid credentials");
+        const pair = await issueSessionPair(request.tenantId, result.userId);
         if (request.device !== undefined) {
-          await bindDevice(request.tenantId, result.identity.userId, request.device);
+          await bindDevice(request.tenantId, pair.identity.userId, request.device);
         }
         return {
-          token: result.token,
-          expiresAt: result.expiresAt,
-          user: result.identity,
+          token: pair.accessToken,
+          expiresAt: pair.accessExpiresAt,
+          user: pair.identity,
+          refreshToken: pair.refreshToken,
+          refreshExpiresAt: pair.refreshExpiresAt,
         };
       })();
     },
 
-    verifySession(token: string): Promise<StaffIdentity> {
+    refreshSession(refreshToken: string): Promise<AuthSession> {
       return (async () => {
-        // Sessions are tenant-scoped, but a token does not reveal its tenant.
-        // The sessions table is queried by token hash under system privileges
-        // to discover the tenant, then re-read within that tenant's scope.
-        const tenantId = await findSessionTenant(db, hashToken(token));
-        if (tenantId === undefined) throw unauthorized("Session is unknown or revoked");
-        return withTenant(db, tenantId, async (tx) => {
+        const tokenHash = hashToken(refreshToken);
+        // Rotation must be atomic: revoke the presented refresh token and
+        // create a new pair before returning. The sessions table is tenant-scoped,
+        // so discover the tenant under system privileges then rotate inside that
+        // tenant scope.
+        const discovery = await findSessionTenant(tokenHash);
+        if (discovery === undefined) throw unauthorized("Session is unknown or revoked");
+        if (discovery.kind !== "refresh") throw unauthorized("Session is unknown or revoked");
+
+        const rotated = await withTenant(db, discovery.tenantId, async (tx) => {
           const repos = repositories(tx);
-          const session = await repos.sessions.findByTokenHash(hashToken(token));
+          const session = await repos.sessions.findByTokenHash(tokenHash);
           if (session === undefined) {
             throw unauthorized("Session is unknown or revoked");
           }
           if (session.revokedAt !== null) {
             throw unauthorized("Session is unknown or revoked");
           }
+          if ((session as { kind?: string }).kind !== "refresh") {
+            throw unauthorized("Session is unknown or revoked");
+          }
+          if (session.expiresAt.getTime() <= Date.now()) {
+            throw unauthorized("Session has expired");
+          }
+          // Single use: revoking must succeed; if another call already did it,
+          // the row is gone from the active set and the second caller gets 401.
+          const revoked = await repos.sessions.revoke(tokenHash);
+          if (!revoked) {
+            throw unauthorized("Session is unknown or revoked");
+          }
+          return issueSessionPair(discovery.tenantId, discovery.userId);
+        });
+
+        return {
+          token: rotated.accessToken,
+          expiresAt: rotated.accessExpiresAt,
+          user: rotated.identity,
+          refreshToken: rotated.refreshToken,
+          refreshExpiresAt: rotated.refreshExpiresAt,
+        };
+      })();
+    },
+
+    verifySession(token: string): Promise<StaffIdentity> {
+      return (async () => {
+        const tokenHash = hashToken(token);
+        const discovery = await findSessionTenant(tokenHash);
+        if (discovery === undefined) throw unauthorized("Session is unknown or revoked");
+        if (discovery.kind !== "access") throw unauthorized("Session is unknown or revoked");
+        return withTenant(db, discovery.tenantId, async (tx) => {
+          const repos = repositories(tx);
+          const session = await repos.sessions.findByTokenHash(tokenHash);
+          if (session === undefined) {
+            throw unauthorized("Session is unknown or revoked");
+          }
+          if (session.revokedAt !== null) {
+            throw unauthorized("Session is unknown or revoked");
+          }
+          if ((session as { kind?: string }).kind !== "access") {
+            throw unauthorized("Session is unknown or revoked");
+          }
           if (session.expiresAt.getTime() <= Date.now()) {
             throw unauthorized("Session has expired");
           }
           const user = await repos.users.findById(session.userId);
-          if (user === undefined) {
-            throw unauthorized("User is not active");
-          }
-          if (user.status !== "active") {
+          if (user?.status !== "active") {
             throw unauthorized("User is not active");
           }
           const roles = await repos.roles.roleKeysForUser(user.id);
-          return {
-            userId: user.id,
-            tenantId,
-            displayName: user.displayName,
-            roles: [...roles],
-          };
+          return staffIdentity(user.id, discovery.tenantId, user.displayName, roles);
         });
       })();
     },
 
     revokeSession(token: string): Promise<void> {
       return (async () => {
-        const tenantId = await findSessionTenant(db, hashToken(token));
-        if (tenantId === undefined) return;
-        await withTenant(db, tenantId, async (tx) => {
-          await repositories(tx).sessions.revoke(hashToken(token));
+        const tokenHash = hashToken(token);
+        const discovery = await findSessionTenant(tokenHash);
+        if (discovery === undefined) return;
+        await withTenant(db, discovery.tenantId, async (tx) => {
+          await repositories(tx).sessions.revoke(tokenHash);
         });
       })();
     },
   };
-}
-
-/** Resolves the tenant that owns a session token hash, using system privileges. */
-async function findSessionTenant(db: AnyDb, tokenHash: string): Promise<string | undefined> {
-  const row = await db
-    .selectFrom("sessions")
-    .select("tenantId")
-    .where("tokenHash", "=", tokenHash)
-    .executeTakeFirst();
-  return row?.tenantId;
 }

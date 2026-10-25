@@ -165,6 +165,20 @@ never duplicates the policy.
 - OpenAPI emission is part of CI so the contract and the server cannot
   drift.
 
+## Status (written 2026-10-23)
+
+- Steps 0–1 groundwork plus Steps 4, 5, and 6 are written in one pass:
+  `packages/ui-tokens` (tokens + Intl helpers, tests), `apps/admin` (scaffold,
+  login shell with the D26 cookie/refresh session store, error-envelope toasts
+  with request IDs, cursor pagination primitive, layout nav shell), the config
+  viewer, the channels viewer + in-browser USSD simulator (pure engine
+  `advanceUssdSession` + `createTranslator`, no backend calls), the audit
+  backend (`packages/db` repository `list`, `GET /v1/audit` route + OpenAPI
+  schema), and the audit screen. ADRs 0025–0027 record the decisions.
+- Renaming: the `.env`-driven dev-session flow, TOTP field, and Playwright
+  e2e from later steps are still open; Playwright was deliberately not wired
+  into turbo yet (jsdom tests only) until the main flows exist.
+
 ## Deferred items
 
 - Officer field PWA, IndexedDB offline store (D29), scan log and disputes

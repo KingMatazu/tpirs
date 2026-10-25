@@ -7,6 +7,7 @@ import { createOtelTelemetry } from "@tpirs/adapters-otel-telemetry";
 import { createEnvSecretsProvider } from "@tpirs/adapters-env-secrets";
 import { createMockCache } from "@tpirs/cache-mock";
 import { createMockClock } from "@tpirs/clock-mock";
+import { createMockLockService } from "@tpirs/lock-service-mock";
 import { createMockSmsProvider } from "@tpirs/sms-provider-mock";
 import { createDb } from "@tpirs/db";
 import { createDbIdentityProvider } from "@tpirs/identity-provider-db";
@@ -53,6 +54,7 @@ async function main(): Promise<void> {
         secrets,
         sms: createMockSmsProvider(),
         cache: createMockCache(),
+        locks: createMockLockService(),
         clock: createMockClock(),
         qrKeyRef: QR_KEY_REF,
       });
@@ -64,7 +66,7 @@ async function main(): Promise<void> {
     }
   }
 
-  const app = buildApp({
+  const app = await buildApp({
     config,
     telemetry,
     objectStorage,

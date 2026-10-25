@@ -13,3 +13,6 @@ export * from "./allocation.js";
 export * from "./fee-engine.js";
 export * from "./payment-intake.js";
 export * from "./ussd.js";
+export * from "./verification.js";
+export * from "./scan.js";
+export * from "./dispute.js";

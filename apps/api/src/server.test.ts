@@ -17,7 +17,7 @@ describe("api server", () => {
   let app: FastifyInstance;
 
   beforeAll(async () => {
-    app = buildApp({ config, telemetry: createMockTelemetry() });
+    app = await buildApp({ config, telemetry: createMockTelemetry() });
     await app.ready();
   });
 
@@ -33,7 +33,7 @@ describe("api server", () => {
   });
 
   it("returns ready when the readiness probe passes", async () => {
-    const ready = buildApp({
+    const ready = await buildApp({
       config,
       telemetry: createMockTelemetry(),
       readiness: () => Promise.resolve(true),
@@ -46,7 +46,7 @@ describe("api server", () => {
   });
 
   it("returns 503 when the readiness probe fails", async () => {
-    const notReady = buildApp({
+    const notReady = await buildApp({
       config,
       telemetry: createMockTelemetry(),
       readiness: () => Promise.resolve(false),

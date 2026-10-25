@@ -23,6 +23,11 @@ export function registerWebhookRoutes(
         // The route handler reads `request.rawBody` (set by a preParsing hook).
         rawBody: true,
       },
+      schema: {
+        // Hidden from the OpenAPI document: the endpoint token is a secret in
+        // a URL and belongs to provider integrations, not the public contract.
+        hide: true,
+      },
     },
     async (request, reply) => {
       const { provider, endpointToken } = request.params as {

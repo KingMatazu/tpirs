@@ -16,3 +16,5 @@ export * from "./channel-delivery-service.js";
 export * from "./channel-outbox-sweeper.js";
 export * from "./sms-outbox-sweeper.js";
 export * from "./sms-delivery-service.js";
+export * from "./verification-service.js";
+export * from "./paid-set-sync-service.js";

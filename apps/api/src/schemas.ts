@@ -137,6 +137,57 @@ const outboxMessage = {
   },
 };
 
+/**
+ * Audit entries are append-only and read-only everywhere; before/after are
+ * JSON snapshots (null when the handler sent none). Strings may be null so a
+ * system action (no actor) serializes cleanly.
+ */
+const auditEntry = {
+  $id: "AuditEntry",
+  type: "object",
+  required: [
+    "id",
+    "action",
+    "entityType",
+    "entityId",
+    "actorUserId",
+    "before",
+    "after",
+    "requestId",
+    "ip",
+    "createdAt",
+  ],
+  properties: {
+    id: { type: "string" },
+    action: { type: "string" },
+    entityType: { type: "string" },
+    entityId: { type: "string", nullable: true },
+    actorUserId: { type: "string", nullable: true },
+    before: { type: "object", additionalProperties: true, nullable: true },
+    after: { type: "object", additionalProperties: true, nullable: true },
+    requestId: { type: "string", nullable: true },
+    ip: { type: "string", nullable: true },
+    createdAt: { type: "string" },
+  },
+};
+
+const errorEnvelopeSchema = {
+  $id: "ErrorEnvelope",
+  type: "object",
+  required: ["error"],
+  properties: {
+    error: {
+      type: "object",
+      required: ["code", "message", "requestId"],
+      properties: {
+        code: { type: "string" },
+        message: { type: "string" },
+        requestId: { type: "string" },
+      },
+    },
+  },
+};
+
 /** Component schemas registered once; routes reference them via $ref. */
 export const sharedSchemas: readonly Record<string, unknown>[] = [
   staffUser,
@@ -144,7 +195,11 @@ export const sharedSchemas: readonly Record<string, unknown>[] = [
   owner,
   payment,
   outboxMessage,
+  auditEntry,
+  errorEnvelopeSchema,
 ];
+
+export const errorResponseSchema = { $ref: "ErrorEnvelope#" };
 
 const deviceObject = {
   type: "object",
@@ -437,6 +492,48 @@ export const resolveSuspenseSchema: FastifySchema = {
 };
 
 // ---------------------------------------------------------------------------
+// Audit (Step 6)
+// ---------------------------------------------------------------------------
+
+/** Parses a cursor of the form `<ISO createdAt>|<id>`; null → first page. */
+export function parseAuditCursor(
+  raw: string | undefined,
+): { createdAt: Date; id: string } | undefined {
+  if (raw === undefined || raw === "") return undefined;
+  const separator = raw.lastIndexOf("|");
+  if (separator <= 0) return undefined;
+  const createdAt = new Date(raw.slice(0, separator));
+  const id = raw.slice(separator + 1);
+  if (Number.isNaN(createdAt.getTime()) || id === "") return undefined;
+  return { createdAt, id };
+}
+
+export const listAuditSchema: FastifySchema = {
+  querystring: {
+    type: "object",
+    properties: {
+      limit: { type: "string" },
+      cursor: { type: "string" },
+      action: { type: "string" },
+      kind: { type: "string" },
+      actor: { type: "string" },
+      from: { type: "string" },
+      to: { type: "string" },
+    },
+  },
+  response: {
+    200: {
+      type: "object",
+      required: ["entries", "nextCursor"],
+      properties: {
+        entries: { type: "array", items: { $ref: "AuditEntry#" } },
+        nextCursor: { type: "string", nullable: true },
+      },
+    },
+  },
+};
+
+// ---------------------------------------------------------------------------
 // Verification
 // ---------------------------------------------------------------------------
 
@@ -457,6 +554,7 @@ export const verifyTokenSchema: FastifySchema = {
         "attributes",
         "photos",
         "paymentStatus",
+        "businessDate",
       ],
       properties: {
         status: { type: "string" },
@@ -465,8 +563,204 @@ export const verifyTokenSchema: FastifySchema = {
         shortCode: { type: "string" },
         attributes: { type: "object", additionalProperties: true },
         photos: { type: "array", items: photoRef },
-        paymentStatus: { type: "string", enum: ["unknown"] },
+        paymentStatus: { type: "string", enum: ["paid", "no_payment_recorded", "unknown"] },
+        businessDate: { type: "string" },
       },
     },
+    429: errorResponseSchema,
+  },
+};
+
+export const verificationSearchSchema: FastifySchema = {
+  querystring: {
+    type: "object",
+    required: ["q"],
+    properties: { q: { type: "string" } },
+  },
+  response: {
+    200: {
+      type: "object",
+      required: ["results"],
+      properties: {
+        results: {
+          type: "array",
+          items: {
+            type: "object",
+            required: ["assetId", "assetTypeKey", "status", "shortCode", "attributes", "paymentStatus", "businessDate"],
+            properties: {
+              assetId: { type: "string" },
+              assetTypeKey: { type: "string" },
+              status: { type: "string" },
+              shortCode: { type: "string" },
+              attributes: { type: "object", additionalProperties: true },
+              paymentStatus: { type: "string", enum: ["paid", "no_payment_recorded", "unknown"] },
+              businessDate: { type: "string" },
+            },
+          },
+        },
+      },
+    },
+  },
+};
+
+export const syncPaidSchema: FastifySchema = {
+  querystring: {
+    type: "object",
+    properties: {
+      since: { type: "string" },
+      limit: { type: "string" },
+    },
+  },
+  response: {
+    200: {
+      type: "object",
+      required: ["mode", "businessDate", "entries", "nextCursor", "hasMore", "serverTime"],
+      properties: {
+        mode: { type: "string", enum: ["snapshot", "delta"] },
+        businessDate: { type: "string" },
+        entries: {
+          type: "array",
+          items: {
+            type: "object",
+            required: ["assetId", "qrPayload", "shortCode", "assetTypeKey", "attributes", "paid", "changedAt"],
+            properties: {
+              assetId: { type: "string" },
+              qrPayload: { type: "string" },
+              shortCode: { type: "string" },
+              assetTypeKey: { type: "string" },
+              attributes: { type: "object", additionalProperties: true },
+              paid: { type: "boolean" },
+              changedAt: { type: "string" },
+            },
+          },
+        },
+        nextCursor: { type: "string", nullable: true },
+        hasMore: { type: "boolean" },
+        serverTime: { type: "string" },
+      },
+    },
+    403: errorResponseSchema,
+    404: errorResponseSchema,
+  },
+};
+
+export const createScanSchema: FastifySchema = {
+  body: {
+    type: "object",
+    required: ["clientScanId", "source", "scannedAt"],
+    properties: {
+      clientScanId: { type: "string" },
+      source: { type: "string", enum: ["qr", "manual", "offline_queue"] },
+      token: { type: "string" },
+      reference: { type: "string" },
+      assetId: { type: "string" },
+      scannedAt: { type: "string" },
+      observedStatus: { type: "string" },
+      latitude: { type: "number" },
+      longitude: { type: "number" },
+    },
+  },
+  response: {
+    200: {
+      type: "object",
+      required: ["scanId", "assetId", "businessDate", "observedStatus", "authoritativeStatus", "paymentStatus"],
+      properties: {
+        scanId: { type: "string" },
+        assetId: { type: "string" },
+        businessDate: { type: "string" },
+        observedStatus: { type: "string" },
+        authoritativeStatus: { type: "string", enum: ["paid", "no_payment_recorded", "unknown"] },
+        paymentStatus: { type: "string", enum: ["paid", "no_payment_recorded", "unknown"] },
+        shortCode: { type: "string" },
+        attributes: { type: "object", additionalProperties: true },
+      },
+    },
+  },
+};
+
+export const listScansSchema: FastifySchema = {
+  querystring: {
+    type: "object",
+    properties: {
+      cursor: { type: "string" },
+      limit: { type: "string" },
+      officerUserId: { type: "string" },
+    },
+  },
+  response: {
+    200: {
+      type: "object",
+      required: ["scans", "nextCursor", "hasMore"],
+      properties: {
+        scans: { type: "array", items: { type: "object", additionalProperties: true } },
+        nextCursor: { type: "string", nullable: true },
+        hasMore: { type: "boolean" },
+      },
+    },
+  },
+};
+
+export const createDisputeSchema: FastifySchema = {
+  body: {
+    type: "object",
+    required: ["clientDisputeId", "reason", "description", "occurredAt"],
+    properties: {
+      clientDisputeId: { type: "string" },
+      assetId: { type: "string" },
+      reference: { type: "string" },
+      reason: { type: "string" },
+      description: { type: "string" },
+      occurredAt: { type: "string" },
+      latitude: { type: "number" },
+      longitude: { type: "number" },
+      evidence: {
+        type: "object",
+        required: ["contentType", "contentBase64"],
+        properties: {
+          contentType: { type: "string" },
+          contentBase64: { type: "string" },
+        },
+      },
+    },
+  },
+  response: {
+    200: {
+      type: "object",
+      required: ["disputeId", "status"],
+      properties: {
+        disputeId: { type: "string" },
+        status: { type: "string" },
+      },
+    },
+    403: errorResponseSchema,
+  },
+};
+
+export const listDisputesSchema: FastifySchema = {
+  querystring: {
+    type: "object",
+    properties: {
+      cursor: { type: "string" },
+      limit: { type: "string" },
+      status: { type: "string" },
+    },
+  },
+  response: {
+    200: {
+      type: "object",
+      required: ["disputes", "nextCursor", "hasMore"],
+      properties: {
+        disputes: { type: "array", items: { type: "object", additionalProperties: true } },
+        nextCursor: { type: "string", nullable: true },
+        hasMore: { type: "boolean" },
+      },
+    },
+  },
+};
+
+export const getDisputeSchema: FastifySchema = {
+  params: { type: "object", required: ["id"], properties: { id: { type: "string" } } },
+  response: {
+    200: { type: "object", required: ["dispute"], properties: { dispute: { type: "object", additionalProperties: true } } },
   },
 };

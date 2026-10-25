@@ -320,6 +320,54 @@ export interface ChannelMessageTable {
   sentAt: Timestamp | null;
 }
 
+export interface ScanTable {
+  id: Generated<string>;
+  tenantId: string;
+  assetId: string;
+  officerUserId: string;
+  deviceId: string;
+  clientScanId: string;
+  source: "qr" | "manual" | "offline_queue";
+  observedStatus: string;
+  authoritativeStatus: string;
+  businessDate: string;
+  scannedAt: Timestamp;
+  recordedAt: Generated<Timestamp>;
+  latitude: string | number | null;
+  longitude: string | number | null;
+  zoneId: string | null;
+}
+
+export interface DisputeTable {
+  id: Generated<string>;
+  tenantId: string;
+  assetId: string;
+  openedByUserId: string;
+  zoneId: string | null;
+  clientDisputeId: string;
+  status: "open" | "under_review" | "resolved" | "rejected";
+  reason: string;
+  description: string;
+  occurredAt: Timestamp;
+  businessDate: string;
+  recordedAt: Generated<Timestamp>;
+  latitude: string | number | null;
+  longitude: string | number | null;
+  resolutionNote: string | null;
+  resolvedByUserId: string | null;
+  resolvedAt: Timestamp | null;
+  linkedPaymentId: string | null;
+}
+
+export interface DisputeEvidenceTable {
+  id: Generated<string>;
+  tenantId: string;
+  disputeId: string;
+  objectKey: string;
+  contentType: string;
+  createdAt: Generated<Timestamp>;
+}
+
 export interface Database {
   tenants: TenantTable;
   zones: ZoneTable;
@@ -344,6 +392,9 @@ export interface Database {
   webhookEvents: WebhookEventTable;
   smsLog: SmsLogTable;
   channelMessages: ChannelMessageTable;
+  scans: ScanTable;
+  disputes: DisputeTable;
+  disputeEvidence: DisputeEvidenceTable;
 }
 
 export type TenantRow = Selectable<TenantTable>;

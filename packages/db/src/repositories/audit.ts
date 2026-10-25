@@ -21,6 +21,31 @@ export interface AuditSearchFilter {
   readonly limit?: number;
 }
 
+export interface AuditEntryRow {
+  readonly id: string;
+  readonly action: string;
+  readonly entityType: string;
+  readonly entityId: string | null;
+  readonly actorUserId: string | null;
+  readonly beforeData: unknown;
+  readonly afterData: unknown;
+  readonly requestId: string | null;
+  readonly ip: string | null;
+  readonly createdAt: Date;
+}
+
+export interface AuditListFilter {
+  readonly action?: string;
+  /** The entity kind (asset, payment, user, ...). */
+  readonly kind?: string;
+  readonly actorUserId?: string;
+  readonly from?: Date;
+  readonly to?: Date;
+  /** Opaque cursor from the previous page. */
+  readonly cursor?: { readonly createdAt: Date; readonly id: string };
+  readonly limit?: number;
+}
+
 /**
  * Audit entries are append-only: this repository offers only insert and reads.
  * Update and delete are additionally rejected by a database trigger.
@@ -65,6 +90,48 @@ export class AuditRepository {
     if (filter.entityId !== undefined) query = query.where("entityId", "=", filter.entityId);
     if (filter.actorUserId !== undefined) {
       query = query.where("actorUserId", "=", filter.actorUserId);
+    }
+    return query.execute();
+  }
+
+  /**
+   * Cursor-paginated listing for the audit screen. Order is newest-first with
+   * `id` as the deterministic tiebreaker; the cursor carries the last page's
+   * (createdAt, id) pair so paging is stable while rows keep being appended.
+   */
+  async list(filter: AuditListFilter): Promise<readonly AuditEntryRow[]> {
+    let query = this.db
+      .selectFrom("auditLog")
+      .select([
+        "id",
+        "action",
+        "entityType",
+        "entityId",
+        "actorUserId",
+        "beforeData",
+        "afterData",
+        "requestId",
+        "ip",
+        "createdAt",
+      ])
+      .orderBy("createdAt", "desc")
+      .orderBy("id", "desc")
+      .limit(filter.limit ?? 50);
+    if (filter.action !== undefined) query = query.where("action", "=", filter.action);
+    if (filter.kind !== undefined) query = query.where("entityType", "=", filter.kind);
+    if (filter.actorUserId !== undefined) {
+      query = query.where("actorUserId", "=", filter.actorUserId);
+    }
+    if (filter.from !== undefined) query = query.where("createdAt", ">=", filter.from);
+    if (filter.to !== undefined) query = query.where("createdAt", "<=", filter.to);
+    if (filter.cursor !== undefined) {
+      const cursor = filter.cursor;
+      query = query.where((eb) =>
+        eb.or([
+          eb("createdAt", "<", cursor.createdAt),
+          eb.and([eb("createdAt", "=", cursor.createdAt), eb("id", "<", cursor.id)]),
+        ]),
+      );
     }
     return query.execute();
   }

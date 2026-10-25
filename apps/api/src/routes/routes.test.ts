@@ -152,7 +152,7 @@ describeIntegration("api auth/config/audit (integration)", () => {
       });
     });
     const identity = createDbIdentityProvider({ db });
-    app = buildApp({ config, telemetry: createMockTelemetry(), db, identity });
+    app = await buildApp({ config, telemetry: createMockTelemetry(), db, identity });
     await app.ready();
   });
 

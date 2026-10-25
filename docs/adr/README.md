@@ -27,3 +27,9 @@ Format: context, decision, consequences, alternatives considered.
 - [0022](./0022-tenant-channel-adapter-composition.md) Tenant-scoped channel adapter composition
 - [0023](./0023-stateless-ussd-session-replay.md) Stateless USSD session engine via cumulative text replay
 - [0024](./0024-rate-limiting-abuse-controls.md) Rate limiting and abuse controls for channels and public verify
+- [0025](./0025-ui-delivery-and-api-client.md) UI delivery, generated API client, and design tokens
+- [0026](./0026-dashboard-session-model.md) Dashboard session storage and rotation
+- [0027](./0027-ui-tokens-and-component-base.md) UI tokens and the copy-in component base
+- [0028](./0028-verification-status-and-paid-set.md) Verification status and the paid set
+- [0029](./0029-offline-field-app.md) Offline field app and its local store
+- [0030](./0030-scan-and-dispute-ingest.md) Scan and dispute ingest from the field

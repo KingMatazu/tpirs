@@ -1,10 +1,24 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { TenantConfig } from "@tpirs/config";
-import type { AssetRecord } from "@tpirs/db";
+import type { AssetRecord, OwnerRecord } from "@tpirs/db";
 import { isAssetStatus } from "@tpirs/domain";
 import { AssetValidationError, AssetNotFoundError, OtpError } from "@tpirs/application";
 import type { Services } from "../services.js";
 import { requirePermission, requirePrincipal } from "../auth.js";
+import {
+  attachPhotoSchema,
+  confirmOwnerVerifySchema,
+  correctAssetSchema,
+  createAssetSchema,
+  createOwnerSchema,
+  getAssetSchema,
+  getOwnerSchema,
+  photoParamsSchema,
+  requestOwnerVerifySchema,
+  searchAssetsSchema,
+  stickerSchema,
+  suspendAssetSchema,
+} from "../schemas.js";
 
 export interface AssetRoutesContext {
   readonly services: Services;
@@ -34,6 +48,16 @@ function serializeAsset(asset: AssetRecord) {
   };
 }
 
+/** Owners carry a Date; the contract serializes it as an ISO string or null. */
+function serializeOwner(owner: OwnerRecord) {
+  return {
+    id: owner.id,
+    displayName: owner.displayName,
+    phone: owner.phone,
+    phoneVerifiedAt: owner.phoneVerifiedAt === null ? null : owner.phoneVerifiedAt.toISOString(),
+  };
+}
+
 function badRequest(request: FastifyRequest, reply: FastifyReply, message: string) {
   return reply.code(400).send({ error: { code: "bad_request", message, requestId: request.id } });
 }
@@ -60,7 +84,7 @@ function validationError(
 export function registerAssetRoutes(app: FastifyInstance, context: AssetRoutesContext): void {
   const { services, loadConfig } = context;
 
-  app.post("/v1/assets", async (request, reply) => {
+  app.post("/v1/assets", { schema: createAssetSchema }, async (request, reply) => {
     const principal = requirePermission(request, "asset:manage");
     const body = asRecord(request.body);
     if (body === undefined) return badRequest(request, reply, "A JSON body is required");
@@ -102,7 +126,7 @@ export function registerAssetRoutes(app: FastifyInstance, context: AssetRoutesCo
     }
   });
 
-  app.get("/v1/assets", async (request, reply) => {
+  app.get("/v1/assets", { schema: searchAssetsSchema }, async (request, reply) => {
     const principal = requirePermission(request, "asset:read");
     const query = request.query as Record<string, unknown>;
     const limitRaw = asString(query.limit);
@@ -124,7 +148,7 @@ export function registerAssetRoutes(app: FastifyInstance, context: AssetRoutesCo
     return reply.send({ assets: assets.map(serializeAsset) });
   });
 
-  app.get("/v1/assets/:id", async (request, reply) => {
+  app.get("/v1/assets/:id", { schema: getAssetSchema }, async (request, reply) => {
     const principal = requirePermission(request, "asset:read");
     const { id } = request.params as { id: string };
     try {
@@ -144,7 +168,7 @@ export function registerAssetRoutes(app: FastifyInstance, context: AssetRoutesCo
     }
   });
 
-  app.post("/v1/assets/:id/photos", async (request, reply) => {
+  app.post("/v1/assets/:id/photos", { schema: attachPhotoSchema }, async (request, reply) => {
     const principal = requirePermission(request, "asset:manage");
     const { id } = request.params as { id: string };
     const body = asRecord(request.body);
@@ -170,24 +194,28 @@ export function registerAssetRoutes(app: FastifyInstance, context: AssetRoutesCo
     }
   });
 
-  app.get("/v1/assets/:id/photos/:photoId", async (request, reply) => {
-    const principal = requirePermission(request, "asset:read");
-    const { id, photoId } = request.params as { id: string; photoId: string };
-    try {
-      const photo = await services.asset.getPhoto(principal.tenantId, id, photoId);
-      return await reply
-        .code(200)
-        .header("content-type", photo.contentType)
-        .header("cache-control", "private, max-age=300")
-        .send(Buffer.from(photo.body));
-    } catch (error) {
-      if (error instanceof AssetNotFoundError)
-        return notFound(request, reply, "Asset photo not found");
-      throw error;
-    }
-  });
+  app.get(
+    "/v1/assets/:id/photos/:photoId",
+    { schema: photoParamsSchema },
+    async (request, reply) => {
+      const principal = requirePermission(request, "asset:read");
+      const { id, photoId } = request.params as { id: string; photoId: string };
+      try {
+        const photo = await services.asset.getPhoto(principal.tenantId, id, photoId);
+        return await reply
+          .code(200)
+          .header("content-type", photo.contentType)
+          .header("cache-control", "private, max-age=300")
+          .send(Buffer.from(photo.body));
+      } catch (error) {
+        if (error instanceof AssetNotFoundError)
+          return notFound(request, reply, "Asset photo not found");
+        throw error;
+      }
+    },
+  );
 
-  app.get("/v1/assets/:id/sticker", async (request, reply) => {
+  app.get("/v1/assets/:id/sticker", { schema: stickerSchema }, async (request, reply) => {
     const principal = requirePermission(request, "asset:read");
     const { id } = request.params as { id: string };
     try {
@@ -203,7 +231,7 @@ export function registerAssetRoutes(app: FastifyInstance, context: AssetRoutesCo
     }
   });
 
-  app.post("/v1/assets/:id/suspend", async (request, reply) => {
+  app.post("/v1/assets/:id/suspend", { schema: suspendAssetSchema }, async (request, reply) => {
     const principal = requirePermission(request, "asset:manage");
     const { id } = request.params as { id: string };
     try {
@@ -221,7 +249,7 @@ export function registerAssetRoutes(app: FastifyInstance, context: AssetRoutesCo
     }
   });
 
-  app.patch("/v1/assets/:id", async (request, reply) => {
+  app.patch("/v1/assets/:id", { schema: correctAssetSchema }, async (request, reply) => {
     const principal = requirePermission(request, "asset:manage");
     const { id } = request.params as { id: string };
     const body = asRecord(request.body);
@@ -243,7 +271,7 @@ export function registerAssetRoutes(app: FastifyInstance, context: AssetRoutesCo
     }
   });
 
-  app.post("/v1/owners", async (request, reply) => {
+  app.post("/v1/owners", { schema: createOwnerSchema }, async (request, reply) => {
     const principal = requirePermission(request, "asset:manage");
     const body = asRecord(request.body);
     const displayName = body === undefined ? undefined : asString(body.displayName);
@@ -257,10 +285,10 @@ export function registerAssetRoutes(app: FastifyInstance, context: AssetRoutesCo
       phone,
     });
     request.audit = { action: "owner.create", entityType: "owner", entityId: owner.id };
-    return reply.code(201).send({ owner });
+    return reply.code(201).send({ owner: serializeOwner(owner) });
   });
 
-  app.get("/v1/owners/:id", async (request, reply) => {
+  app.get("/v1/owners/:id", { schema: getOwnerSchema }, async (request, reply) => {
     const principal = requirePermission(request, "asset:read");
     const { id } = request.params as { id: string };
     const owner = await services.owner.findById(principal.tenantId, id);
@@ -269,74 +297,82 @@ export function registerAssetRoutes(app: FastifyInstance, context: AssetRoutesCo
         .code(404)
         .send({ error: { code: "not_found", message: "Owner not found", requestId: request.id } });
     }
-    return reply.send({ owner });
+    return reply.send({ owner: serializeOwner(owner) });
   });
 
-  app.post("/v1/owners/verify/request", async (request, reply) => {
-    const principal = requirePermission(request, "asset:manage");
-    const body = asRecord(request.body);
-    const ownerId = body === undefined ? undefined : asString(body.ownerId);
-    const phoneInput = body === undefined ? undefined : asString(body.phone);
-    if (ownerId === undefined && phoneInput === undefined) {
-      return badRequest(request, reply, "ownerId or phone is required");
-    }
-    const config = await loadConfig(principal.tenantId);
-    if (config === undefined) return notFound(request, reply, "Tenant not found");
+  app.post(
+    "/v1/owners/verify/request",
+    { schema: requestOwnerVerifySchema },
+    async (request, reply) => {
+      const principal = requirePermission(request, "asset:manage");
+      const body = asRecord(request.body);
+      const ownerId = body === undefined ? undefined : asString(body.ownerId);
+      const phoneInput = body === undefined ? undefined : asString(body.phone);
+      if (ownerId === undefined && phoneInput === undefined) {
+        return badRequest(request, reply, "ownerId or phone is required");
+      }
+      const config = await loadConfig(principal.tenantId);
+      if (config === undefined) return notFound(request, reply, "Tenant not found");
 
-    let phone = phoneInput;
-    if (ownerId !== undefined) {
+      let phone = phoneInput;
+      if (ownerId !== undefined) {
+        const owner = await services.owner.findById(principal.tenantId, ownerId);
+        if (owner === undefined) return notFound(request, reply, "Owner not found");
+        phone = owner.phone;
+      }
+      if (phone === undefined) return badRequest(request, reply, "ownerId or phone is required");
+
+      try {
+        await services.otp.requestOtp({
+          tenantId: principal.tenantId,
+          phone,
+          senderId: config.branding.smsSenderId,
+          message: (code) => config.channels.otpMessageTemplate.replaceAll("{code}", code),
+        });
+        request.audit = {
+          action: "owner.verify.request",
+          entityType: "owner",
+          ...(ownerId === undefined ? {} : { entityId: ownerId }),
+        };
+        return await reply.send({ sent: true });
+      } catch (error) {
+        if (error instanceof OtpError && error.code === "rate_limited") {
+          return reply.code(429).send({
+            error: { code: "rate_limited", message: error.message, requestId: request.id },
+          });
+        }
+        throw error;
+      }
+    },
+  );
+
+  app.post(
+    "/v1/owners/verify/confirm",
+    { schema: confirmOwnerVerifySchema },
+    async (request, reply) => {
+      requirePrincipal(request);
+      const principal = requirePermission(request, "asset:manage");
+      const body = asRecord(request.body);
+      const ownerId = body === undefined ? undefined : asString(body.ownerId);
+      const code = body === undefined ? undefined : asString(body.code);
+      if (ownerId === undefined || code === undefined) {
+        return badRequest(request, reply, "ownerId and code are required");
+      }
       const owner = await services.owner.findById(principal.tenantId, ownerId);
       if (owner === undefined) return notFound(request, reply, "Owner not found");
-      phone = owner.phone;
-    }
-    if (phone === undefined) return badRequest(request, reply, "ownerId or phone is required");
-
-    try {
-      await services.otp.requestOtp({
-        tenantId: principal.tenantId,
-        phone,
-        senderId: config.branding.smsSenderId,
-        message: (code) => config.channels.otpMessageTemplate.replaceAll("{code}", code),
-      });
-      request.audit = {
-        action: "owner.verify.request",
-        entityType: "owner",
-        ...(ownerId === undefined ? {} : { entityId: ownerId }),
-      };
-      return await reply.send({ sent: true });
-    } catch (error) {
-      if (error instanceof OtpError && error.code === "rate_limited") {
-        return reply
-          .code(429)
-          .send({ error: { code: "rate_limited", message: error.message, requestId: request.id } });
+      try {
+        await services.otp.verifyOtp({ tenantId: principal.tenantId, phone: owner.phone, code });
+      } catch (error) {
+        if (error instanceof OtpError) {
+          return reply.code(422).send({
+            error: { code: "unprocessable_entity", message: error.message, requestId: request.id },
+          });
+        }
+        throw error;
       }
-      throw error;
-    }
-  });
-
-  app.post("/v1/owners/verify/confirm", async (request, reply) => {
-    requirePrincipal(request);
-    const principal = requirePermission(request, "asset:manage");
-    const body = asRecord(request.body);
-    const ownerId = body === undefined ? undefined : asString(body.ownerId);
-    const code = body === undefined ? undefined : asString(body.code);
-    if (ownerId === undefined || code === undefined) {
-      return badRequest(request, reply, "ownerId and code are required");
-    }
-    const owner = await services.owner.findById(principal.tenantId, ownerId);
-    if (owner === undefined) return notFound(request, reply, "Owner not found");
-    try {
-      await services.otp.verifyOtp({ tenantId: principal.tenantId, phone: owner.phone, code });
-    } catch (error) {
-      if (error instanceof OtpError) {
-        return reply.code(422).send({
-          error: { code: "unprocessable_entity", message: error.message, requestId: request.id },
-        });
-      }
-      throw error;
-    }
-    const verified = await services.owner.markPhoneVerified(principal.tenantId, ownerId);
-    request.audit = { action: "owner.verify.confirm", entityType: "owner", entityId: ownerId };
-    return reply.send({ owner: verified });
-  });
+      const verified = await services.owner.markPhoneVerified(principal.tenantId, ownerId);
+      request.audit = { action: "owner.verify.confirm", entityType: "owner", entityId: ownerId };
+      return reply.send({ owner: serializeOwner(verified) });
+    },
+  );
 }

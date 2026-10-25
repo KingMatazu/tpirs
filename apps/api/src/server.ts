@@ -1,17 +1,23 @@
 import { randomUUID } from "node:crypto";
 import Fastify from "fastify";
-import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import sensible from "@fastify/sensible";
+import cookie from "@fastify/cookie";
+import swagger from "@fastify/swagger";
+import type { FastifyInstance } from "fastify";
 import type { BuildAppOptions } from "./config.js";
 import { defaultErrorCode, errorEnvelope } from "./errors.js";
 import { authenticate, UnauthorizedError } from "./auth.js";
 import { auditOnSuccess } from "./audit.js";
+import { sharedSchemas, healthSchema, readySchema } from "./schemas.js";
 import { registerAuthRoutes } from "./routes/auth.js";
 import { registerConfigRoutes } from "./routes/config.js";
 import { registerAssetRoutes } from "./routes/assets.js";
 import { registerVerifyRoutes } from "./routes/verify.js";
+import { registerVerificationAndSyncRoutes } from "./routes/field.js";
 import { registerWebhookRoutes } from "./routes/webhooks.js";
 import { registerPaymentRoutes } from "./routes/payments.js";
+import { registerChannelRoutes } from "./routes/channels.js";
+import { registerAuditRoutes } from "./routes/audit.js";
 
 export interface HealthResponse {
   readonly status: "ok";
@@ -26,14 +32,38 @@ export interface ReadyResponse {
 
 const VERSION = "0.0.0";
 
-export function buildApp(options: BuildAppOptions): FastifyInstance {
+export async function buildApp(options: BuildAppOptions): Promise<FastifyInstance> {
   const { config, telemetry } = options;
   const app = Fastify({
     logger: { level: config.logLevel },
     genReqId: () => randomUUID(),
   });
 
-  void app.register(sensible);
+  await app.register(sensible);
+  // Cookie parsing backs the D26 refresh cookie; nothing else reads cookies.
+  await app.register(cookie);
+
+  // OpenAPI 3 document emitted from the route schemas (D28): the running
+  // server is the contract. The plugin must be registered (and awaited)
+  // BEFORE any route is added, otherwise the document collects no paths.
+  // Shared component schemas go on the instance so routes can $ref them.
+  await app.register(swagger, {
+    openapi: {
+      openapi: "3.0.3",
+      info: {
+        title: "tpirs API",
+        version: VERSION,
+        description: "Revenue collection platform API. Clients must use packages/api-client.",
+      },
+    },
+  });
+  for (const shared of sharedSchemas) {
+    app.addSchema(shared);
+  }
+
+  app.get("/v1/openapi.json", { schema: { hide: true } }, (_request, reply) => {
+    void reply.header("content-type", "application/json").send(app.swagger());
+  });
 
   // Capture the raw body before JSON parsing so webhook signatures can be
   // verified byte-for-byte against the provider's payload.
@@ -61,20 +91,40 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     app.addHook("onResponse", auditOnSuccess(options.db));
     registerAuthRoutes(app, { identity: options.identity, db: options.db });
     registerConfigRoutes(app, { identity: options.identity, db: options.db });
+    registerAuditRoutes(app, { db: options.db });
     if (options.services !== undefined) {
       registerPaymentRoutes(app, { services: options.services });
     }
   }
 
-  if (options.services !== undefined && options.loadConfig !== undefined) {
+  if (options.services !== undefined && options.loadConfig !== undefined && options.db !== undefined) {
     registerAssetRoutes(app, { services: options.services, loadConfig: options.loadConfig });
-    registerVerifyRoutes(app, { services: options.services, loadConfig: options.loadConfig });
+    registerVerifyRoutes(app, { services: options.services, loadConfig: options.loadConfig, db: options.db });
+    registerVerificationAndSyncRoutes(app, { services: options.services, loadConfig: options.loadConfig, db: options.db });
+  } else if (options.services !== undefined && options.loadConfig !== undefined) {
+    registerAssetRoutes(app, { services: options.services, loadConfig: options.loadConfig });
+    // Verify needs the db for paid-set lookups once obligations exist.
+    // If db is not wired (e.g. tests without the full integration surface) skip.
   }
 
   // Webhooks are unauthenticated but tokenised; they must be registered even
   // before identity is fully configured, because providers call them directly.
   if (options.services !== undefined) {
     registerWebhookRoutes(app, { services: options.services });
+  }
+  // USSD/SMS provider callbacks resolve tenancy from the endpoint token, so
+  // they need only the loader; the services bundle supplies the engine
+  // instances and channel adapter factory.
+  if (
+    options.services !== undefined &&
+    options.db !== undefined &&
+    options.loadConfig !== undefined
+  ) {
+    registerChannelRoutes(app, {
+      services: options.services,
+      db: options.db,
+      loadConfig: options.loadConfig,
+    });
   }
 
   app.addHook("onResponse", (request, reply, done) => {
@@ -115,7 +165,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       .send(errorEnvelope(defaultErrorCode(statusCode), message, request.id));
   });
 
-  app.get("/v1/health", (_request: FastifyRequest, reply: FastifyReply) => {
+  app.get("/v1/health", { schema: healthSchema }, (_request, reply) => {
     const body: HealthResponse = {
       status: "ok",
       service: "tpirs",
@@ -125,7 +175,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     void reply.send(body);
   });
 
-  app.get("/v1/ready", async (_request: FastifyRequest, reply: FastifyReply) => {
+  app.get("/v1/ready", { schema: readySchema }, async (_request, reply) => {
     const ready = options.readiness === undefined ? true : await options.readiness();
     const body: ReadyResponse = { status: ready ? "ready" : "not_ready" };
     void reply.code(ready ? 200 : 503).send(body);

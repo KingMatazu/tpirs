@@ -8,6 +8,7 @@ import { createMockTelemetry } from "@tpirs/telemetry-mock";
 import { createMockSmsProvider } from "@tpirs/sms-provider-mock";
 import { createMockCache } from "@tpirs/cache-mock";
 import { createMockClock } from "@tpirs/clock-mock";
+import { createMockLockService } from "@tpirs/lock-service-mock";
 import { createMockObjectStorage } from "@tpirs/object-storage-mock";
 import { createMockSecretsProvider } from "@tpirs/secrets-provider-mock";
 import { createDb, migrateUp, repositories, withSystem } from "@tpirs/db";
@@ -200,11 +201,12 @@ describeIntegration("api asset registry e2e (integration)", () => {
       secrets: createMockSecretsProvider({ [QR_KEY_REF]: QR_KEY }),
       sms,
       cache: createMockCache(),
+      locks: createMockLockService(),
       clock: createMockClock(),
       qrKeyRef: QR_KEY_REF,
     });
     const loadConfig = makeTenantConfigLoader(db);
-    app = buildApp({
+    app = await buildApp({
       config,
       telemetry: createMockTelemetry(),
       db,

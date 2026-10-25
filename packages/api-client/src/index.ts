@@ -106,7 +106,10 @@ export function createApiClient(options: ApiClientOptions) {
       if (token !== undefined && token !== "") {
         request.headers.set("authorization", `Bearer ${token}`);
       }
-      if (request.method === "POST" && moneyPostMatches(new URL(request.url).pathname)) {
+      if (
+        request.method === "POST" &&
+        moneyPostMatches(new URL(request.url, options.baseUrl || "http://localhost").pathname)
+      ) {
         // Idempotency-Key is set before the request leaves the client, so a
         // retry, a double click, or a replayed queue entry can never double
         // resolve a suspense payment.

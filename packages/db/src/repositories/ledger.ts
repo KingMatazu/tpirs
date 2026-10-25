@@ -332,6 +332,47 @@ export class ObligationRepository {
       .execute();
   }
 
+  /** Returns the obligation period for one asset and business day, if any. */
+  async findByAssetAndDate(
+    tenantId: string,
+    assetId: string,
+    businessDate: string,
+  ): Promise<ObligationPeriodRow | undefined> {
+    return this.db
+      .selectFrom("obligationPeriods")
+      .selectAll()
+      .where("tenantId", "=", tenantId)
+      .where("assetId", "=", assetId)
+      .where("businessDate", "=", businessDate)
+      .executeTakeFirst();
+  }
+
+  /**
+   * Page of obligation periods for a business date ordered by (updated_at, id)
+   * so a delta cursor can be advanced across updates/reversals (ADR 0028).
+   */
+  async listForBusinessDateSince(
+    tenantId: string,
+    businessDate: string,
+    cursor?: { readonly updatedAt: Date; readonly id: string },
+    limit = 500,
+  ): Promise<ObligationPeriodRow[]> {
+    let query = this.db
+      .selectFrom("obligationPeriods")
+      .selectAll()
+      .where("tenantId", "=", tenantId)
+      .where("businessDate", "=", businessDate);
+    if (cursor !== undefined) {
+      query = query.where((eb) =>
+        eb.or([
+          eb("updatedAt", ">", cursor.updatedAt),
+          eb.and([eb("updatedAt", "=", cursor.updatedAt), eb("id", ">", cursor.id)]),
+        ]),
+      );
+    }
+    return query.orderBy("updatedAt", "asc").orderBy("id", "asc").limit(limit).execute();
+  }
+
   async markPaid(
     tenantId: string,
     id: string,

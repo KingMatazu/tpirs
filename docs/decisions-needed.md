@@ -74,15 +74,21 @@ USSD and inbound SMS.
 
 ## D6: Payment status in verify responses
 
-**Status:** open (Phase 4).
+**Status:** resolved (Phase 6, ADR 0028).
 
-The verify payload deliberately carries no payment field until obligations and
-payments exist. When they do, the field must be additive and never render
-"UNPAID" for a `pay_per_use` day with no obligation row (build brief section 6).
+The verify payload carries `paymentStatus` with the values `paid`,
+`no_payment_recorded` and `unknown`. A `pay_per_use` day with no obligation row
+is `no_payment_recorded`, never a debt; the string `unpaid` never appears on
+the wire. `unknown` is reserved for a tenant whose ledger or config cannot be
+read.
 
-- Recommendation: add `paymentStatus` only with explicit values `PAID` /
-  `NOT_IN_OFFLINE_LIST` semantics from the verification design; absence stays
-  non-accusatory.
+- Decision: business date computed server-side from the tenant timezone; the
+  response carries it so an offline client can tell when its cache is stale.
+- Decision: `not_in_offline_list` is a field-app-only label, never a server
+  payment status.
+- Decision: the paid set is the set of assets with a `paid`/`waived` period for
+  the current business date; the delta feed pages by `(updated_at, id)` and a
+  reversal removes membership.
 
 ## D7: Multi-currency and FX
 
@@ -495,16 +501,84 @@ hand-maintained OpenAPI YAML would drift from the code.
 
 ## D29: Field PWA offline store
 
-**Status:** open — deferred entirely with officer tooling.
+**Status:** resolved (Phase 6, ADR 0029).
 
-The officer field app (web PWA or native) and its offline-cache design are
-deferred out of the current UI track along with the officer-facing screens
-(scan log, disputes inbox). No offline-store work happens until the officer
-track reopens, and nothing in `apps/admin` depends on it. The recommendation
-on record for when that work restarts: IndexedDB via the `idb` wrapper with
-three stores — a paid-set cache replayed verbatim from the delta sync feed
-(status computed at render time by _presence in the set_, so the store
-cannot hold or derive UNPAID); an append-only outbox of idempotent commands
-keyed by client-generated UUIDs and deduplicated server-side (no
-last-write-wins merging — offline scans and disputes are facts, not state);
-and sync state holding the monotonic `since` cursor.
+The officer field app reopens in Phase 6 as `apps/field`. The store uses
+IndexedDB via the `idb` wrapper with five stores: a paid-set cache replayed
+from the delta sync feed (status computed at render time by _presence in the
+set_, so the store cannot hold or derive UNPAID); a bounded asset/photo cache;
+an append-only outbox of idempotent commands keyed by client-generated UUIDs
+and deduplicated server-side (no last-write-wins merging — offline scans and
+disputes are facts, not state); sync state holding the business date and
+monotonic cursor; and a display-only `fieldSession` record for the shift grace
+window.
+
+- Decision: online login at least once per shift, then a configurable offline
+  grace window; queued work is re-authorised and attributed server-side at
+  sync time.
+- Decision: the client parses the opaque QR payload for offline membership but
+  never verifies the HMAC and never derives a negative status.
+
+## D30: Offline sticker lookup key
+
+**Status:** resolved (Phase 6, ADRs 0028/0029).
+
+An offline phone cannot verify the QR checksum: the signing key stays on the
+server. The field app therefore splits the token, uses the opaque payload as a
+lookup key in the cached paid set, and renders only `paid` or
+`not_in_offline_list`. A malformed token produces "scan again", not a status.
+
+- Decision: the paid-set feed carries `qrPayload` and `shortCode`, so both a
+  camera scan and a typed short code can be checked offline.
+- Decision: offline absence is never a claim of non-payment.
+
+## D31: Field session and offline grace
+
+**Status:** resolved (Phase 6, ADR 0029).
+
+Officers need the app after the screen locks or the browser is reopened with no
+network. The field app requires an online login at least once per shift, then
+allows a configurable offline grace window (default 12 hours). The access token
+stays in memory (D26); the httpOnly refresh cookie handles re-auth when the
+network returns.
+
+- Decision: the cached principal is display-only; every queued scan or dispute
+  is authorised and attributed from the fresh server session at sync time.
+- Decision: if the refresh cookie has expired, queued work waits until the
+  officer logs in again.
+- Decimal coordinates are optional, best-effort and never block a result.
+
+## D32: Paid-set scope at scale
+
+**Status:** open (Phase 6, with a recorded trigger).
+
+The first feed is tenant-wide for the current business date, paginated and
+capped. A large city may produce a paid set too big for a low-end phone.
+
+- Options: keep tenant-wide; scope by officer-assigned zones; scope by a
+  bounding box around the device.
+- Recommendation: ship tenant-wide for the pilot and measure the set size. Add
+  zone scoping when officers have zone assignments (a Phase 7/8 prerequisite)
+  or when the measured set exceeds the agreed phone budget.
+
+## D33: Dispute evidence transport
+
+**Status:** resolved (Phase 6, ADR 0030).
+
+At most one optional photo per dispute, downscaled on the device and posted as
+base64 JSON in the create request, stored through `ObjectStorage`. The route
+gets a larger body limit; the client resizes before queueing so an offline
+outbox item stays small.
+
+- Alternatives deferred: multipart uploads, multiple photos, resumable uploads.
+
+## D34: Scan and dispute retention
+
+**Status:** open (Phase 8).
+
+`scans`, `disputes` and `dispute_evidence` follow `compliance.retentionDays`.
+No purge job exists in Phase 6; rows are append-only except the dispute
+resolution fields reserved for Phase 8.
+
+- Recommendation: implement a scheduled purge in Phase 8 alongside the
+  reconciliation jobs, with a dry-run count and an audit entry per run.

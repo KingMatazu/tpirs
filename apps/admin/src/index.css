@@ -1,0 +1,28 @@
+@import "tailwindcss";
+
+/*
+ * Fallback theme + token bridge (ADR 0027). Tenant branding replaces the
+ * --tpirs-* values at runtime; Tailwind utilities bind them via @theme inline
+ * so every component reads tokens, never literals.
+ */
+:root {
+  --tpirs-color-primary: #1e3a5f;
+  --tpirs-color-secondary: #0f766e;
+  --tpirs-color-accent: #d97706;
+  --tpirs-locale-currency: "";
+  --tpirs-locale-language: "";
+  --tpirs-locale-timezone: "";
+}
+
+@theme inline {
+  --color-brand: var(--tpirs-color-primary);
+  --color-brand-secondary: var(--tpirs-color-secondary);
+  --color-brand-accent: var(--tpirs-color-accent);
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: #0f172a;
+  background: #f1f5f9;
+}

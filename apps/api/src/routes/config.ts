@@ -5,6 +5,7 @@ import { repositories } from "@tpirs/db";
 import { requirePermission } from "../auth.js";
 import { readTenantConfig } from "../tenants.js";
 import type { AuthContext } from "../auth.js";
+import { tenantConfigPutSchema } from "../schemas.js";
 
 function serializeIssues(error: TenantConfigValidationError): { path: string; message: string }[] {
   return error.issues.map((issue) => ({ path: issue.path, message: issue.message }));
@@ -22,39 +23,43 @@ export function registerConfigRoutes(app: FastifyInstance, context: AuthContext)
     return reply.send({ config: current.config, version: current.version });
   });
 
-  app.put("/v1/tenants/current/config", async (request, reply) => {
-    const principal = requirePermission(request, "tenant:configure");
+  app.put(
+    "/v1/tenants/current/config",
+    { schema: tenantConfigPutSchema },
+    async (request, reply) => {
+      const principal = requirePermission(request, "tenant:configure");
 
-    let config;
-    try {
-      config = validateTenantConfig(request.body);
-    } catch (error) {
-      if (error instanceof TenantConfigValidationError) {
-        return reply.code(422).send({
-          error: {
-            code: "unprocessable_entity",
-            message: "Invalid tenant configuration",
-            requestId: request.id,
-            issues: serializeIssues(error),
-          },
-        });
+      let config;
+      try {
+        config = validateTenantConfig(request.body);
+      } catch (error) {
+        if (error instanceof TenantConfigValidationError) {
+          return reply.code(422).send({
+            error: {
+              code: "unprocessable_entity",
+              message: "Invalid tenant configuration",
+              requestId: request.id,
+              issues: serializeIssues(error),
+            },
+          });
+        }
+        throw error;
       }
-      throw error;
-    }
 
-    const before = await readTenantConfig(context.db, principal.tenantId);
-    const updated = await withTenant(context.db, principal.tenantId, async (tx) =>
-      repositories(tx).tenants.updateConfig(principal.tenantId, config),
-    );
+      const before = await readTenantConfig(context.db, principal.tenantId);
+      const updated = await withTenant(context.db, principal.tenantId, async (tx) =>
+        repositories(tx).tenants.updateConfig(principal.tenantId, config),
+      );
 
-    request.audit = {
-      action: "tenant.config.update",
-      entityType: "tenant",
-      entityId: principal.tenantId,
-      before: before?.config,
-      after: config,
-    };
+      request.audit = {
+        action: "tenant.config.update",
+        entityType: "tenant",
+        entityId: principal.tenantId,
+        before: before?.config,
+        after: config,
+      };
 
-    return reply.send({ config: updated.config, version: updated.configVersion });
-  });
+      return reply.send({ config: updated.config, version: updated.configVersion });
+    },
+  );
 }

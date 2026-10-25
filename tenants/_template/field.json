@@ -1,0 +1,10 @@
+{
+  "offlineGraceHours": 8,
+  "maxQueueItems": 1000,
+  "disputeReasons": [
+    { "code": "wrong_location", "label": "Wrong location" },
+    { "code": "already_paid", "label": "Already paid" },
+    { "code": "technical_issue", "label": "Technical issue" },
+    { "code": "other", "label": "Other" }
+  ]
+}

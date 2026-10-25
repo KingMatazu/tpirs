@@ -39,7 +39,10 @@ export type Permission =
   | "ledger:reverse"
   | "ledger:approve"
   | "dispute:read"
+  | "dispute:create"
   | "dispute:resolve"
+  | "scan:read"
+  | "scan:record"
   | "reconciliation:read"
   | "reconciliation:run"
   | "report:read"
@@ -63,7 +66,10 @@ export const ALL_PERMISSIONS: readonly Permission[] = [
   "ledger:reverse",
   "ledger:approve",
   "dispute:read",
+  "dispute:create",
   "dispute:resolve",
+  "scan:read",
+  "scan:record",
   "reconciliation:read",
   "reconciliation:run",
   "report:read",
@@ -108,12 +114,29 @@ export const SYSTEM_ROLES: readonly SystemRoleDefinition[] = [
   {
     key: "officer",
     name: "Field Officer",
-    permissions: ["asset:read", "dispute:read", "zone:read"],
+    permissions: [
+      "asset:read",
+      "dispute:read",
+      "dispute:create",
+      "scan:read",
+      "scan:record",
+      "zone:read",
+    ],
   },
   {
     key: "zone_supervisor",
     name: "Zone Supervisor",
-    permissions: ["asset:read", "asset:manage", "zone:read", "zone:manage", "report:read"],
+    permissions: [
+      "asset:read",
+      "asset:manage",
+      "zone:read",
+      "zone:manage",
+      "report:read",
+      "scan:read",
+      "scan:record",
+      "dispute:read",
+      "dispute:create",
+    ],
   },
   {
     key: "finance_admin",
@@ -129,6 +152,7 @@ export const SYSTEM_ROLES: readonly SystemRoleDefinition[] = [
       "report:read",
       "dispute:read",
       "dispute:resolve",
+      "scan:read",
     ],
   },
   {
@@ -158,6 +182,7 @@ export const SYSTEM_ROLES: readonly SystemRoleDefinition[] = [
       "dispute:read",
       "reconciliation:read",
       "report:read",
+      "scan:read",
       "audit:read",
       "audit:export",
     ],
