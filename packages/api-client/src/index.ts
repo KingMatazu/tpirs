@@ -1,4 +1,4 @@
-import createClient, { type Middleware } from "openapi-fetch";
+﻿import createClient, { type Middleware } from "openapi-fetch";
 import type { paths } from "./schema.gen.js";
 
 export type ApiPaths = paths;
@@ -76,13 +76,28 @@ export interface ApiClientOptions {
   readonly getAccessToken?: () => string | undefined;
   /** Namespace for generated idempotency keys, e.g. `dashboard`. */
   readonly idempotencyKeyPrefix?: string;
-  /** Injectable fetch (tests); defaults to globalThis.fetch. */
+  /** Injectable fetch (tests); defaults to the runtime fetch set by setRuntimeFetch. */
   readonly fetch?: typeof fetch;
   /**
    * POST paths that create or move money are keyed automatically (build brief
    * section 7). The default guards payment resolution; callers may widen.
    */
   readonly moneyPostMatches?: (path: string) => boolean;
+}
+
+let runtimeFetch: typeof globalThis.fetch = globalThis.fetch;
+
+/**
+ * Replaces the fetch used by clients created without an explicit one.
+ *
+ * `openapi-fetch` captures `fetch` at `createClient()` time, and a vitest setup
+ * file runs after this module is evaluated but may run after the dashboard's
+ * singleton client is constructed. Swapping `globalThis.fetch` would therefore
+ * come too late, so the default is a wrapper that dereferences `runtimeFetch`
+ * on each call instead of capturing it.
+ */
+export function setRuntimeFetch(fetchImpl: typeof globalThis.fetch): void {
+  runtimeFetch = fetchImpl;
 }
 
 const defaultMoneyPostMatches = (path: string): boolean =>
@@ -95,10 +110,11 @@ const defaultMoneyPostMatches = (path: string): boolean =>
  */
 export function createApiClient(options: ApiClientOptions) {
   const moneyPostMatches = options.moneyPostMatches ?? defaultMoneyPostMatches;
+  const fetchImpl: typeof globalThis.fetch = options.fetch ?? ((...args) => runtimeFetch(...args));
   const client = createClient<paths>({
     baseUrl: options.baseUrl,
     credentials: "omit",
-    ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
+    fetch: fetchImpl,
   });
   const middleware: Middleware = {
     onRequest({ request }) {

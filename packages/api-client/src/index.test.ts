@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { ApiError, createApiClient, refreshOnUnauthorized, toApiError } from "./index.js";
+import {
+  ApiError,
+  createApiClient,
+  refreshOnUnauthorized,
+  setRuntimeFetch,
+  toApiError,
+} from "./index.js";
 
 /**
  * The client plumbing runs against a stubbed fetch: bearer attachment,
@@ -92,6 +98,38 @@ describe("api client request plumbing", () => {
     });
     await client.GET("/v1/auth/me");
     expect(calls[0]?.request.headers.get("authorization")).toBe("Bearer tok-1");
+  });
+});
+
+describe("runtime fetch", () => {
+  it("uses a fetch installed after the client was created", async () => {
+    const client = createApiClient({ baseUrl: "http://api.test" });
+    const { fetch: stubbed, calls } = stubFetch(
+      async () => new globalThis.Response("{}", { status: 200 }),
+    );
+    setRuntimeFetch(stubbed);
+    try {
+      await client.GET("/v1/auth/me");
+      expect(calls).toHaveLength(1);
+    } finally {
+      setRuntimeFetch(globalThis.fetch);
+    }
+  });
+
+  it("prefers an explicitly injected fetch over the runtime one", async () => {
+    const { fetch: stubbed, calls } = stubFetch(
+      async () => new globalThis.Response("{}", { status: 200 }),
+    );
+    const runtime = stubFetch(async () => new globalThis.Response("{}", { status: 200 }));
+    setRuntimeFetch(runtime.fetch);
+    try {
+      const client = createApiClient({ baseUrl: "http://api.test", fetch: stubbed });
+      await client.GET("/v1/auth/me");
+      expect(calls).toHaveLength(1);
+      expect(runtime.calls).toHaveLength(0);
+    } finally {
+      setRuntimeFetch(globalThis.fetch);
+    }
   });
 });
 
