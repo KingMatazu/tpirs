@@ -2,27 +2,37 @@
 
 ## Working in this repo (verified against the codebase)
 
-**Toolchain:** Node 24 (`.node-version`), pnpm 11.1.3 (`corepack enable`), turbo, vitest, TypeScript strict, type-aware ESLint (`strictTypeChecked` + stylistic), Prettier (printWidth 100).
+**Toolchain:** Node 24 (`.node-version`), pnpm 11.1.3 (`corepack enable`), turbo, vitest, TypeScript strict, type-aware ESLint (`strictTypeChecked` + stylistic), Prettier (printWidth 100). Frontends are React 18 + Vite (`apps/admin`, `apps/field`).
 
 **Commands** (repo root, all in `package.json`):
 
-| Command                                                        | What it does                                             |
-| -------------------------------------------------------------- | -------------------------------------------------------- |
-| `pnpm install`                                                 | install workspace dependencies                           |
-| `pnpm setup`                                                   | copy `.env`, start containers, migrate, seed (first run) |
-| `pnpm dev`                                                     | all dev servers via turbo; API on :3000                  |
-| `pnpm dev:infra`                                               | Postgres/Redis/MinIO containers only                     |
-| `pnpm lint` / `typecheck` / `test` / `build`                   | turbo runs that task in every package                    |
-| `pnpm format`                                                  | Prettier write; unformatted new files fail lint-staged   |
-| `pnpm db:migrate` / `db:migrate:down` / `db:check` / `db:seed` | migrate, roll back, prove reversibility, seed            |
+| Command                                                        | What it does                                                    |
+| -------------------------------------------------------------- | --------------------------------------------------------------- |
+| `pnpm install`                                                 | install workspace dependencies                                  |
+| `pnpm setup`                                                   | copy `.env`, start containers, migrate, seed (first run)        |
+| `pnpm dev`                                                     | all dev servers via turbo; API on :3000                         |
+| `pnpm dev:infra`                                               | Postgres/Redis/SeaweedFS containers only                        |
+| `pnpm lint` / `typecheck` / `test` / `build`                   | turbo runs that task in every package (all `dependsOn: ^build`) |
+| `pnpm format` / `format:check`                                 | Prettier write / verify; unformatted files fail lint-staged     |
+| `pnpm db:migrate` / `db:migrate:down` / `db:check` / `db:seed` | migrate, roll back, prove reversibility, seed                   |
+| `pnpm ci:verify` / `ci:migration-check` / `smoke`              | the CI shell scripts directly (same commands CI runs)           |
 
 **Order before finishing a change:** `pnpm format` → `pnpm lint` → `pnpm typecheck` → `pnpm test`. CI (`scripts/ci/verify.sh`) runs install → lint → typecheck → build, then `scripts/ci/integration.sh` (scratch Postgres + full suite) and `scripts/ci/migration-check.sh` (every migration must roll back to zero). Husky hooks: pre-commit = `pnpm lint-staged` (eslint `--fix --max-warnings 0` + prettier); pre-push = `pnpm typecheck` + `pnpm test`.
 
 **Testing gotchas:**
 
 - One package: `pnpm --filter @tpirs/<name> test` (runs `vitest run`); one file: append `-- src/<file>.test.ts`.
-- DB-backed suites (auth, audit, RLS, identity, registry) are `describe.skip` unless `TEST_DATABASE_URL` is set — a plain `pnpm test` can pass without ever touching Postgres. Real run: `sh scripts/ci/integration.sh` (spins up scratch Postgres, migrates, exports the var), or `pnpm dev:infra` + `pnpm db:migrate` with `TEST_DATABASE_URL` exported.
+- DB-backed suites gate on `const describeIntegration = TEST_URL === undefined ? describe.skip : describe` (auth, audit, RLS, identity, registry, payments, worker) — a plain `pnpm test` can pass without ever touching Postgres. Grep for `TEST_DATABASE_URL` to find the ones that need it. Real run: `sh scripts/ci/integration.sh` (scratch Postgres on :55433, migrates, exports the var), or `pnpm dev:infra` + `pnpm db:migrate` with `TEST_DATABASE_URL` exported.
 - Cross-package imports resolve to built `dist/` (`main: ./dist/index.js`), never `src`. After editing a dependency, rebuild before testing dependents — running vitest directly inside a package uses stale `dist`. Root `pnpm test`/`pnpm typecheck` are safe: turbo declares `dependsOn: ^build`.
+- `apps/admin` and `apps/field` build with `vite build` and typecheck with `tsc --noEmit` on both tsconfigs (not `tsc -b`), so they fail differently from library packages. They test under jsdom, and reach the backend only through `@tpirs/api-client` (other workspace deps are config, domain, i18n, ui-tokens).
+
+**Generated code (do not hand-edit):**
+
+- `packages/api-client/openapi.json` and `src/schema.gen.ts` are build output, not source. `packages/api-client/scripts/generate.mjs` boots `buildApp` in-process with mock identity/services and dumps `app.swagger()`; `openapi-typescript` then generates the types. `schema.gen.ts` is in the ESLint ignore list.
+- The contract is code-first: add Fastify JSON Schemas to the route, then regenerate. Correct order after a route/schema change: `pnpm --filter @tpirs/api build` → `pnpm --filter @tpirs/api-client build`. Root `pnpm build` does both via `dependsOn: ^build`.
+- A generated `schema.gen.ts` diff in a PR is expected when routes change; a hand-written edit to it is not.
+
+**Shell:** `scripts/ci/*.sh` are POSIX `sh`, not PowerShell. On Windows, export `$env:TEST_DATABASE_URL="postgres://tpirs:tpirs@localhost:5433/tpirs"` and run the turbo task directly, or invoke the script through Git bash (see `docs/runbooks/local-development.md`).
 
 **Adding a package or adapter:**
 
@@ -35,24 +45,26 @@
 **Environment:**
 
 - `.env` (gitignored) is created from `.env.example` by `pnpm setup`. The db CLI (`packages/db/src/env.ts`, used by migrate/seed) auto-loads it; `pnpm dev` apps load it via `tsx --env-file-if-exists=../../.env`. Anything else (scripts, tests, one-off commands) reads `process.env` directly — export variables yourself.
-- Local ports: Postgres **5433**, Redis **6380**, MinIO 9000/9001, API 3000 (see `docs/runbooks/local-development.md`).
+- Local ports: Postgres **5433**, Redis **6380**, object storage **9000** (SeaweedFS S3 API), API **3000**. The compose file runs `chrislusf/seaweedfs`, not MinIO; `object-store-init` creates the `tpirs-uploads` and `tpirs-exports` buckets. `OBJECT_STORAGE_ADAPTER=s3|localdisk` picks the adapter (see `.env.example`).
 - Full reset: `docker compose -f infra/docker-compose.yml down -v`, then `pnpm setup`.
 
 **Git:** small, phase-scoped commits in conventional style (`chore: phase 0 foundations` matches history). commitlint is configured but not hooked — `lint-staged` is the only commit-time gate.
 
-**Current repo state:** Phases 0–4 are committed; Phase 5 (driver channels: USSD/SMS) is next. Phase 2 (asset registry) delivered photo serving, public `GET /v1/verify/:token` (ADR 0007), and SVG sticker export via `qrcode` (ADR 0009). Phase 3 delivered the ledger, obligations, and fee engine (ADRs 0010–0015). Phase 4 delivered payment intake, attribution, suspense, receipts, the Postgres job queue, and Paystack/Remita adapter packages (ADRs 0016–0020).
+**Current repo state:** Phases 0–6 are implemented — verification with the `paid`/`no_payment_recorded`/`unknown` split, the paid-set delta sync feed, scan and dispute ingest, and the offline officer PWA (`apps/field`). Phase 7 (collector cash wallet) is next. `README.md` still says "Phases 0–5" and is behind (doc drift only).
 
 - **Paystack is the chosen payment gateway** for the first deployment. The adapter package passes the shared conformance/fixture suites; live sandbox wiring and the Phase 4 sandbox checks in `docs/decisions-needed.md` are still open. Remita stays as an alternative adapter.
-- **API-first arrives incrementally.** There is no OpenAPI document or `packages/api-client` yet; routes are hand-written Fastify and the contract is formalised as they stabilise, not retrofitted in one step.
-- **`GET /v1/verify/:token` returns `paymentStatus: "unknown"` until Phase 6**, when the delta-sync/verification rules land. Absence must never imply UNPAID.
+- **API-first arrives incrementally.** The repo now uses generated API-client wiring and contract validation alongside the Fastify routes; new endpoints and enum changes are treated as contract changes, not ad hoc server-only changes.
+- **`GET /v1/verify/:token` now returns `paymentStatus: "paid" | "no_payment_recorded" | "unknown"`**. A missing payment under `pay_per_use` is `no_payment_recorded`, not a debt, and the offline field app never infers `UNPAID` from absence in the cache.
 - **The two fake tenants are sample data in `packages/db/src/seed.ts`**, not `tenants/<slug>/` config files, so the seed can demonstrate two tenants side by side. Seed users include `alpha.collector`/`beta.officer`.
 - Tenant-config fixtures must include `channels.otpMessageTemplate` (with a `{code}` placeholder) or validation throws.
+
+**Before changing behaviour, read:** `docs/decisions-needed.md` (D1–D34; many are resolved with a decision to follow — match the recorded one instead of inventing a new default) and `docs/adr/` (0001–0030, one short record per significant choice). Runbooks are in `docs/runbooks/`; the active phase plan is `docs/phase-<n>-implementation.md`.
 
 ## 0. Mission and how to use this brief
 
 Build a **white-label, multi-tenant revenue collection platform**. The first deployment is a state levy system for bikes and tuk-tuks. The firm will resell the same codebase to other states, so nothing may be hardcoded to one state, gateway, SMS provider, currency, language, or vehicle type.
 
-First deployment, in one paragraph: owners register vehicles (assets) and get a QR sticker. Daily levy payments go from the driver into a state-controlled bank account via a payment gateway, and each payment is recorded in an append-only ledger. Drivers use SMS and USSD (feature phones). Road officers scan the QR on a smartphone app to see PAID/UNPAID for today, online or offline. Park agents register vehicles and take residual cash through a pre-funded wallet. Finance gets nightly reconciliation and an audit trail. The levy is **pay-per-use**: a vehicle owes the fee only on days it is used for work, so a day with no payment is never a debt.
+First deployment, in one paragraph: owners register vehicles (assets) and get a QR sticker. Daily levy payments go from the driver into a state-controlled bank account via a payment gateway, and each payment is recorded in an append-only ledger. Drivers use SMS and USSD (feature phones). Road officers scan the QR on a smartphone app to see `PAID` or `NO_PAYMENT_RECORDED` for today, online or offline; the field app never treats an offline cache miss as `UNPAID`. Park agents register vehicles and take residual cash through a pre-funded wallet. Finance gets nightly reconciliation and an audit trail. The levy is **pay-per-use**: a vehicle owes the fee only on days it is used for work, so a day with no payment is never a debt.
 
 **Rules for the agent**
 
@@ -98,7 +110,7 @@ Postgres is the one deliberate fixed choice. Any managed or self-hosted Postgres
 
 Frontend swappability: the admin dashboard and field app are separate clients of the OpenAPI contract. Generated API clients live in `packages/api-client`. Theming comes from design tokens, never hardcoded colors or logos.
 
-Adapters built **today**: a mock for every port, plus non-mock adapters for `ObjectStorage` (S3-compatible, local disk), `IdentityProvider` (db), `SecretsProvider` (env), `Telemetry` (OTel), `AssetSchemaRegistry` (config), `FeeEngine` (config), `JobQueue` (Postgres), and `PaymentProvider` (Paystack — the chosen gateway — plus Remita; both pass conformance against recorded fixtures, with live sandbox wiring still pending). The remaining real adapters (Africa's Talking, Termii, USSD, Redis queue, …) arrive with their phases.
+Adapters built **today** (one mock per port always): `ObjectStorage` s3 + localdisk, `IdentityProvider` db, `SecretsProvider` env, `Telemetry` otel, `AssetSchemaRegistry` config, `FeeEngine` config, `JobQueue` postgres, `SmsProvider` africastalking + termii, `UssdProvider` africastalking, `PaymentProvider` paystack (the chosen gateway) + remita, both passing conformance against recorded fixtures with live sandbox wiring still pending. Still **mock-only**: `Cache`, `LockService`, `Clock`/`BusinessCalendar`, `ReceiptRenderer`, `ExportService` — do not describe them as real adapters in docs or tests.
 
 ## 4. Multi-tenancy and white-labelling
 
@@ -127,26 +139,27 @@ Adapters built **today**: a mock for every port, plus non-mock adapters for `Obj
 
 ## 5. Repository layout
 
-Target layout. Items marked _(later)_ do not exist yet — do not create them before their phase; everything else is present today.
+Present layout. Everything below exists except `docs/onboarding` and `tenants/<state-slug>`; add to this shape rather than inventing new top-level directories.
 
 ```
 /apps
-  /api            # delivery layer (HTTP, webhooks, USSD/SMS callbacks); thin
-  /admin          # web dashboard (later; consumes api-client only)
-  /field          # mobile app for officers and collectors (later; consumes api-client only)
-  /worker         # background job runner (stub)
+  /api            # Fastify delivery layer (HTTP, webhooks, USSD/SMS callbacks); thin
+  /admin          # React + Vite dashboard; talks to the backend via api-client
+  /field          # React + Vite officer PWA; IndexedDB paid-set cache and offline outbox
+  /worker         # background worker: outbox sweepers and SMS/channel delivery
 /packages
-  /domain         # pure business logic (ledger, allocation, obligations, verification, disputes)
+  /domain         # pure business logic (ledger, allocation, obligations, verification, disputes, USSD engine)
   /ports          # TypeScript interfaces for every port in section 3
   /adapters       # one folder per adapter, grouped by port
   /contracts      # conformance test suites for each port
   /config         # tenant config schema and loader
   /application    # use-case services wiring domain + ports (read by apps/api)
+  /channel-providers # resolves tenant config + secrets into channel adapters
   /crypto         # hashing and HMAC helpers (passwords, QR tokens)
   /db             # Kysely connection, migrations, seed, repositories
-  /api-client     # generated from OpenAPI (later)
-  /ui-tokens      # design tokens and theming (later)
-  /i18n           # message catalogs and templating (later)
+  /api-client     # generated from the server's OpenAPI (openapi-typescript + openapi-fetch)
+  /ui-tokens      # design tokens and theming
+  /i18n           # message catalogs and templating
 /tenants
   /_template      # starter config, templates, assets for a new state
   /<state-slug>   # config only: no code
@@ -203,7 +216,7 @@ Target layout. Items marked _(later)_ do not exist yet — do not create them be
 
 ## 9. Build phases
 
-Each phase lists tasks and **acceptance checks**.
+Each phase lists tasks and **acceptance checks**. Phases 0–6 are delivered — their checks already pass and the work is in the tree. Start new work at Phase 7 (collector cash wallet); do not re-scaffold a delivered phase.
 
 ### Phase 0: Foundations
 

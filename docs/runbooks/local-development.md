@@ -8,7 +8,8 @@ pnpm install
 pnpm setup
 ```
 
-`pnpm setup` copies `.env.example` to `.env`, starts Postgres/Redis/MinIO via
+`pnpm setup` copies `.env.example` to `.env`, starts Postgres/Redis/SeaweedFS
+(S3-compatible object store) via
 `infra/docker-compose.yml`, applies migrations, and seeds.
 
 ## Everyday
@@ -65,7 +66,7 @@ After `pnpm setup` (or `pnpm db:seed`):
 
 - Postgres: `5433` (host) → 5432
 - Redis: `6380` (host) → 6379
-- MinIO: `9000` (API), `9001` (console)
+- Object storage (SeaweedFS S3 API): `9000` — no separate web console in the compose profile
 - API: `3000`
 
 ## Troubleshooting
