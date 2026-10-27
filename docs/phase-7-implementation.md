@@ -96,7 +96,7 @@ New ADRs:
   in the tenant timezone, overdue marking, freeze on shortfall per config,
   freeze/unfreeze permission split, and why freeze never blocks verification.
 
-## Step 1: Domain rules (`packages/domain/src/cash.ts`)
+## Step 1: Domain rules (`packages/domain/src/cash.ts`) (completed)
 
 Pure functions, no imports from db or Fastify:
 
@@ -121,7 +121,20 @@ Tests: ceiling boundary is inclusive/exclusive exactly once
 arithmetic across a DST change in a tenant timezone; deposit classification
 table; amounts remain integer minor units in one currency.
 
-## Step 2: Schema and repositories (migration `0012_collector_cash.ts`)
+## Step 2: Schema and repositories (migration `0012_collector_cash.ts`) (completed)
+
+Shipped as migration `0012_collector_cash.ts` and
+`packages/db/src/repositories/collector-cash.ts`, plus the typed table
+interfaces in `packages/db/src/connection.ts`. Two deltas from the plan below,
+both recorded here because the plan text is the baseline:
+
+- Balances: `LedgerRepository.accountBalance` is credit-positive (asset wallets
+  are liabilities), so collector float reads go through the new
+  `collectorCashBalance(tenantId, collectorUserId?)`, which is debit-positive
+  and only ever sums `COLLECTOR_CASH` (ADR 0031).
+- Immutability: money-identity triggers guard `cash_intakes`, `cash_deposits`
+  and (fully append-only) `cash_deposit_allocations`; the Phase 6 SMS content
+  trigger was replaced in migration `0012` to include `cash_intake_id`.
 
 Every table is tenant-scoped with the Phase 1 RLS pattern, real indexes and a
 complete `down()`; `pnpm ci:migration-check` must pass.

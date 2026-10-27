@@ -19,6 +19,12 @@ export interface LedgerPosting {
   readonly assetId?: string;
   readonly paymentId?: string;
   readonly obligationPeriodId?: string;
+  /**
+   * Collector attribution for cash postings (ADR 0031). Collector cash
+   * balances are derived by filtering `COLLECTOR_CASH` entries on it, so cash
+   * postings must always carry it and gateway postings must never.
+   */
+  readonly collectorUserId?: string;
   readonly memo?: string;
 }
 

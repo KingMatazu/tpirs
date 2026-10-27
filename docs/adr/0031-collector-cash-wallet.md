@@ -83,7 +83,11 @@ collector in the cash case.
 - The derived balance costs a `sum()` per wallet read. At the volumes of a
   state pilot (thousands of intakes per day, not per second) that is cheaper
   than keeping a materialised balance correct against an append-only ledger,
-  and it cannot disagree with the books.
+  and it cannot disagree with the books. Note the sign: `accountBalance` is
+  credit-positive because asset wallets are liabilities, while a collector's
+  outstanding float is debit-positive, so repositories expose
+  `collectorCashBalance` (debits minus credits) instead of asking callers to
+  negate.
 - A cash intake is visible to reconciliation as `COLLECTOR_CASH` movement, not
   as a `payments` row, so provider settlement totals are not polluted by money
   that never touched a gateway.

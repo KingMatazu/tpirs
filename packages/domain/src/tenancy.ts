@@ -43,6 +43,12 @@ export type Permission =
   | "dispute:resolve"
   | "scan:read"
   | "scan:record"
+  | "cash:read"
+  | "cash:intake"
+  | "cash:deposit:read"
+  | "cash:deposit:match"
+  | "cash:freeze"
+  | "cash:unfreeze"
   | "reconciliation:read"
   | "reconciliation:run"
   | "report:read"
@@ -70,6 +76,12 @@ export const ALL_PERMISSIONS: readonly Permission[] = [
   "dispute:resolve",
   "scan:read",
   "scan:record",
+  "cash:read",
+  "cash:intake",
+  "cash:deposit:read",
+  "cash:deposit:match",
+  "cash:freeze",
+  "cash:unfreeze",
   "reconciliation:read",
   "reconciliation:run",
   "report:read",
@@ -109,7 +121,7 @@ export const SYSTEM_ROLES: readonly SystemRoleDefinition[] = [
   {
     key: "collector",
     name: "Collector",
-    permissions: ["asset:read", "asset:manage", "payment:manage", "zone:read"],
+    permissions: ["asset:read", "asset:manage", "payment:manage", "zone:read", "cash:read", "cash:intake"],
   },
   {
     key: "officer",
@@ -136,6 +148,8 @@ export const SYSTEM_ROLES: readonly SystemRoleDefinition[] = [
       "scan:record",
       "dispute:read",
       "dispute:create",
+      "cash:read",
+      "cash:freeze",
     ],
   },
   {
@@ -153,6 +167,12 @@ export const SYSTEM_ROLES: readonly SystemRoleDefinition[] = [
       "dispute:read",
       "dispute:resolve",
       "scan:read",
+      "cash:read",
+      "cash:intake",
+      "cash:deposit:read",
+      "cash:deposit:match",
+      "cash:freeze",
+      "cash:unfreeze",
     ],
   },
   {
@@ -183,6 +203,8 @@ export const SYSTEM_ROLES: readonly SystemRoleDefinition[] = [
       "reconciliation:read",
       "report:read",
       "scan:read",
+      "cash:read",
+      "cash:deposit:read",
       "audit:read",
       "audit:export",
     ],

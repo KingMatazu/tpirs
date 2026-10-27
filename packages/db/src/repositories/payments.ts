@@ -402,6 +402,8 @@ export interface EnqueueSmsParams {
   readonly body: string;
   readonly paymentId?: string | null;
   readonly obligationPeriodId?: string | null;
+  /** Subject for cash receipts (ADR 0031); one of the three subjects is required. */
+  readonly cashIntakeId?: string | null;
 }
 
 export interface CountSentSmsOnDateOptions {
@@ -428,6 +430,7 @@ export class SmsLogRepository {
         tenantId,
         paymentId: params.paymentId ?? null,
         obligationPeriodId: params.obligationPeriodId ?? null,
+        cashIntakeId: params.cashIntakeId ?? null,
         kind: params.kind,
         recipient: params.recipient,
         body: params.body,

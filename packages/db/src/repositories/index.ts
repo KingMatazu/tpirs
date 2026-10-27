@@ -4,6 +4,7 @@ import { AssetPhotoRepository } from "./asset-photo.js";
 import { AssetRepository } from "./asset.js";
 import { AuditRepository } from "./audit.js";
 import { ChannelMessageRepository } from "./channel-messages.js";
+import { CollectorCashRepository } from "./collector-cash.js";
 import { DeviceRepository } from "./device.js";
 import { DisputeRepository } from "./dispute.js";
 import { OwnerRepository } from "./owner.js";
@@ -31,6 +32,7 @@ export * from "./asset-photo.js";
 export * from "./asset.js";
 export * from "./audit.js";
 export * from "./channel-messages.js";
+export * from "./collector-cash.js";
 export * from "./device.js";
 export * from "./dispute.js";
 export * from "./ledger.js";
@@ -67,6 +69,7 @@ export function repositories(db: Transaction<Database>): {
   webhookEndpoints: WebhookEndpointRepository;
   scans: ScanRepository;
   disputes: DisputeRepository;
+  collectorCash: CollectorCashRepository;
 } {
   return {
     tenants: new TenantRepository(db),
@@ -91,5 +94,6 @@ export function repositories(db: Transaction<Database>): {
     webhookEndpoints: new WebhookEndpointRepository(db),
     scans: new ScanRepository(db),
     disputes: new DisputeRepository(db),
+    collectorCash: new CollectorCashRepository(db),
   };
 }

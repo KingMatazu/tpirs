@@ -133,6 +133,8 @@ export interface PostingInput {
   assetId?: string | null;
   paymentId?: string | null;
   obligationPeriodId?: string | null;
+  /** Collector attribution for cash postings (ADR 0031); null for gateway money. */
+  collectorUserId?: string | null;
   memo?: string | null;
 }
 
@@ -191,6 +193,7 @@ export class LedgerRepository {
           assetId: posting.assetId ?? null,
           paymentId: posting.paymentId ?? null,
           obligationPeriodId: posting.obligationPeriodId ?? null,
+          collectorUserId: posting.collectorUserId ?? null,
           memo: posting.memo ?? null,
         })
         .returningAll()
@@ -233,8 +236,17 @@ export class LedgerRepository {
    * Sum of the ledger entries for one account, signed so a credit adds and a
    * debit subtracts. Wallet balances are derived, never stored: the ledger is
    * the only source of truth.
+   *
+   * `collectorUserId` scopes the sum to one collector's cash entries (ADR
+   * 0031); `assetId` scopes it to one asset's wallet activity. A gateway
+   * balance uses neither.
    */
-  async accountBalance(tenantId: string, accountCode: string, assetId?: string): Promise<bigint> {
+  async accountBalance(
+    tenantId: string,
+    accountCode: string,
+    assetId?: string,
+    collectorUserId?: string,
+  ): Promise<bigint> {
     const result = await sql<{ balance: string | null }>`
       select coalesce(
         sum(case when le.direction = 'credit' then le.amount_minor else -le.amount_minor end),
@@ -246,6 +258,32 @@ export class LedgerRepository {
         and a.tenant_id = ${tenantId}
         and a.code = ${accountCode}
         ${assetId === undefined ? sql`` : sql`and le.asset_id = ${assetId}`}
+        ${collectorUserId === undefined ? sql`` : sql`and le.collector_user_id = ${collectorUserId}`}
+    `.execute(this.db);
+    const balance = result.rows[0]?.balance;
+    return balance === undefined || balance === null ? 0n : BigInt(balance);
+  }
+
+  /**
+   * A collector's outstanding float: debits minus credits over `COLLECTOR_CASH`
+   * entries attributed to them (ADR 0031).
+   *
+   * `accountBalance` is credit-positive because asset wallets are liabilities;
+   * collector cash is the opposite direction — a debit means money still in the
+   * collector's hands — so this method inverts the sign. Derived, never stored.
+   */
+  async collectorCashBalance(tenantId: string, collectorUserId?: string): Promise<bigint> {
+    const result = await sql<{ balance: string | null }>`
+      select coalesce(
+        sum(case when le.direction = 'debit' then le.amount_minor else -le.amount_minor end),
+        0
+      ) as balance
+      from ledger_entries le
+      join accounts a on a.id = le.account_id
+      where le.tenant_id = ${tenantId}
+        and a.tenant_id = ${tenantId}
+        and a.code = 'COLLECTOR_CASH'
+        ${collectorUserId === undefined ? sql`` : sql`and le.collector_user_id = ${collectorUserId}`}
     `.execute(this.db);
     const balance = result.rows[0]?.balance;
     return balance === undefined || balance === null ? 0n : BigInt(balance);

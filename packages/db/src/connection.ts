@@ -183,6 +183,11 @@ export interface LedgerEntryTable {
   assetId: string | null;
   paymentId: string | null;
   obligationPeriodId: string | null;
+  /**
+   * Collector attribution for `COLLECTOR_CASH` entries (ADR 0031); balances
+   * are derived by filtering on it. Null for every other account.
+   */
+  collectorUserId: string | null;
   memo: string | null;
   postedAt: Generated<Timestamp>;
   createdAt: Generated<Timestamp>;
@@ -291,7 +296,9 @@ export interface SmsLogTable {
   tenantId: string;
   paymentId: string | null;
   obligationPeriodId: string | null;
-  kind: "receipt" | "underpayment_notice";
+  /** Cash intake receipts are a third subject type (ADR 0031). */
+  cashIntakeId: string | null;
+  kind: "receipt" | "underpayment_notice" | "cash_receipt";
   recipient: string;
   body: string;
   status: Generated<"pending" | "sent" | "failed">;
@@ -368,6 +375,82 @@ export interface DisputeEvidenceTable {
   createdAt: Generated<Timestamp>;
 }
 
+/** Collector wallet state and settings. Never a stored balance (ADR 0031). */
+export interface CollectorWalletTable {
+  id: Generated<string>;
+  tenantId: string;
+  collectorUserId: string;
+  status: Generated<"active" | "frozen">;
+  frozenAt: Timestamp | null;
+  frozenReason: string | null;
+  /** Set by the deadline sweeper when a shortfall is flagged. */
+  overdueSince: Timestamp | null;
+  /** Per-collector override; the config ceiling applies when null. */
+  floatCeilingMinor: bigint | null;
+  /** Current dedicated deposit reference, null until provisioned. */
+  depositInstructionId: string | null;
+  createdAt: Generated<Timestamp>;
+  updatedAt: Generated<Timestamp>;
+}
+
+export interface CollectorDepositInstructionTable {
+  id: Generated<string>;
+  tenantId: string;
+  collectorUserId: string;
+  provider: string;
+  reference: string;
+  kind: "virtual_account" | "narration";
+  status: Generated<"active" | "revoked">;
+  createdAt: Generated<Timestamp>;
+  revokedAt: Timestamp | null;
+}
+
+/** One counter-cash handover, with the ledger transaction that settled the day. */
+export interface CashIntakeTable {
+  id: Generated<string>;
+  tenantId: string;
+  collectorUserId: string;
+  /** Client-generated idempotency reference; unique per tenant and collector. */
+  clientReference: string;
+  assetId: string;
+  /** Snapshot of the asset's zone at intake, for supervisor scoping (D39). */
+  zoneId: string | null;
+  obligationPeriodId: string | null;
+  businessDate: string;
+  amountMinor: bigint;
+  currency: string;
+  status: Generated<"open" | "matched" | "reversed">;
+  transactionId: string | null;
+  receiptNumber: string;
+  recordedAt: Generated<Timestamp>;
+}
+
+export interface CashDepositTable {
+  id: Generated<string>;
+  tenantId: string;
+  /** Set when the deposit is attributed; stays null while unrecognised. */
+  collectorUserId: string | null;
+  provider: string;
+  providerReference: string;
+  amountMinor: bigint;
+  currency: string;
+  status: Generated<"matched" | "partial" | "suspense">;
+  /** Raw webhook event that carried the deposit, when it arrived by webhook. */
+  webhookEventId: string | null;
+  createdAt: Generated<Timestamp>;
+  matchedAt: Timestamp | null;
+}
+
+/** One intake cleared by one deposit; a deposit may clear several intakes. */
+export interface CashDepositAllocationTable {
+  id: Generated<string>;
+  tenantId: string;
+  depositId: string;
+  intakeId: string;
+  amountMinor: bigint;
+  createdAt: Generated<Timestamp>;
+}
+
 export interface Database {
   tenants: TenantTable;
   zones: ZoneTable;
@@ -395,6 +478,11 @@ export interface Database {
   scans: ScanTable;
   disputes: DisputeTable;
   disputeEvidence: DisputeEvidenceTable;
+  collectorWallets: CollectorWalletTable;
+  collectorDepositInstructions: CollectorDepositInstructionTable;
+  cashIntakes: CashIntakeTable;
+  cashDeposits: CashDepositTable;
+  cashDepositAllocations: CashDepositAllocationTable;
 }
 
 export type TenantRow = Selectable<TenantTable>;
@@ -418,6 +506,11 @@ export type PaymentRow = Selectable<PaymentTable>;
 export type WebhookEventRow = Selectable<WebhookEventTable>;
 export type SmsLogRow = Selectable<SmsLogTable>;
 export type ChannelMessageRow = Selectable<ChannelMessageTable>;
+export type CollectorWalletRow = Selectable<CollectorWalletTable>;
+export type CollectorDepositInstructionRow = Selectable<CollectorDepositInstructionTable>;
+export type CashIntakeRow = Selectable<CashIntakeTable>;
+export type CashDepositRow = Selectable<CashDepositTable>;
+export type CashDepositAllocationRow = Selectable<CashDepositAllocationTable>;
 
 export interface DbOptions {
   readonly connectionString: string;

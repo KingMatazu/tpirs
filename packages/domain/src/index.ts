@@ -8,6 +8,7 @@ export * from "./asset.js";
 export * from "./asset-attributes.js";
 export * from "./qr-token.js";
 export * from "./ledger.js";
+export * from "./cash.js";
 export * from "./obligation.js";
 export * from "./allocation.js";
 export * from "./fee-engine.js";
