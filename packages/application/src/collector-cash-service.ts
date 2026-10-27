@@ -1,10 +1,13 @@
 import { todayInTimeZone } from "@tpirs/domain";
-import { CashError, assertWithinCeiling, canIntake } from "@tpirs/domain";
+import { CashError, assertWithinCeiling, canIntake, money } from "@tpirs/domain";
 import type { BusinessDate, Money } from "@tpirs/domain";
 import { assetTypeId, tenantId as tenantRef } from "@tpirs/domain";
 import { randomOpaqueId } from "@tpirs/crypto";
+import type { CashDepositRow, CollectorDepositInstructionRow } from "@tpirs/db";
+import { repositories, withTenant } from "@tpirs/db";
 import type { AnyDb } from "@tpirs/db";
-import type { FeeEngine, ResolvedFee } from "@tpirs/ports";
+import { PortError } from "@tpirs/ports";
+import type { FeeEngine, PaymentProvider, ResolvedFee } from "@tpirs/ports";
 import type { TenantConfig } from "@tpirs/config";
 import type { TenantConfigLoader } from "./asset-service.js";
 import { ObligationService } from "./obligation-service.js";
@@ -31,6 +34,23 @@ export interface CollectorCashIntakeInput {
   readonly zoneId?: string | null;
 }
 
+/**
+ * The outcome of one deposit event or manual match.
+ *
+ * `allocatedMinor` is what the deposit has posted to the ledger so far; a
+ * `suspense` deposit has posted nothing, and the row's full amount waits for
+ * coverage (D35).
+ */
+export interface CashDepositResult {
+  readonly outcome: "matched" | "partial" | "suspense";
+  readonly depositId: string;
+  readonly collectorUserId: string | null;
+  readonly allocatedMinor: bigint;
+  readonly currency: string;
+  /** True when the provider reference was already recorded and nothing changed. */
+  readonly replayed: boolean;
+}
+
 export interface CollectorCashIntakeResult {
   readonly tenantId: string;
   readonly collectorUserId: string;
@@ -51,12 +71,19 @@ export interface CollectorCashServiceDeps {
   readonly db: AnyDb;
   readonly loadConfig: TenantConfigLoader;
   readonly feeEngine: FeeEngine;
+  /** Resolves a provider name to its adapter, for deposit instruction provisioning. */
+  readonly providerFor?: (provider: string) => PaymentProvider | undefined;
   readonly now?: () => Date;
 }
 
 /** The receipt number a driver can quote; opaque and unique per tenant. */
 function nextReceiptNumber(): string {
   return `R-${randomOpaqueId().slice(0, 12).toUpperCase()}`;
+}
+
+/** The coverage one deposit has posted, summed from its allocation rows. */
+function depositsCovered(rows: readonly { readonly amountMinor: bigint }[]): bigint {
+  return rows.reduce((total, row) => total + row.amountMinor, 0n);
 }
 
 /** What the driver recognises the asset by, taken from its own attributes. */
@@ -102,6 +129,342 @@ export class CollectorCashService {
     return withLedger(this.deps.db, input.tenantId, ({ ledger, repos }) =>
       this.intakeInScope({ ledger, repos, config, obligations }, input, businessDate),
     );
+  }
+
+  // ---------------------------------------------------------------- deposits
+
+  /**
+   * Provisions (rotates) a collector's dedicated deposit instruction (ADR 0032).
+   *
+   * The kind and the reference come from the adapter — one that does not offer
+   * per-collector deposit mechanics makes this throw instead of letting the
+   * platform invent a format the provider cannot recognise in its webhook.
+   * Rotating revokes the previous active instruction, so exactly one live
+   * destination exists for `(collector, provider)` at any time.
+   */
+  async provisionDepositInstruction(input: {
+    readonly tenantId: string;
+    readonly collectorUserId: string;
+    readonly provider: string;
+  }): Promise<CollectorDepositInstructionRow> {
+    if (this.deps.providerFor === undefined) {
+      throw new PortError("PaymentProvider", "not_found", "no payment providers are configured");
+    }
+    const adapter = this.deps.providerFor(input.provider);
+    if (adapter === undefined) {
+      throw new PortError(
+        "PaymentProvider",
+        "not_found",
+        `Unknown payment provider "${input.provider}"`,
+      );
+    }
+    if (adapter.createDepositAttribution === undefined) {
+      throw new PortError(
+        "PaymentProvider",
+        "invalid_request",
+        `Provider "${input.provider}" does not offer collector deposit attribution`,
+      );
+    }
+    const attribution = await adapter.createDepositAttribution({
+      collectorUserId: input.collectorUserId,
+      idempotencyKey: `cash:${input.tenantId}:${input.collectorUserId}:${randomOpaqueId()}`,
+    });
+
+    return withTenant(this.deps.db, input.tenantId, async (tx) => {
+      const repos = repositories(tx);
+      const previous = await repos.collectorCash.findActiveInstructionForCollector(
+        input.tenantId,
+        input.collectorUserId,
+        input.provider,
+      );
+      if (previous !== undefined) {
+        await repos.collectorCash.revokeInstruction(input.tenantId, previous.id);
+      }
+      return repos.collectorCash.createInstruction(input.tenantId, {
+        collectorUserId: input.collectorUserId,
+        provider: input.provider,
+        reference: attribution.value,
+        kind: attribution.kind,
+      });
+    });
+  }
+
+  /**
+   * One arriving deposit webhook, resolved against the collector's deposit
+   * instructions before any payment attribution happens (ADR 0032).
+   *
+   * Returns `undefined` when the reference is not a deposit instruction, so
+   * the payment flow continues. A recognised deposit always inserts the
+   * `cash_deposits` row; the ledger only moves when the deposit actually
+   * covers open intakes. An over-deposit or an unmatched one stays in
+   * suspense with no posting (D35), exactly like gateway suspense.
+   */
+  async ingestDeposit(input: {
+    readonly tenantId: string;
+    readonly config: TenantConfig;
+    readonly provider: string;
+    readonly event: {
+      readonly providerEventId: string;
+      readonly providerReference: string;
+      readonly amount: Money;
+      readonly status: "success" | "failed";
+    };
+  }): Promise<CashDepositResult | undefined> {
+    return withLedger(this.deps.db, input.tenantId, async ({ ledger, repos }) => {
+      const tenantId = input.tenantId;
+      const instruction = await repos.collectorCash.findActiveInstruction(
+        tenantId,
+        input.provider,
+        input.event.providerReference,
+      );
+      if (instruction === undefined) {
+        return undefined;
+      }
+
+      const { deposit, existed } = await repos.collectorCash.insertDepositIfAbsent(tenantId, {
+        provider: input.provider,
+        providerReference: input.event.providerReference,
+        amountMinor: BigInt(input.event.amount.amount),
+        currency: input.event.amount.currency,
+        collectorUserId: instruction.collectorUserId,
+      });
+
+      // A replay answers with the record and changes nothing.
+      if (existed) {
+        return this.depositResult(repos, deposit, true);
+      }
+
+      // Failed notifications record nothing beyond the deposit row, because
+      // no money arrived; the caller decides whether it can happen.
+      if (input.event.status === "failed") {
+        return this.depositResult(repos, deposit, false, "suspense");
+      }
+
+      const collector = deposit.collectorUserId;
+      if (collector === null || input.event.amount.currency !== input.config.locale.currency) {
+        return this.depositResult(repos, deposit, false, "suspense");
+      }
+
+      // Oldest open intake first, with partial coverage allowed. A deposit
+      // larger than the open intakes posts nothing at all: the surplus waits
+      // in suspense until an intake can cover it (D35), so the day-close
+      // arithmetic stays "intake minus posted deposits equals balance".
+      const totalRemaining = await this.remainingOpenTotal(repos, tenantId, collector);
+      const depositMinor = BigInt(input.event.amount.amount);
+      if (depositMinor > totalRemaining || totalRemaining === 0n) {
+        return this.depositResult(repos, deposit, false, "suspense");
+      }
+
+      await ledger.postTransaction(tenantId, {
+        idempotencyKey: `deposit:${deposit.id}`,
+        postings: [
+          {
+            accountCode: "SETTLEMENT_BANK",
+            direction: "debit",
+            amount: money(input.event.amount.currency, Number(depositMinor)),
+            collectorUserId: collector,
+          },
+          {
+            accountCode: "COLLECTOR_CASH",
+            direction: "credit",
+            amount: money(input.event.amount.currency, Number(depositMinor)),
+            collectorUserId: collector,
+          },
+        ],
+        sourceType: "cash_deposit",
+        sourceId: deposit.id,
+        description: `Deposit received via ${input.provider}`,
+      });
+
+      let budget = depositMinor;
+      const allocations: { readonly intakeId: string; readonly amountMinor: bigint }[] = [];
+      for (const intake of await repos.collectorCash.openIntakesForCollector(tenantId, collector)) {
+        if (budget === 0n) break;
+        const already = await repos.collectorCash.sumIntakeAllocation(tenantId, intake.id);
+        const remaining = intake.amountMinor - already;
+        if (remaining <= 0n) continue;
+        const take = remaining <= budget ? remaining : budget;
+        await repos.collectorCash.addDepositAllocation(tenantId, {
+          depositId: deposit.id,
+          intakeId: intake.id,
+          amountMinor: take,
+        });
+        if (already + take >= intake.amountMinor) {
+          await repos.collectorCash.markIntakeMatched(tenantId, intake.id);
+        }
+        allocations.push({ intakeId: intake.id, amountMinor: take });
+        budget -= take;
+      }
+
+      const status: CashDepositResult["outcome"] =
+        budget === 0n && depositMinor === depositsCovered(allocations) ? "matched" : "partial";
+      await repos.collectorCash.setDepositOutcome(tenantId, deposit.id, { status });
+      return this.depositResult(repos, deposit, false, status);
+    });
+  }
+
+  /**
+   * Finance manual matching of a suspense deposit to one intake (ADR 0032).
+   *
+   * Posts `Dr SETTLEMENT_BANK / Cr COLLECTOR_CASH` for exactly what the target
+   * absorbs, appends one allocation row and leaves any remainder of a larger
+   * deposit still unposted, which keeps it matchable later. Repeating the
+   * same request (same deposit, intake and amount) is a no-op, not a second
+   * posting.
+   */
+  async matchDeposit(input: {
+    readonly tenantId: string;
+    readonly depositId: string;
+    readonly intakeId: string;
+    /** Defaults to the deposit's remaining amount. */
+    readonly amountMinor?: bigint;
+    /** The finance user doing the matching; recorded on the ledger transaction. */
+    readonly approvedByUserId: string;
+  }): Promise<CashDepositResult> {
+    return withLedger(this.deps.db, input.tenantId, async ({ ledger, repos }) => {
+      const tenantId = input.tenantId;
+      const deposit = await repos.collectorCash.findDepositById(tenantId, input.depositId);
+      if (deposit === undefined) {
+        throw new CashError("deposit_unknown", `deposit ${input.depositId} was not found`);
+      }
+      const intake = await repos.collectorCash.findIntakeById(tenantId, input.intakeId);
+      if (intake === undefined) {
+        throw new CashError("deposit_unknown", `intake ${input.intakeId} was not found`);
+      }
+      if (deposit.collectorUserId === null) {
+        throw new CashError("deposit_state", "the deposit has no attributed collector");
+      }
+      if (intake.collectorUserId !== deposit.collectorUserId) {
+        throw new CashError("deposit_state", "the deposit belongs to another collector");
+      }
+
+      const already = await repos.collectorCash.sumIntakeAllocation(tenantId, intake.id);
+      const allocations = await repos.collectorCash.listDepositAllocations(tenantId, deposit.id);
+      const previousPair = allocations.find((row) => row.intakeId === intake.id);
+      const previouslyAllocated = depositsCovered(allocations);
+      const remainingPayable = deposit.amountMinor - previouslyAllocated;
+      const remainingIntake = intake.amountMinor - already;
+
+      // A deposit may post to a given intake once (unique per pair). Repeating
+      // the identical request is a no-op; anything else for a covered pair is
+      // refused instead of posting twice.
+      if (previousPair !== undefined) {
+        const pairConsumed = remainingPayable <= 0n || remainingIntake <= 0n;
+        const sameRequest =
+          (input.amountMinor !== undefined && input.amountMinor === previousPair.amountMinor) ||
+          (input.amountMinor === undefined && pairConsumed);
+        if (sameRequest) {
+          return this.depositResult(repos, deposit, true);
+        }
+        throw new CashError(
+          "deposit_state",
+          `the deposit already posted ${previousPair.amountMinor} to this intake`,
+        );
+      }
+      if (intake.status !== "open") {
+        throw new CashError("deposit_state", "the target intake is not open");
+      }
+      if (remainingPayable <= 0n) {
+        throw new CashError("deposit_state", "the deposit has no unposted remainder");
+      }
+
+      // The default is what the pair can actually absorb, clamped both ways.
+      const requested =
+        input.amountMinor ??
+        (remainingPayable <= remainingIntake ? remainingPayable : remainingIntake);
+      if (requested <= 0n || requested > remainingIntake) {
+        throw new CashError(
+          "invalid_amount",
+          `requested match ${requested} exceeds the intake's remaining ${remainingIntake}`,
+        );
+      }
+      if (requested > remainingPayable) {
+        throw new CashError(
+          "invalid_amount",
+          `requested match ${requested} exceeds the deposit's remaining ${remainingPayable}`,
+        );
+      }
+
+      await ledger.postTransaction(tenantId, {
+        idempotencyKey: `deposit-match:${deposit.id}:${intake.id}:${requested}`,
+        postings: [
+          {
+            accountCode: "SETTLEMENT_BANK",
+            direction: "debit",
+            amount: money(deposit.currency, Number(requested)),
+            collectorUserId: deposit.collectorUserId,
+          },
+          {
+            accountCode: "COLLECTOR_CASH",
+            direction: "credit",
+            amount: money(deposit.currency, Number(requested)),
+            collectorUserId: deposit.collectorUserId,
+          },
+        ],
+        sourceType: "cash_deposit",
+        sourceId: deposit.id,
+        description: "Deposit manually matched to intake",
+        createdByUserId: input.approvedByUserId,
+      });
+
+      await repos.collectorCash.addDepositAllocation(tenantId, {
+        depositId: deposit.id,
+        intakeId: intake.id,
+        amountMinor: requested,
+      });
+      if (already + requested >= intake.amountMinor) {
+        await repos.collectorCash.markIntakeMatched(tenantId, intake.id);
+      }
+      const status: CashDepositResult["outcome"] =
+        previouslyAllocated + requested === deposit.amountMinor ? "matched" : "partial";
+      await repos.collectorCash.setDepositOutcome(tenantId, deposit.id, { status });
+      const updated = await repos.collectorCash.findDepositById(tenantId, deposit.id);
+      return this.depositResult(repos, updated ?? deposit, false, status);
+    });
+  }
+
+  /** The intake coverage one deposit has posted, summed from its allocation rows. */
+  private async depositAllocated(
+    repos: LedgerContext["repos"],
+    tenantId: string,
+    depositId: string,
+  ): Promise<bigint> {
+    const rows = await repos.collectorCash.listDepositAllocations(tenantId, depositId);
+    return depositsCovered(rows);
+  }
+
+  private async depositResult(
+    repos: LedgerContext["repos"],
+    deposit: CashDepositRow,
+    replayed: boolean,
+    status?: CashDepositResult["outcome"],
+  ): Promise<CashDepositResult> {
+    return {
+      outcome: status ?? deposit.status,
+      depositId: deposit.id,
+      collectorUserId: deposit.collectorUserId,
+      allocatedMinor: await this.depositAllocated(repos, deposit.tenantId, deposit.id),
+      currency: deposit.currency,
+      replayed,
+    };
+  }
+
+  /** The amount of the collector's open intakes deposits have not covered yet. */
+  private async remainingOpenTotal(
+    repos: LedgerContext["repos"],
+    tenantId: string,
+    collectorUserId: string,
+  ): Promise<bigint> {
+    let total = 0n;
+    for (const intake of await repos.collectorCash.openIntakesForCollector(
+      tenantId,
+      collectorUserId,
+    )) {
+      const remaining =
+        intake.amountMinor - (await repos.collectorCash.sumIntakeAllocation(tenantId, intake.id));
+      if (remaining > 0n) total += remaining;
+    }
+    return total;
   }
 
   private async intakeInScope(

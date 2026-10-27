@@ -356,7 +356,8 @@ export class WebhookEventRepository {
   async markProcessed(
     tenantId: string,
     id: string,
-    paymentId: string,
+    /** The payment the event produced, when it produced one; deposit events have none. */
+    paymentId: string | null,
   ): Promise<WebhookEventRow | undefined> {
     return this.db
       .updateTable("webhookEvents")

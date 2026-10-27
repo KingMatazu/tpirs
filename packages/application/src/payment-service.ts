@@ -9,6 +9,7 @@ import type { TenantConfig } from "@tpirs/config";
 import type { TenantConfigLoader } from "./asset-service.js";
 import { LedgerService } from "./ledger-service.js";
 import { ObligationService } from "./obligation-service.js";
+import { CollectorCashService } from "./collector-cash-service.js";
 import { renderReceiptSms, renderUnderpaymentNoticeSms } from "./receipt-renderer.js";
 
 export class PaymentError extends Error {
@@ -64,13 +65,22 @@ export interface IngestWebhookInput {
 }
 
 export type IngestOutcome =
-  "duplicate" | "rejected" | "suspense" | "credited" | "applied" | "ignored";
+  | "duplicate"
+  | "rejected"
+  | "suspense"
+  | "credited"
+  | "applied"
+  | "ignored"
+  | "deposit_matched"
+  | "deposit_suspense";
 
 export interface IngestWebhookResult {
   readonly outcome: IngestOutcome;
   readonly tenantId?: string;
   readonly paymentId?: string;
   readonly receiptNumber?: string;
+  /** Set when the delivery was a matched collector deposit (ADR 0032). */
+  readonly depositId?: string;
   /**
    * Whether the gateway should treat the delivery as handled. A replay is
    * always accepted, so a gateway never resends and never marks a healthy
@@ -155,6 +165,13 @@ function assetRefFor(attributes: Readonly<Record<string, unknown>>, shortCode: s
  */
 export function createPaymentService(deps: PaymentServiceDeps): PaymentService {
   const obligations = new ObligationService(deps.db, deps.feeEngine);
+  const collectorCash = new CollectorCashService({
+    db: deps.db,
+    loadConfig: deps.loadConfig,
+    feeEngine: deps.feeEngine,
+    providerFor: deps.providerFor,
+    ...(deps.now === undefined ? {} : { now: deps.now }),
+  });
   const now = deps.now ?? (() => new Date());
   const telemetry: WebhookTelemetry = deps.telemetry ?? { record: () => undefined };
 
@@ -373,6 +390,31 @@ export function createPaymentService(deps: PaymentServiceDeps): PaymentService {
     if (duplicate !== undefined) {
       await repos.webhookEvents.markProcessed(tenantId, eventRow.id, duplicate.id);
       return { outcome: "duplicate", accepted: true, tenantId, paymentId: duplicate.id };
+    }
+
+    // Collector deposit instructions are resolved BEFORE payment instructions
+    // (ADR 0032): a reference that belongs to a collector's deposit account
+    // must never be inspected as a payment reference, so the two namespaces
+    // cannot cross-credit.
+    const depositInstruction = await repos.collectorCash.findActiveInstruction(
+      tenantId,
+      provider,
+      event.providerReference,
+    );
+    if (depositInstruction !== undefined) {
+      const deposit = await collectorCash.ingestDeposit({ tenantId, config, provider, event });
+      // A recognised deposit reference never reaches the payment path, but the
+      // delivery still ties the event to the outcome it produced.
+      await repos.webhookEvents.markProcessed(tenantId, eventRow.id, null);
+      if (deposit === undefined) {
+        return { outcome: "ignored", accepted: true, tenantId };
+      }
+      return {
+        outcome: deposit.outcome === "suspense" ? "deposit_suspense" : "deposit_matched",
+        accepted: true,
+        tenantId,
+        depositId: deposit.depositId,
+      };
     }
 
     const instruction = await repos.paymentInstructions.findByReference(

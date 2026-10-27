@@ -7,6 +7,9 @@ import type { TenantConfig } from "@tpirs/config";
 import { businessDate, CashError, money } from "@tpirs/domain";
 import type { BusinessDate } from "@tpirs/domain";
 import { createConfigFeeEngine } from "@tpirs/fee-engine-config";
+import { createMockPaymentProvider, mockWebhookSignature } from "@tpirs/payment-provider-mock";
+import type { PaymentProvider } from "@tpirs/ports";
+import { createPaymentService } from "./payment-service.js";
 import { CollectorCashService } from "./collector-cash-service.js";
 
 const TEST_URL = process.env.TEST_DATABASE_URL;
@@ -99,6 +102,8 @@ function testConfig(
 describeIntegration("CollectorCashService (integration)", () => {
   let db: AnyDb;
   let service: CollectorCashService;
+  let paymentService: ReturnType<typeof createPaymentService>;
+  let provider: ReturnType<typeof createMockPaymentProvider>;
   const configs = new Map<string, TenantConfig>();
 
   beforeAll(async () => {
@@ -106,10 +111,20 @@ describeIntegration("CollectorCashService (integration)", () => {
     db = createDb({ connectionString: TEST_URL });
     await migrateUp(db, migrationsDir);
     const loadConfig = (id: string) => Promise.resolve(configs.get(id));
+    const feeEngine = createConfigFeeEngine({ loadConfig });
     service = new CollectorCashService({
       db,
       loadConfig,
-      feeEngine: createConfigFeeEngine({ loadConfig }),
+      feeEngine,
+      providerFor: (name) => (name === "mock" ? provider : undefined),
+      now: () => new Date("2026-06-15T09:00:00Z"),
+    });
+    provider = createMockPaymentProvider();
+    paymentService = createPaymentService({
+      db,
+      loadConfig,
+      feeEngine,
+      providerFor: (name): PaymentProvider | undefined => (name === "mock" ? provider : undefined),
       now: () => new Date("2026-06-15T09:00:00Z"),
     });
   });
@@ -125,6 +140,7 @@ describeIntegration("CollectorCashService (integration)", () => {
     readonly token: string;
     readonly reference: string;
     readonly collectorUserId: string;
+    readonly financeUserId: string;
     readonly ownerPhone: string;
   }
 
@@ -155,6 +171,13 @@ describeIntegration("CollectorCashService (integration)", () => {
         passwordHash: "not-a-real-hash",
         totpSecret: null,
       });
+      const finance = await repos.users.create({
+        tenantId: tenant.id,
+        username: `finance-${stamp}`,
+        displayName: "Finance",
+        passwordHash: "not-a-real-hash",
+        totpSecret: null,
+      });
       await repos.assets.create({
         tenantId: tenant.id,
         zoneId: null,
@@ -166,7 +189,12 @@ describeIntegration("CollectorCashService (integration)", () => {
         shortCode: "C1",
         createdByUserId: null,
       });
-      return { tenantId: tenant.id, collectorId: collector.id, ownerPhone: owner.phone };
+      return {
+        tenantId: tenant.id,
+        collectorId: collector.id,
+        financeUserId: finance.id,
+        ownerPhone: owner.phone,
+      };
     });
     const asset = await withTenant(db, created.tenantId, async (tx) => {
       const found = await repositories(tx).assets.findByShortCode("C1");
@@ -177,6 +205,7 @@ describeIntegration("CollectorCashService (integration)", () => {
       tenantId: created.tenantId,
       ...asset,
       collectorUserId: created.collectorId,
+      financeUserId: created.financeUserId,
       ownerPhone: created.ownerPhone,
     };
   }
@@ -371,5 +400,293 @@ describeIntegration("CollectorCashService (integration)", () => {
     const tenant = await makeTenant({ disabled: true });
     const error = await service.recordIntake(baseInput(tenant)).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(CashError);
+  });
+
+  // ------------------------------------------------- deposits (ADR 0032)
+
+  /** Provisions a mock deposit instruction for the tenant's collector. */
+  async function provisionInstruction(tenant: TenantFixture) {
+    await service.provisionDepositInstruction({
+      tenantId: tenant.tenantId,
+      collectorUserId: tenant.collectorUserId,
+      provider: "mock",
+    });
+    return withTenant(db, tenant.tenantId, async (tx) =>
+      repositories(tx).collectorCash.findActiveInstructionForCollector(
+        tenant.tenantId,
+        tenant.collectorUserId,
+        "mock",
+      ),
+    );
+  }
+
+  /** Delivers one webhook as the gateway would, with a valid mock signature. */
+  async function deliverDepositWebhook(
+    tenantId: string,
+    reference: string,
+    body: { amount: number; currency?: string; status?: "success" | "failed" } = {
+      amount: BIKE_FEE,
+    },
+  ) {
+    const endpointToken = await paymentService.provisionEndpoint({
+      tenantId,
+      provider: "mock",
+    });
+    const rawBody = JSON.stringify({
+      providerEventId: `dep-${Math.random().toString(36).slice(2, 10)}`,
+      providerReference: reference,
+      amount: { amount: body.amount, currency: body.currency ?? "NGN" },
+      status: body.status ?? "success",
+      paidAt: "2026-06-15T12:00:00Z",
+    });
+    return paymentService.ingestWebhookEvent({
+      provider: "mock",
+      endpointToken,
+      headers: { "x-signature": mockWebhookSignature(rawBody) },
+      rawBody,
+    });
+  }
+
+  /** Provisions an instruction, takes an intake, then delivers a deposit webhook. */
+  async function depositFixture(
+    options: {
+      depositMinor?: number;
+      disabled?: boolean;
+      currency?: string;
+      status?: "success" | "failed";
+    } = {},
+  ) {
+    const tenant = await makeTenant(options);
+    const instruction = await provisionInstruction(tenant);
+    if (instruction === undefined) throw new Error("instruction not found");
+    const intake = await service.recordIntake({ ...baseInput(tenant), clientReference: "cli-1" });
+    const webhook = await deliverDepositWebhook(tenant.tenantId, instruction.reference, {
+      amount: options.depositMinor ?? BIKE_FEE,
+      ...(options.currency === undefined ? {} : { currency: options.currency }),
+      ...(options.status === undefined ? {} : { status: options.status }),
+    });
+    const after = await withTenant(db, tenant.tenantId, async (tx) => {
+      const repos = repositories(tx);
+      const deposit =
+        webhook.depositId === undefined
+          ? undefined
+          : await repos.collectorCash.findDepositById(tenant.tenantId, webhook.depositId);
+      const allocations =
+        webhook.depositId === undefined
+          ? []
+          : await repos.collectorCash.listDepositAllocations(tenant.tenantId, webhook.depositId);
+      const intakeRow = await repos.collectorCash.findIntakeById(tenant.tenantId, intake.intakeId);
+      return {
+        deposit,
+        allocations,
+        intakeRow,
+        settlement: await repos.ledger.accountBalance(tenant.tenantId, "SETTLEMENT_BANK"),
+        balance: await repos.ledger.collectorCashBalance(tenant.tenantId, tenant.collectorUserId),
+      };
+    });
+    return { tenant, instruction, intake, webhook, ...after };
+  }
+
+  it("provisions a deposit instruction from the adapter and rotates it", async () => {
+    const tenant = await makeTenant();
+    const first = await service.provisionDepositInstruction({
+      tenantId: tenant.tenantId,
+      collectorUserId: tenant.collectorUserId,
+      provider: "mock",
+    });
+    expect(first.kind).toBe("narration");
+    expect(first.reference).toMatch(/^cash-dep-/);
+
+    const second = await service.provisionDepositInstruction({
+      tenantId: tenant.tenantId,
+      collectorUserId: tenant.collectorUserId,
+      provider: "mock",
+    });
+    expect(second.id).not.toBe(first.id);
+    const active = await withTenant(db, tenant.tenantId, async (tx) =>
+      repositories(tx).collectorCash.findActiveInstructionForCollector(
+        tenant.tenantId,
+        tenant.collectorUserId,
+        "mock",
+      ),
+    );
+    expect(active?.id).toBe(second.id);
+  });
+
+  it("matches a deposit webhook, clears the float and covers the intake", async () => {
+    const fixture = await depositFixture();
+
+    // The delivery is attributed to the deposit instruction before any payment
+    // lookup, so it can never apply to the asset (ADR 0032).
+    expect(fixture.webhook.outcome).toBe("deposit_matched");
+    expect(fixture.webhook.accepted).toBe(true);
+    expect(fixture.deposit?.status).toBe("matched");
+    expect(fixture.allocations).toHaveLength(1);
+    expect(fixture.allocations[0]?.amountMinor).toBe(BigInt(BIKE_FEE));
+    expect(fixture.intakeRow?.status).toBe("matched");
+    expect(fixture.balance).toBe(0n); // float cleared exactly
+
+    const framework = await withTenant(db, fixture.tenant.tenantId, async (tx) =>
+      repositories(tx).ledger.accountBalance(fixture.tenant.tenantId, "SETTLEMENT_BANK"),
+    );
+    // Credit-positive convention: the bank took in money, so it is negative.
+    expect(framework).toBe(0n - BigInt(BIKE_FEE));
+  });
+
+  it("answers a replayed deposit webhook with the recorded outcome and no change", async () => {
+    const tenant = await makeTenant();
+    const instruction = await provisionInstruction(tenant);
+    if (instruction === undefined) throw new Error("instruction not found");
+    await service.recordIntake({ ...baseInput(tenant), clientReference: "cli-1" });
+    const first = await deliverDepositWebhook(tenant.tenantId, instruction.reference);
+    expect(first.outcome).toBe("deposit_matched");
+
+    const second = await deliverDepositWebhook(tenant.tenantId, instruction.reference);
+    expect(second.outcome).toBe("deposit_matched");
+    const after = await withTenant(db, tenant.tenantId, async (tx) => {
+      const repos = repositories(tx);
+      return {
+        deposits: (await repos.collectorCash.listDeposits(tenant.tenantId, { limit: 100 })).rows
+          .length,
+        balance: await repos.ledger.collectorCashBalance(tenant.tenantId, tenant.collectorUserId),
+      };
+    });
+    expect(after.deposits).toBe(1); // unique (tenant, provider, reference)
+    expect(after.balance).toBe(0n);
+  });
+
+  it("keeps an over-deposit in suspense with the exact surplus visible", async () => {
+    const fixture = await depositFixture({ depositMinor: BIKE_FEE + 5_000 });
+
+    // D35: an over-deposit posts nothing; it waits until an intake covers it,
+    // so the day-close arithmetic counts intake and deposits separately.
+    expect(fixture.webhook.outcome).toBe("deposit_suspense");
+    expect(fixture.deposit?.status).toBe("suspense");
+    expect(fixture.allocations).toHaveLength(0);
+    expect(fixture.intakeRow?.status).toBe("open");
+    expect(fixture.balance).toBe(BigInt(BIKE_FEE));
+  });
+
+  it("covers a larger float when several intakes precede the deposit", async () => {
+    // Two bikes, two intakes, one deposit that covers both exactly.
+    const tenant = await makeTenant({ ceilingMinor: BIKE_FEE * 2 });
+    const instruction = await provisionInstruction(tenant);
+    if (instruction === undefined) throw new Error("instruction not found");
+    const secondBike = await withSystem(db, async (tx) => {
+      const repos = repositories(tx);
+      const owner = await repos.owners.create({
+        tenantId: tenant.tenantId,
+        displayName: "Driver 2",
+        phone: "+2348000000002",
+      });
+      return repos.assets.create({
+        tenantId: tenant.tenantId,
+        zoneId: null,
+        ownerId: owner.id,
+        assetTypeKey: "bike",
+        attributes: { plate_number: "KJA-TWO" },
+        qrPayload: "cash-two",
+        qrToken: "cash-two-token",
+        shortCode: "C2",
+        createdByUserId: null,
+      });
+    });
+    await service.recordIntake({ ...baseInput(tenant), clientReference: "cli-a" });
+    await service.recordIntake({
+      tenantId: tenant.tenantId,
+      collectorUserId: tenant.collectorUserId,
+      assetId: secondBike.id,
+      amount: money("NGN", BIKE_FEE),
+      clientReference: "cli-b",
+    });
+
+    const webhook = await deliverDepositWebhook(tenant.tenantId, instruction.reference, {
+      amount: BIKE_FEE * 2,
+    });
+    expect(webhook.outcome).toBe("deposit_matched");
+    const after = await withTenant(db, tenant.tenantId, async (tx) => {
+      const repos = repositories(tx);
+      return {
+        balance: await repos.ledger.collectorCashBalance(tenant.tenantId, tenant.collectorUserId),
+        intakes: (
+          await repos.collectorCash.openIntakesForCollector(tenant.tenantId, tenant.collectorUserId)
+        ).length,
+      };
+    });
+    expect(after.balance).toBe(0n);
+    expect(after.intakes).toBe(0);
+  });
+
+  it("matches a suspense deposit manually, posting just what the intake takes", async () => {
+    const fixture = await depositFixture({ depositMinor: BIKE_FEE + 5_000 });
+    expect(fixture.deposit?.status).toBe("suspense");
+
+    const matched = await service.matchDeposit({
+      tenantId: fixture.tenant.tenantId,
+      depositId: fixture.webhook.depositId ?? "",
+      intakeId: fixture.intake.intakeId,
+      approvedByUserId: fixture.tenant.financeUserId,
+    });
+    expect(matched.outcome).toBe("partial"); // 5,000 of the deposit stays unposted
+    expect(fixture.balance).toBe(BigInt(BIKE_FEE));
+
+    const after = await withTenant(db, fixture.tenant.tenantId, async (tx) => {
+      const repos = repositories(tx);
+      const updated = await repos.collectorCash.findDepositById(
+        fixture.tenant.tenantId,
+        matched.depositId,
+      );
+      const intakeRow = await repos.collectorCash.findIntakeById(
+        fixture.tenant.tenantId,
+        fixture.intake.intakeId,
+      );
+      return {
+        status: updated?.status,
+        intakeStatus: intakeRow?.status,
+        balance: await repos.ledger.collectorCashBalance(
+          fixture.tenant.tenantId,
+          fixture.tenant.collectorUserId,
+        ),
+      };
+    });
+    expect(after.status).toBe("partial");
+    expect(after.intakeStatus).toBe("matched");
+    expect(after.balance).toBe(0n); // intake fully covered by the posted part
+
+    // The identical manual match is a no-op, not a second posting.
+    const replay = await service.matchDeposit({
+      tenantId: fixture.tenant.tenantId,
+      depositId: matched.depositId,
+      intakeId: fixture.intake.intakeId,
+      approvedByUserId: fixture.tenant.financeUserId,
+    });
+    expect(replay.replayed).toBe(true);
+    const settled = await withTenant(db, fixture.tenant.tenantId, async (tx) =>
+      repositories(tx).ledger.collectorCashBalance(
+        fixture.tenant.tenantId,
+        fixture.tenant.collectorUserId,
+      ),
+    );
+    expect(settled).toBe(0n);
+  });
+
+  it("refuses a cross-tenant deposit match as an unknown deposit", async () => {
+    const other = await makeTenant(); // different tenant entirely
+    const fixture = await depositFixture({ depositMinor: BIKE_FEE + 5_000 });
+    await expect(
+      service.matchDeposit({
+        tenantId: other.tenantId,
+        depositId: fixture.webhook.depositId ?? "",
+        intakeId: other.assetId,
+        approvedByUserId: other.financeUserId,
+      }),
+    ).rejects.toMatchObject({ code: "deposit_unknown" });
+  });
+
+  it("prices a mismatched currency into suspense instead of posting it", async () => {
+    const fixture = await depositFixture({ currency: "USD" });
+    expect(fixture.webhook.outcome).toBe("deposit_suspense");
+    expect(fixture.deposit?.status).toBe("suspense");
+    expect(fixture.balance).toBe(BigInt(BIKE_FEE));
   });
 });

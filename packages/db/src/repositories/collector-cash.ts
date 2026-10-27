@@ -562,6 +562,18 @@ export class CollectorCashRepository {
       .execute();
   }
 
+  /** How much of one intake the deposits have already covered, minor units. */
+  async sumIntakeAllocation(tenantId: string, intakeId: string): Promise<bigint> {
+    const result = await sql<{ total: string | null }>`
+      select coalesce(sum(amount_minor), 0) as total
+      from cash_deposit_allocations
+      where tenant_id = ${tenantId}
+        and intake_id = ${intakeId}
+    `.execute(this.db);
+    const total = result.rows[0]?.total;
+    return total === undefined || total === null ? 0n : BigInt(total);
+  }
+
   async listDeposits(
     tenantId: string,
     filter: ListDepositsFilter,

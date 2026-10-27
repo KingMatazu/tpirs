@@ -96,6 +96,25 @@ export interface Settlement {
   readonly raw: unknown;
 }
 
+/** What the platform asks the adapter for when provisioning a deposit instruction. */
+export interface DepositAttributionRequest {
+  /** The collector the deposit account/reference will belong to. */
+  readonly collectorUserId: string;
+  /** Correlation key for the adapter's own idempotent bookkeeping. */
+  readonly idempotencyKey: string;
+}
+
+/** A deposit destination the adapter issued, in the form the collector pays with. */
+export interface DepositAttribution {
+  readonly kind: "virtual_account" | "narration";
+  /**
+   * What the collector pays into for `virtual_account`, or what they write in
+   * the payment narration for `narration`. The webhook resolves the collector
+   * from this value.
+   */
+  readonly value: string;
+}
+
 export interface PaymentProvider {
   readonly name: string;
   capabilities(): PaymentProviderCapabilities;
@@ -110,4 +129,13 @@ export interface PaymentProvider {
     readonly from: Date;
     readonly to: Date;
   }): Promise<readonly Settlement[]>;
+  /**
+   * Attribution for a collector's dedicated deposit instruction (ADR 0032).
+   *
+   * Optional: providers without per-collector deposit mechanics do not
+   * implement it, and provisioning a deposit instruction for them then fails
+   * loudly rather than falling back to a reference format the adapter never
+   * sanctioned. The adapter owns the reference format; core never invents one.
+   */
+  createDepositAttribution?(request: DepositAttributionRequest): Promise<DepositAttribution>;
 }

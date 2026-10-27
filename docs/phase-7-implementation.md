@@ -256,7 +256,7 @@ payment / obligation / ledger suites green before any cash code exists.
   threads through `PostingSpec`, the reversal reconstruction and the repo
   posting input (ADR 0031).
 - `ensurePaidForBusinessDay` is now a thin wrapper over `settleInScope(scope,
-  input)`, so the cash intake can run lock + checks + settlement + intake
+input)`, so the cash intake can run lock + checks + settlement + intake
   record + SMS in ONE `withLedger` transaction (`withTenant` cannot nest).
 - Tests: the phase 4/5/6 suites pass unchanged; new tests prove a
   `COLLECTOR_CASH` funding posting produces the same allocation outcomes with
@@ -269,20 +269,21 @@ payment / obligation / ledger suites green before any cash code exists.
 `recordIntake` (an admin-form-first shape; an offline-collector path can wrap
 the same logic later):
 
-  1. Refuse when `config.cashRules.enabled` is false (`cash_disabled`, no ledger
-     write).
-  2. Resolve the asset in-scope by `assetId` / QR token / reference — the same
-     order the scan service uses, but without opening nested transactions.
-     Nothing matches → `asset_unknown`.
-  3. `lockWallet` and refuse on `frozen`; assert the ceiling against the derived
-     `COLLECTOR_CASH` balance (wallet-level override wins over config).
-  4. Price the business day through `FeeEngine`; reject `already_paid` (D36)
-     and require the exact fee in the tenant's currency (`amount_mismatch`).
-  5. Settle through `settleInScope` with `fundingAccount: "COLLECTOR_CASH"`,
-     source `cash_intake`, idempotency key `cash:${clientReference}`.
-  6. Insert `cash_intakes` (unique client reference; a true replay returns the
-     original row and skips every check), enqueue the `cash_receipt` SMS with
-     `cash_intake_id` attribution, return receipt + derived balance.
+1. Refuse when `config.cashRules.enabled` is false (`cash_disabled`, no ledger
+   write).
+2. Resolve the asset in-scope by `assetId` / QR token / reference — the same
+   order the scan service uses, but without opening nested transactions.
+   Nothing matches → `asset_unknown`.
+3. `lockWallet` and refuse on `frozen`; assert the ceiling against the derived
+   `COLLECTOR_CASH` balance (wallet-level override wins over config).
+4. Price the business day through `FeeEngine`; reject `already_paid` (D36)
+   and require the exact fee in the tenant's currency (`amount_mismatch`).
+5. Settle through `settleInScope` with `fundingAccount: "COLLECTOR_CASH"`,
+   source `cash_intake`, idempotency key `cash:${clientReference}`.
+6. Insert `cash_intakes` (unique client reference; a true replay returns the
+   original row and skips every check), enqueue the `cash_receipt` SMS with
+   `cash_intake_id` attribution, return receipt + derived balance.
+
 - The receipt body comes from `channels.cashReceiptTemplate` when configured,
   else the code's default template (D38); the recipient is the owner's phone,
   exactly like a gateway payment receipt.
@@ -296,29 +297,61 @@ returns the original intake with no second SMS, `cash_disabled`,
 `wallet_frozen`, `amount_mismatch` (short and wrong-currency),
 `asset_unknown` by reference and token, and `CashError` as the thrown type.
 
-## Step 5: Deposits, matching and suspense
+## Step 5: Deposits, matching and suspense (completed)
 
-- Provisioning: `POST /v1/cash/collectors/:collectorUserId/deposit-instruction`
-  (finance only) creates or rotates an instruction, choosing virtual account vs
-  narration from the provider adapter's declared capabilities. Never invent a
-  reference format in core code.
-- Webhook intake (`PaymentService.handleWebhook`): after the tenant is resolved
-  from the endpoint token, look up `collector_deposit_instructions` by
-  `(provider, reference)` **before** `payment_instructions`.
-  - Match: insert `cash_deposits`, post `Dr SETTLEMENT_BANK / Cr COLLECTOR_CASH
-(collectorUserId)`, allocate across the collector's oldest open intakes,
-    and mark fully covered intakes settled. A deposit that clears everything
-    brings the collector's derived balance back to zero.
-  - Remainder or unknown reference: `cash_deposits.status = 'suspense'` with no
-    ledger posting until finance acts (D35). It appears in the existing finance
-    suspense list plus a cash-deposit tab.
-- Manual match: `POST /v1/cash/deposits/:id/match` (finance, audited,
-  idempotent, requires the target intake to exist for a day the asset actually
-  worked). Matching posts the same two legs; a partial match leaves the rest in
-  suspense.
-- Tests: a deposit webhook replay changes nothing; a deposit larger than the
-  open intakes leaves exactly the surplus in suspense; the day-close invariant
-  holds.
+Application layer only; the HTTP routes land in Step 7.
+
+- **The adapter owns the reference format.** `PaymentProvider` gains an
+  _optional_ `createDepositAttribution?(request)` returning
+  `{ kind: "virtual_account" | "narration", value }`. Only the mock implements
+  it today; a provider without it makes provisioning throw
+  `PortError("PaymentProvider", "invalid_request", …)` rather than letting core
+  invent a reference the gateway cannot recognise (ADR 0032).
+  `provisionDepositInstruction` revokes the previous active instruction and
+  inserts the new one in a single `withTenant` transaction, so exactly one live
+  destination exists per `(collector, provider)`. The idempotency key includes a
+  fresh opaque id, so rotation yields a new reference and cannot collide with
+  the unique `(tenant, provider, reference)` constraint.
+- **Resolution order** in `payment-service.ts#processEvent`:
+  `collectorCash.findActiveInstruction` runs **before**
+  `paymentInstructions.findByReference`, so a deposit reference can never
+  cross-credit an asset, and an asset reference is never mistaken for a deposit.
+- **Webhook deposit** (`CollectorCashService.ingestDeposit`): inserts
+  `cash_deposits` (unique per `(tenant, provider, reference)`; a replay returns
+  the recorded outcome and changes nothing). Then:
+  - failed status, currency ≠ tenant currency, or no attributed collector →
+    `suspense`, no posting;
+  - deposit ≤ the collector's total remaining open intake coverage → post
+    `Dr SETTLEMENT_BANK / Cr COLLECTOR_CASH(collectorUserId)` for the full
+    amount, allocate oldest-first (partial coverage allowed), mark fully covered
+    intakes `matched`, status `matched`;
+  - deposit > open coverage, or nothing open → status `suspense`, **zero**
+    ledger postings (D35). The surplus waits until an intake can cover it, which
+    keeps day-close as "intake minus posted deposits equals balance".
+- **Manual match** (`CollectorCashService.matchDeposit`): default amount is
+  `min(deposit remaining, intake remaining)`, clamped both ways. Posts the same
+  two legs for exactly the requested amount, appends one
+  `cash_deposit_allocations` row (unique on `(deposit, intake)`), marks the
+  intake `matched` when covered, and sets `partial` or `matched` from what the
+  deposit has now posted. An identical repeat is a no-op replay; a different
+  amount for an already-covered pair is `deposit_state`; amount overruns are
+  `invalid_amount`; unknown deposit/intake is `deposit_unknown`. The approver id
+  is recorded as `transactions.created_by_user_id`.
+- `SmsLogRepository.markProcessed` takes `paymentId: string | null`, because a
+  deposit event produces no `payments` row (`webhook_events.payment_id` is
+  nullable).
+- New `CashErrorCode`s: `deposit_unknown`, `deposit_state` (plus `asset_unknown`
+  from Step 4). `IngestOutcome` gains `deposit_matched` / `deposit_suspense`, and
+  `IngestWebhookResult` carries `depositId`.
+
+Tests (DB-gated application suite, 8 new cases): provisioning returns an
+adapter-shaped narration and rotation keeps exactly one active instruction;
+a matched webhook clears the float to zero and covers the intake; a replayed
+deposit webhook leaves one `cash_deposits` row and the same balance; an
+over-deposit stays in suspense with no allocation; one deposit covering two
+intakes clears both; a manual match posts only what the intake takes and repeats
+as a no-op; a cross-tenant match is `deposit_unknown`; a mismatched currency
+goes to suspense instead of posting.
 
 ## Step 6: Deadlines, freeze and the worker
 

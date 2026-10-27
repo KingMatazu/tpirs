@@ -31,6 +31,15 @@ bank counter.
   `kind = virtual_account | narration` and an `active | revoked` status. The
   reference format is chosen by the provider adapter's declared capabilities;
   core code never invents one (the same rule as D3 for assets).
+- **The adapter mints the reference, through an optional port member.**
+  `PaymentProvider.createDepositAttribution?` returns the kind and the value the
+  collector pays with. It is optional because a provider with no per-collector
+  deposit mechanics cannot honour one; provisioning then fails loudly with a
+  `PortError` instead of core manufacturing a reference the gateway's webhook
+  would not recognise. Only one instruction per `(collector, provider)` is
+  active at a time — provisioning rotates, revoking the previous row in the same
+  transaction — and the reference itself must be fresh per rotation, because
+  `(tenant, provider, reference)` is unique.
 - **Deposit resolution runs before asset attribution.** Webhook intake resolves
   the tenant from the endpoint token (ADR 0017), then checks
   `collector_deposit_instructions`, and only then `payment_instructions`. The

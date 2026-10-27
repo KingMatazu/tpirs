@@ -128,5 +128,14 @@ export function createMockPaymentProvider(): MockPaymentProvider {
     addSettlement(settlement) {
       settlements.push(settlement);
     },
+    createDepositAttribution(request) {
+      // A narration reference the collector writes on the deposit; the
+      // idempotency key carries the rotation id, so each provisioning call
+      // mints a fresh, unique destination reference.
+      return Promise.resolve({
+        kind: "narration",
+        value: `cash-dep-${request.idempotencyKey}`,
+      });
+    },
   };
 }
