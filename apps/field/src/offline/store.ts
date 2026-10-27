@@ -69,18 +69,16 @@ interface FieldDB extends DBSchema {
 let dbPromise: Promise<IDBPDatabase<FieldDB>> | undefined;
 
 export function getDb() {
-  if (dbPromise === undefined) {
-    dbPromise = openDB<FieldDB>("tpirs-field", 1, {
-      upgrade(db) {
-        const paidSet = db.createObjectStore("paidSet", { keyPath: "qrPayload" });
-        paidSet.createIndex("shortCode", "shortCode");
-        db.createObjectStore("assetCache", { keyPath: "assetId" });
-        db.createObjectStore("outbox", { keyPath: "id" });
-        db.createObjectStore("syncState", { keyPath: "id" });
-        db.createObjectStore("fieldSession", { keyPath: "id" });
-      },
-    });
-  }
+  dbPromise ??= openDB<FieldDB>("tpirs-field", 1, {
+    upgrade(db) {
+      const paidSet = db.createObjectStore("paidSet", { keyPath: "qrPayload" });
+      paidSet.createIndex("shortCode", "shortCode");
+      db.createObjectStore("assetCache", { keyPath: "assetId" });
+      db.createObjectStore("outbox", { keyPath: "id" });
+      db.createObjectStore("syncState", { keyPath: "id" });
+      db.createObjectStore("fieldSession", { keyPath: "id" });
+    },
+  });
   return dbPromise;
 }
 
