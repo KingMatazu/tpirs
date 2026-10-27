@@ -95,8 +95,8 @@ export const useSession = create<SessionState>()((set, get) => ({
       const result = await api.POST("/v1/auth/refresh", {
         credentials: "same-origin",
       });
-      const data = unwrap(result);
-      const token = (data as { token?: string }).token;
+      const data = await unwrap<{ readonly token?: string }>(result);
+      const token = data.token;
       if (typeof token !== "string" || token === "") {
         set({ status: "anonymous", accessToken: undefined, user: undefined });
         return;

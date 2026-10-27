@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useSession } from "../session.js";
 import { stubRelativeRequests } from "../test-support/browserStubs.js";
 import { loadFixtureConfig } from "../test-support/tenant.js";
@@ -105,6 +105,10 @@ afterAll(() => {
 });
 
 afterEach(() => {
+  // No global afterEach is configured (globals are off), so Testing Library's
+  // auto-cleanup never registers; without this, renders accumulate across tests
+  // and duplicate row text.
+  cleanup();
   useSession.setState({
     status: "unknown",
     accessToken: undefined,

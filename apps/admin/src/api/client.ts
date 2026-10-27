@@ -18,7 +18,7 @@ export function wireSession(wiring: {
 }
 
 export const api = createApiClient({
-  baseUrl: "",
+  baseUrl: "http://localhost",
   getAccessToken: () => tokenReader(),
   idempotencyKeyPrefix: "dashboard",
 });

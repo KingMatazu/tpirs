@@ -12,22 +12,31 @@ import { stubRelativeRequests } from "./test-support/browserStubs.js";
 
 interface RecordedCall {
   readonly url: string;
-  readonly init: RequestInit | undefined;
+  readonly request: Request;
 }
 
 const calls: RecordedCall[] = [];
 let responder: (url: string) => { status: number; body?: unknown } = () => ({ status: 401 });
 
-const fakeFetch = vi.fn(async (input: unknown) => {
-  const request = input as Request;
-  const url = new URL(request.url, "http://localhost").pathname;
-  calls.push({ url, init: request });
+const fakeFetch = vi.fn(async (input: unknown, init?: RequestInit) => {
+  // Record the request the client actually built: rebuilding it from the URL
+  // would lose the method, credentials, and body that the assertions check.
+  const request = isRequestLike(input) ? (input as Request) : new Request(String(input), init);
+  const url = new URL(request.url, "http://localhost").pathname.replace(/\/+$/, "") || "/";
+  calls.push({ url, request });
   const outcome = responder(url);
   return new Response(outcome.body === undefined ? null : JSON.stringify(outcome.body), {
     status: outcome.status,
     headers: { "content-type": "application/json" },
   });
 });
+
+function isRequestLike(input: unknown): boolean {
+  // `stubRelativeRequests` replaces the global Request with a subclass, so an
+  // `instanceof Request` check can reject requests built by another copy of the
+  // class. Read the shape instead.
+  return typeof input === "object" && input !== null && typeof (input as Request).url === "string";
+}
 
 const sessionBody = (token: string) => ({
   token,
@@ -96,10 +105,11 @@ describe("useSession", () => {
     useSession.setState({ status: "anonymous" });
     await useSession.getState().silentRefresh();
     expect(useSession.getState().accessToken).toBe("tok-refresh");
-    const call = calls[calls.length - 1];
-    expect(call?.url).toBe("/v1/auth/refresh");
-    expect(call?.init?.credentials).toBe("same-origin");
-    expect(call?.init?.body).toBeNull();
+    const call = calls.find((recorded) => recorded.url === "/v1/auth/refresh");
+    expect(call).toBeDefined();
+    expect(call?.request.method).toBe("POST");
+    expect(call?.request.credentials).toBe("same-origin");
+    expect(call?.request.body).toBeNull();
   });
 
   it("fails closed to anonymous when the refresh cookie is gone", async () => {

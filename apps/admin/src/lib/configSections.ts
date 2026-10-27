@@ -121,7 +121,7 @@ export function configSections(config: TenantConfig): readonly ConfigSection[] {
               {
                 label: "Pay-per-use note",
                 value:
-                  "Levy is owed only on days the asset is used for work. No payment recorded for a day simply means no levy was taken that day — it is never a debt.",
+                  "Levy is owed only on days the asset is used for work: no payment recorded for a day simply means no levy was taken that day — it is never a debt.",
               },
             ]
           : []),
