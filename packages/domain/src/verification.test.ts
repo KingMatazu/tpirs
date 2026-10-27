@@ -58,9 +58,7 @@ describe("resolveOfflineScan", () => {
 
   it("reports absence as membership, never as unpaid", () => {
     expect(resolveOfflineScan(token, new Set())).toBe("not_in_offline_list");
-    expect(resolveOfflineScan(token, new Set(["another-payload-000"]))).toBe(
-      "not_in_offline_list",
-    );
+    expect(resolveOfflineScan(token, new Set(["another-payload-000"]))).toBe("not_in_offline_list");
   });
 
   it("asks for a rescan when the token cannot be read", () => {
@@ -70,7 +68,9 @@ describe("resolveOfflineScan", () => {
   it("can only ever produce the two offline results", () => {
     fc.assert(
       fc.property(
-        fc.string({ minLength: 16, maxLength: 64 }).filter((value) => /^[A-Za-z0-9_-]+$/.test(value)),
+        fc
+          .string({ minLength: 16, maxLength: 64 })
+          .filter((value) => /^[A-Za-z0-9_-]+$/.test(value)),
         fc.array(fc.string(), { maxLength: 10 }),
         (payload, paid) => {
           const result = resolveOfflineScan(`${payload}.SIG16`, new Set(paid));

@@ -83,7 +83,12 @@ export class PaidSetSyncService {
       );
       const assets = new Map<
         string,
-        { qrPayload: string; shortCode: string; assetTypeKey: string; attributes: Record<string, unknown> }
+        {
+          qrPayload: string;
+          shortCode: string;
+          assetTypeKey: string;
+          attributes: Record<string, unknown>;
+        }
       >();
       for (const row of rows) {
         if (assets.has(row.assetId)) continue;
@@ -93,7 +98,7 @@ export class PaidSetSyncService {
             qrPayload: asset.qrPayload,
             shortCode: asset.shortCode,
             assetTypeKey: asset.assetTypeKey,
-            attributes: asset.attributes as Record<string, unknown>,
+            attributes: asset.attributes,
           });
         }
       }
@@ -125,7 +130,10 @@ export class PaidSetSyncService {
       mode,
       businessDate,
       entries,
-      nextCursor: hasMore && nextCursor !== null ? { updatedAt: nextCursor.updatedAt, id: nextCursor.id } : null,
+      nextCursor:
+        hasMore && nextCursor !== null
+          ? { updatedAt: nextCursor.updatedAt, id: nextCursor.id }
+          : null,
       hasMore,
       serverTime: now.toISOString(),
     };

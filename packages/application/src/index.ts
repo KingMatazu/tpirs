@@ -18,3 +18,5 @@ export * from "./sms-outbox-sweeper.js";
 export * from "./sms-delivery-service.js";
 export * from "./verification-service.js";
 export * from "./paid-set-sync-service.js";
+export * from "./scan-service.js";
+export * from "./dispute-service.js";

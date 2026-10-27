@@ -97,10 +97,22 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     }
   }
 
-  if (options.services !== undefined && options.loadConfig !== undefined && options.db !== undefined) {
+  if (
+    options.services !== undefined &&
+    options.loadConfig !== undefined &&
+    options.db !== undefined
+  ) {
     registerAssetRoutes(app, { services: options.services, loadConfig: options.loadConfig });
-    registerVerifyRoutes(app, { services: options.services, loadConfig: options.loadConfig, db: options.db });
-    registerVerificationAndSyncRoutes(app, { services: options.services, loadConfig: options.loadConfig, db: options.db });
+    registerVerifyRoutes(app, {
+      services: options.services,
+      loadConfig: options.loadConfig,
+      db: options.db,
+    });
+    registerVerificationAndSyncRoutes(app, {
+      services: options.services,
+      loadConfig: options.loadConfig,
+      db: options.db,
+    });
   } else if (options.services !== undefined && options.loadConfig !== undefined) {
     registerAssetRoutes(app, { services: options.services, loadConfig: options.loadConfig });
     // Verify needs the db for paid-set lookups once obligations exist.

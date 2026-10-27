@@ -6,17 +6,21 @@ import { createQrTokenSigner } from "@tpirs/crypto";
 import type { AnyDb } from "@tpirs/db";
 import type {
   AssetService,
+  DisputeService,
   InboundSmsService,
   OtpService,
   OwnerService,
   PaidSetSyncService,
   PaymentService,
   RateLimiter,
+  ScanService,
   UssdService,
+  VerificationService,
 } from "@tpirs/application";
 import type { QrTokenSigner } from "@tpirs/domain";
 import {
   createAssetService,
+  createDisputeService,
   createDriverChannelService,
   createInboundSmsService,
   createOtpService,
@@ -24,8 +28,10 @@ import {
   createPaidSetSyncService,
   createPaymentService,
   createRateLimiter,
+  createScanService,
   createSmsCostGuard,
   createUssdService,
+  createVerificationService,
 } from "@tpirs/application";
 import { createConfigAssetSchemaRegistry } from "@tpirs/asset-schema-registry-config";
 import { createConfigFeeEngine } from "@tpirs/fee-engine-config";
@@ -85,6 +91,9 @@ export interface Services {
   readonly owner: OwnerService;
   readonly otp: OtpService;
   readonly payment: PaymentService;
+  readonly verification: VerificationService;
+  readonly scan: ScanService;
+  readonly dispute: DisputeService;
   /** Verifies presented QR tokens; also used by the public verify route. */
   readonly qrSigner: QrTokenSigner;
   /** USSD callbacks, from parse to rendered provider response. */
@@ -158,13 +167,32 @@ export async function buildServices(deps: ServiceDeps): Promise<Services> {
     }),
     ...telemetryProps,
   });
-  const paidSetSync = createPaidSetSyncService({ db: deps.db, loadConfig, now: () => deps.clock.now() });
+  const paidSetSync = createPaidSetSyncService({
+    db: deps.db,
+    loadConfig,
+    now: () => deps.clock.now(),
+  });
+  const verification = createVerificationService({
+    db: deps.db,
+    loadConfig,
+    now: () => deps.clock.now(),
+  });
+  const scan = createScanService({ db: deps.db, loadConfig, now: () => deps.clock.now() });
+  const dispute = createDisputeService({
+    db: deps.db,
+    loadConfig,
+    objectStorage: deps.objectStorage,
+    now: () => deps.clock.now(),
+  });
 
   return {
     asset,
     owner,
     otp,
     payment,
+    verification,
+    scan,
+    dispute,
     qrSigner,
     ussd,
     inboundSms,

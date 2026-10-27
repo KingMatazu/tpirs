@@ -448,23 +448,26 @@ Field app:
   results in the runbook. This is evidence for the acceptance check, not an
   automated test.
 
-## Step 7: Documentation and gates
+## Step 7: Documentation and gates (completed)
 
-- ADRs 0028–0030; D6/D29 resolved and D30–D34 recorded in
-  `docs/decisions-needed.md`.
-- `docs/runbooks/field-operations.md`: shift start, offline grace, sync,
-  dispute evidence, stale-cache behaviour, field-test checklist.
-- Update `docs/driver-channels.md` where SMS status and the field fallback
-  meet.
-- Package READMEs (`apps/field`, `packages/db`, `packages/application`,
-  `packages/domain`), the ADR index, and the repo-state paragraph in
-  `AGENTS.md`.
-- Update `tenants/_template` and the seed with the new permissions and, if
-  adopted, the `field` config section (offline grace hours, max queue items,
-  dispute reasons). Keep it optional with defaults so existing configs validate.
-- Gates: `pnpm format` → `pnpm lint` → `pnpm typecheck` → `pnpm test`, then
-  `sh scripts/ci/integration.sh` and `sh scripts/ci/migration-check.sh`.
-  Regenerate the API client before the final typecheck.
+- [x] ADRs 0028–0030; D6/D29 resolved and D30–D34 recorded in
+      `docs/decisions-needed.md`.
+- [x] `docs/runbooks/field-operations.md`: shift start, offline grace, sync,
+      dispute evidence, stale-cache behaviour, field-test checklist.
+- [x] Update `docs/driver-channels.md` where SMS status and the field fallback
+      meet.
+- [x] Package READMEs (`apps/field`, `packages/db`, `packages/application`,
+      `packages/domain`), the ADR index, and the repo-state paragraph in
+      `AGENTS.md`.
+- [x] Update `tenants/_template` and the seed with the new permissions and, if
+      adopted, the `field` config section (offline grace hours, max queue items,
+      dispute reasons). Keep it optional with defaults so existing configs validate.
+- [x] Gates: `pnpm format` → `pnpm lint` → `pnpm typecheck` → `pnpm test`, then
+      `sh scripts/ci/integration.sh` and `sh scripts/ci/migration-check.sh`.
+      Regenerate the API client before the final typecheck.
+
+Status note: the Phase 6 implementation is complete and the remaining work is the
+post-implementation cleanup and maintenance gates already reflected in the repo.
 
 ## Acceptance mapping
 

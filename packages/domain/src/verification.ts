@@ -28,9 +28,7 @@ export function isPaymentStatus(value: string): value is PaymentStatus {
 export type RecordedPeriodStatus = "none" | "unpaid" | "paid" | "waived";
 
 /** Maps a period status (or no period) to the public payment vocabulary. */
-export function paymentStatusFromPeriod(
-  status: RecordedPeriodStatus | undefined,
-): PaymentStatus {
+export function paymentStatusFromPeriod(status: RecordedPeriodStatus | undefined): PaymentStatus {
   if (status === undefined) return "unknown";
   return status === "paid" || status === "waived" ? "paid" : "no_payment_recorded";
 }
@@ -42,10 +40,7 @@ export function paymentStatusFromPeriod(
  */
 export type OfflineScanResult = "paid" | "not_in_offline_list";
 
-export const OFFLINE_SCAN_RESULTS: readonly OfflineScanResult[] = [
-  "paid",
-  "not_in_offline_list",
-];
+export const OFFLINE_SCAN_RESULTS: readonly OfflineScanResult[] = ["paid", "not_in_offline_list"];
 
 export function isOfflineScanResult(value: string): value is OfflineScanResult {
   return (OFFLINE_SCAN_RESULTS as readonly string[]).includes(value);

@@ -118,6 +118,7 @@ describe("declared response schemas serialize complete payloads", () => {
       attributes: { plate_number: "AB-123" },
       photos: [{ id: "ph_1", url: "/v1/assets/as_1/photos/ph_1" }],
       paymentStatus: "unknown",
+      businessDate: "2026-10-23",
     }));
     app.get("/v1/audit", { schema: listAuditSchema }, async () => ({
       entries: [

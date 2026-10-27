@@ -12,3 +12,4 @@ infra/staging-data/
 .test-data/
 build.log
 .DS_Store
+opencode.json

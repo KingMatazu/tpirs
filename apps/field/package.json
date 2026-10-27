@@ -12,6 +12,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@tanstack/react-query": "^5.90.0",
     "@tpirs/api-client": "workspace:*",
     "@tpirs/config": "workspace:*",
     "@tpirs/domain": "workspace:*",
@@ -23,8 +24,7 @@
     "react-dom": "^18.3.1",
     "react-hook-form": "^7.60.0",
     "zod": "^3.25.0",
-    "zustand": "^5.0.2",
-    "@tanstack/react-query": "^5.90.0"
+    "zustand": "^5.0.2"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.0",
@@ -33,6 +33,7 @@
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^5.0.0",
+    "fast-check": "4.10.2",
     "jsdom": "^26.0.0",
     "tailwindcss": "^4.1.0",
     "vite": "^7.0.0",

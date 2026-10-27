@@ -32,15 +32,10 @@ export function registerVerifyRoutes(
   const { services, loadConfig, db } = context;
 
   app.get("/v1/verify/:token", { schema: verifyTokenSchema }, async (request, reply) => {
-    const limit = await services.rateLimiter.consume(
-      `verify:ip:${request.ip}`,
-      VERIFY_RATE_LIMIT,
-    );
+    const limit = await services.rateLimiter.consume(`verify:ip:${request.ip}`, VERIFY_RATE_LIMIT);
     if (!limit.allowed) {
       void reply.header("Retry-After", String(limit.retryAfterSeconds));
-      return reply
-        .code(429)
-        .send(errorEnvelope("rate_limited", "Too many requests", request.id));
+      return reply.code(429).send(errorEnvelope("rate_limited", "Too many requests", request.id));
     }
 
     const { token } = request.params as { token: string };

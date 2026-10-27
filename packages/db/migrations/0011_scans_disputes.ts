@@ -180,7 +180,9 @@ export async function up(db: Kysely<unknown>): Promise<void> {
 }
 
 export async function down(db: Kysely<unknown>): Promise<void> {
-  await sql`drop trigger if exists reversal_unpays_obligation_period on reversal_requests`.execute(db);
+  await sql`drop trigger if exists reversal_unpays_obligation_period on reversal_requests`.execute(
+    db,
+  );
   await sql`drop function if exists unpay_obligation_period_on_reversal()`.execute(db);
   await sql`drop table if exists dispute_evidence cascade`.execute(db);
   await sql`drop table if exists disputes cascade`.execute(db);

@@ -586,7 +586,15 @@ export const verificationSearchSchema: FastifySchema = {
           type: "array",
           items: {
             type: "object",
-            required: ["assetId", "assetTypeKey", "status", "shortCode", "attributes", "paymentStatus", "businessDate"],
+            required: [
+              "assetId",
+              "assetTypeKey",
+              "status",
+              "shortCode",
+              "attributes",
+              "paymentStatus",
+              "businessDate",
+            ],
             properties: {
               assetId: { type: "string" },
               assetTypeKey: { type: "string" },
@@ -622,7 +630,15 @@ export const syncPaidSchema: FastifySchema = {
           type: "array",
           items: {
             type: "object",
-            required: ["assetId", "qrPayload", "shortCode", "assetTypeKey", "attributes", "paid", "changedAt"],
+            required: [
+              "assetId",
+              "qrPayload",
+              "shortCode",
+              "assetTypeKey",
+              "attributes",
+              "paid",
+              "changedAt",
+            ],
             properties: {
               assetId: { type: "string" },
               qrPayload: { type: "string" },
@@ -663,7 +679,14 @@ export const createScanSchema: FastifySchema = {
   response: {
     200: {
       type: "object",
-      required: ["scanId", "assetId", "businessDate", "observedStatus", "authoritativeStatus", "paymentStatus"],
+      required: [
+        "scanId",
+        "assetId",
+        "businessDate",
+        "observedStatus",
+        "authoritativeStatus",
+        "paymentStatus",
+      ],
       properties: {
         scanId: { type: "string" },
         assetId: { type: "string" },
@@ -761,6 +784,10 @@ export const listDisputesSchema: FastifySchema = {
 export const getDisputeSchema: FastifySchema = {
   params: { type: "object", required: ["id"], properties: { id: { type: "string" } } },
   response: {
-    200: { type: "object", required: ["dispute"], properties: { dispute: { type: "object", additionalProperties: true } } },
+    200: {
+      type: "object",
+      required: ["dispute"],
+      properties: { dispute: { type: "object", additionalProperties: true } },
+    },
   },
 };
