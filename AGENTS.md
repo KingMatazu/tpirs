@@ -17,7 +17,7 @@
 | `pnpm db:migrate` / `db:migrate:down` / `db:check` / `db:seed` | migrate, roll back, prove reversibility, seed                   |
 | `pnpm ci:verify` / `ci:migration-check` / `smoke`              | the CI shell scripts directly (same commands CI runs)           |
 
-**Order before finishing a change:** `pnpm format` → `pnpm lint` → `pnpm typecheck` → `pnpm test`. CI (`scripts/ci/verify.sh`) runs install → lint → typecheck → build, then `scripts/ci/integration.sh` (scratch Postgres + full suite) and `scripts/ci/migration-check.sh` (every migration must roll back to zero). Husky hooks: pre-commit = `pnpm lint-staged` (eslint `--fix --max-warnings 0` + prettier); pre-push = `pnpm typecheck` + `pnpm test`.
+**Order before finishing a change:** `pnpm format` → `pnpm lint` → `pnpm typecheck` → `pnpm test`. CI (`scripts/ci/verify.sh`) runs install → lint → typecheck → build, then `scripts/ci/integration.sh` (scratch Postgres + full suite) and `scripts/ci/migration-check.sh` (every migration must roll back to zero). Husky hooks: pre-commit = `pnpm lint-staged` (root ESLint `--fix --max-warnings 0` + prettier over staged files); pre-push = `pnpm typecheck` + `pnpm test` for the **whole repo**, so one red package anywhere blocks the push — run the affected `--filter` task first.
 
 **Testing gotchas:**
 
@@ -25,6 +25,14 @@
 - DB-backed suites gate on `const describeIntegration = TEST_URL === undefined ? describe.skip : describe` (auth, audit, RLS, identity, registry, payments, worker) — a plain `pnpm test` can pass without ever touching Postgres. Grep for `TEST_DATABASE_URL` to find the ones that need it. Real run: `sh scripts/ci/integration.sh` (scratch Postgres on :55433, migrates, exports the var), or `pnpm dev:infra` + `pnpm db:migrate` with `TEST_DATABASE_URL` exported.
 - Cross-package imports resolve to built `dist/` (`main: ./dist/index.js`), never `src`. After editing a dependency, rebuild before testing dependents — running vitest directly inside a package uses stale `dist`. Root `pnpm test`/`pnpm typecheck` are safe: turbo declares `dependsOn: ^build`.
 - `apps/admin` and `apps/field` build with `vite build` and typecheck with `tsc --noEmit` on both tsconfigs (not `tsc -b`), so they fail differently from library packages. They test under jsdom, and reach the backend only through `@tpirs/api-client` (other workspace deps are config, domain, i18n, ui-tokens).
+- `apps/admin`'s vitest config has no `globals: true`, so Testing Library's auto-cleanup never registers: call `cleanup()` in `afterEach` or renders pile up and duplicate row text. `apps/field` does set `globals: true`.
+- The admin suite boots a singleton API client at import time and calls same-origin `/v1/...` paths. Tests call `stubRelativeRequests()` (undici rejects relative URLs) and install the stub through `setRuntimeFetch(...)` — openapi-fetch snapshots `fetch` when the client is constructed, so assigning `globalThis.fetch` is too late.
+
+**Lint gotchas (type-aware ESLint, `eslint.config.mjs`):**
+
+- The project service resolves each file through its package `tsconfig.json`. A `.ts` file that no tsconfig includes (root-level `vitest.setup.ts`, a new tooling file) fails with `was not found by the project service`. Fix it in the config, not with a disable comment: add the glob to the untyped `files` override near the bottom of `eslint.config.mjs`, or to `allowDefaultProject`.
+- `**/*.test.ts(x)` and `*.config.ts` are excluded from type-checked rules, so the strict ones land on `src` code. In routes, type Fastify handlers with route generics (`app.get<{ Querystring: ... }>`, `{ Body: ... }`) instead of casting `request.body` from `unknown`; `String(unknown)` and `??` on non-nullable values are hard errors.
+- `lint-staged` lints every staged `.ts` with the root config, so editing a file with pre-existing lint errors blocks the commit even when your change is unrelated. `pnpm lint` (~40 s, rebuilds deps first) is the whole-repo check.
 
 **Generated code (do not hand-edit):**
 
@@ -32,7 +40,7 @@
 - The contract is code-first: add Fastify JSON Schemas to the route, then regenerate. Correct order after a route/schema change: `pnpm --filter @tpirs/api build` → `pnpm --filter @tpirs/api-client build`. Root `pnpm build` does both via `dependsOn: ^build`.
 - A generated `schema.gen.ts` diff in a PR is expected when routes change; a hand-written edit to it is not.
 
-**Shell:** `scripts/ci/*.sh` are POSIX `sh`, not PowerShell. On Windows, export `$env:TEST_DATABASE_URL="postgres://tpirs:tpirs@localhost:5433/tpirs"` and run the turbo task directly, or invoke the script through Git bash (see `docs/runbooks/local-development.md`).
+**Shell:** the harness runs bash here (`opencode.json` sets `shell: bash`), so PowerShell syntax such as `$env:VAR="..."` fails. `scripts/ci/*.sh` are POSIX `sh`. On Windows export `TEST_DATABASE_URL=postgres://tpirs:tpirs@localhost:5433/tpirs` in bash, or run the turbo task directly (see `docs/runbooks/local-development.md`).
 
 **Adding a package or adapter:**
 
@@ -50,13 +58,13 @@
 
 **Git:** small, phase-scoped commits in conventional style (`chore: phase 0 foundations` matches history). commitlint is configured but not hooked — `lint-staged` is the only commit-time gate.
 
-**Current repo state:** Phases 0–6 are implemented — verification with the `paid`/`no_payment_recorded`/`unknown` split, the paid-set delta sync feed, scan and dispute ingest, and the offline officer PWA (`apps/field`). Phase 7 (collector cash wallet) is next. `README.md` still says "Phases 0–5" and is behind (doc drift only).
+**Current repo state:** Phases 0–6 are implemented and committed — verification with the `paid`/`no_payment_recorded`/`unknown` split, the paid-set delta feed, scan and dispute ingest (`packages/application/src/{scan,dispute}-service.ts`), and the offline officer PWA (`apps/field`). Phase 7 (collector cash wallet) is next; do not re-scaffold a delivered phase. `README.md` documents the current layout.
 
 - **Paystack is the chosen payment gateway** for the first deployment. The adapter package passes the shared conformance/fixture suites; live sandbox wiring and the Phase 4 sandbox checks in `docs/decisions-needed.md` are still open. Remita stays as an alternative adapter.
 - **API-first arrives incrementally.** The repo now uses generated API-client wiring and contract validation alongside the Fastify routes; new endpoints and enum changes are treated as contract changes, not ad hoc server-only changes.
-- **`GET /v1/verify/:token` now returns `paymentStatus: "paid" | "no_payment_recorded" | "unknown"`**. A missing payment under `pay_per_use` is `no_payment_recorded`, not a debt, and the offline field app never infers `UNPAID` from absence in the cache.
+- **`GET /v1/verify/:token` returns `paymentStatus: "paid" | "no_payment_recorded" | "unknown"`**. A missing payment under `pay_per_use` is `no_payment_recorded`, not a debt, and the offline field app never infers `UNPAID` from absence in the cache.
 - **The two fake tenants are sample data in `packages/db/src/seed.ts`**, not `tenants/<slug>/` config files, so the seed can demonstrate two tenants side by side. Seed users include `alpha.collector`/`beta.officer`.
-- Tenant-config fixtures must include `channels.otpMessageTemplate` (with a `{code}` placeholder) or validation throws.
+- **Tenant config fixtures are validated for real.** `channels.otpMessageTemplate` must contain `{code}`, and once a config has `channels.messages` every key in `CHANNEL_MESSAGE_KEYS` (`packages/config/src/channel-contract.ts`) must exist for every enabled language — the validator reports all gaps at once (this is what kept `apps/admin/src/test-support/tenant.ts` failing).
 
 **Before changing behaviour, read:** `docs/decisions-needed.md` (D1–D34; many are resolved with a decision to follow — match the recorded one instead of inventing a new default) and `docs/adr/` (0001–0030, one short record per significant choice). Runbooks are in `docs/runbooks/`; the active phase plan is `docs/phase-<n>-implementation.md`.
 
