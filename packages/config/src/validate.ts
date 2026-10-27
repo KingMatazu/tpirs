@@ -719,6 +719,17 @@ function validateChannels(
   if (smsReceiptTemplate !== undefined && !validateReceiptTemplate(v, smsReceiptTemplate)) {
     return undefined;
   }
+  const cashReceiptTemplate =
+    obj.cashReceiptTemplate === undefined
+      ? undefined
+      : v.string(obj.cashReceiptTemplate, "cashReceiptTemplate");
+  if (
+    obj.cashReceiptTemplate !== undefined &&
+    cashReceiptTemplate !== undefined &&
+    !validateReceiptTemplate(v, cashReceiptTemplate, "cashReceiptTemplate")
+  ) {
+    return undefined;
+  }
 
   const messages =
     obj.messages === undefined ? {} : validateMessages(v, obj.messages, enabledLanguages);
@@ -858,6 +869,7 @@ function validateChannels(
     smsKeyword,
     otpMessageTemplate,
     smsReceiptTemplate,
+    ...(cashReceiptTemplate === undefined ? {} : { cashReceiptTemplate }),
     menus,
     messages,
     ussd,
@@ -870,7 +882,11 @@ function validateChannels(
  * A receipt template must fill every placeholder the renderer knows about and
  * may not invent others. Catches `{amout}` at startup, not in a driver's inbox.
  */
-function validateReceiptTemplate(v: Validator, template: string): boolean {
+function validateReceiptTemplate(
+  v: Validator,
+  template: string,
+  key = "smsReceiptTemplate",
+): boolean {
   const found = new Set<string>();
   for (const match of template.matchAll(/\{([^{}]*)\}/g)) {
     const name = match[1] ?? "";
@@ -878,8 +894,8 @@ function validateReceiptTemplate(v: Validator, template: string): boolean {
       const allowed = RECEIPT_PLACEHOLDERS.map((p) => `{${p}}`).join(", ");
       v.issue(
         "schema_error",
-        `channels.smsReceiptTemplate has unknown placeholder '{${name}}'; allowed placeholders: ${allowed}`,
-        "smsReceiptTemplate",
+        `channels.${key} has unknown placeholder '{${name}}'; allowed placeholders: ${allowed}`,
+        key,
       );
       return false;
     }
@@ -890,8 +906,8 @@ function validateReceiptTemplate(v: Validator, template: string): boolean {
     const list = missing.map((p) => `{${p}}`).join(", ");
     v.issue(
       "schema_error",
-      `channels.smsReceiptTemplate must contain the ${list} placeholder${missing.length > 1 ? "s" : ""}`,
-      "smsReceiptTemplate",
+      `channels.${key} must contain the ${list} placeholder${missing.length > 1 ? "s" : ""}`,
+      key,
     );
     return false;
   }

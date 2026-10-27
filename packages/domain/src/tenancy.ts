@@ -121,7 +121,14 @@ export const SYSTEM_ROLES: readonly SystemRoleDefinition[] = [
   {
     key: "collector",
     name: "Collector",
-    permissions: ["asset:read", "asset:manage", "payment:manage", "zone:read", "cash:read", "cash:intake"],
+    permissions: [
+      "asset:read",
+      "asset:manage",
+      "payment:manage",
+      "zone:read",
+      "cash:read",
+      "cash:intake",
+    ],
   },
   {
     key: "officer",

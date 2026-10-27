@@ -96,12 +96,15 @@ describeIntegration("ObligationService (integration)", () => {
   let scheduledTenantId: string;
   let perUseAssetId: string;
   let scheduledAssetId: string;
+  let perUseCollectorUserId: string;
   let service: ObligationService;
   const perUseConfig = testConfig("peruse", "NGN", "pay_per_use");
   const scheduledConfig = testConfig("sched", "NGN", "scheduled");
   const configs = new Map<string, TenantConfig>();
 
   const today: BusinessDate = businessDate("2026-06-15");
+  const cashDay: BusinessDate = businessDate("2026-06-16");
+  const gatewayDay: BusinessDate = businessDate("2026-06-17");
 
   beforeAll(async () => {
     if (TEST_URL === undefined) return;
@@ -150,6 +153,15 @@ describeIntegration("ObligationService (integration)", () => {
       });
       perUseAssetId = perUseAsset.id;
       scheduledAssetId = scheduledAsset.id;
+
+      const collector = await repos.users.create({
+        tenantId: perUseTenantId,
+        username: `collector-${stamp}`,
+        displayName: "Collector",
+        passwordHash: "not-a-real-hash",
+        totpSecret: null,
+      });
+      perUseCollectorUserId = collector.id;
     });
 
     configs.set(perUseTenantId, perUseConfig);
@@ -439,5 +451,85 @@ describeIntegration("ObligationService (integration)", () => {
     });
     expect(generated.created).toBe(0);
     expect(generated.skipped).toBe(0);
+  });
+
+  it("funds the day from collector cash when asked, attributing the collector", async () => {
+    const collectorUserId = perUseCollectorUserId;
+    const result = await service.ensurePaidForBusinessDay({
+      tenantId: perUseTenantId,
+      config: perUseConfig,
+      assetId: perUseAssetId,
+      assetTypeKey: "bike",
+      businessDate: cashDay,
+      amount: money("NGN", BIKE_FEE),
+      idempotencyKey: `cash-collector-${collectorUserId}`,
+      fundingAccount: "COLLECTOR_CASH",
+      collectorUserId,
+    });
+
+    // The day settles exactly like a gateway payment: same allocation engine,
+    // same revenue recognition. Only the funding account differs.
+    expect(result.walletTransaction).not.toBeNull();
+    expect(result.allocationTransactions).toHaveLength(1);
+    expect(result.allocatedMinor).toBe(BigInt(BIKE_FEE));
+    expect((await service.getPeriodStatus(perUseTenantId, perUseAssetId, cashDay)).status).toBe(
+      "paid",
+    );
+
+    await withTenant(db, perUseTenantId, async (tx) => {
+      const repos = repositories(tx);
+      expect(await repos.ledger.collectorCashBalance(perUseTenantId, collectorUserId)).toBe(
+        BigInt(BIKE_FEE),
+      );
+      const found = result.walletTransaction
+        ? await repos.ledger.findTransactionWithEntries(perUseTenantId, result.walletTransaction.id)
+        : undefined;
+      expect(found).toBeDefined();
+      const posting = found as {
+        entries: { accountId: string; collectorUserId: string | null; direction: string }[];
+      };
+      const accounts = await repos.accounts.getAll(perUseTenantId);
+      const codeByAccountId = new Map(accounts.map((account) => [account.id, account.code]));
+      const funding = posting.entries.filter((e) => e.direction === "debit");
+      expect(funding).toHaveLength(1);
+      const fundingLeg = funding[0];
+      expect(fundingLeg).toBeDefined();
+      if (fundingLeg === undefined) return;
+      expect(codeByAccountId.get(fundingLeg.accountId)).toBe("COLLECTOR_CASH");
+      expect(fundingLeg.collectorUserId).toBe(collectorUserId);
+      const credit = posting.entries.filter((e) => e.direction === "credit")[0];
+      expect(credit).toBeDefined();
+      if (credit === undefined) return;
+      expect(codeByAccountId.get(credit.accountId)).toBe("ASSET_WALLET");
+      expect(credit.collectorUserId).toBeNull();
+    });
+  });
+
+  it("keeps the gateway clearing account and no collector when funding is unspecified", async () => {
+    const result = await service.ensurePaidForBusinessDay({
+      tenantId: perUseTenantId,
+      config: perUseConfig,
+      assetId: perUseAssetId,
+      assetTypeKey: "bike",
+      businessDate: gatewayDay,
+      amount: money("NGN", BIKE_FEE),
+      idempotencyKey: "gateway-default-funding",
+    });
+
+    expect(result.walletTransaction).not.toBeNull();
+    await withTenant(db, perUseTenantId, async (tx) => {
+      const repos = repositories(tx);
+      const found = result.walletTransaction
+        ? await repos.ledger.findTransactionWithEntries(perUseTenantId, result.walletTransaction.id)
+        : undefined;
+      expect(found).toBeDefined();
+      const accounts = await repos.accounts.getAll(perUseTenantId);
+      const codeByAccountId = new Map(accounts.map((account) => [account.id, account.code]));
+      const entries = (found as { entries: { accountId: string; direction: string }[] }).entries;
+      const debit = entries.filter((e) => e.direction === "debit")[0];
+      expect(debit).toBeDefined();
+      if (debit === undefined) return;
+      expect(codeByAccountId.get(debit.accountId)).toBe("GATEWAY_CLEARING");
+    });
   });
 });

@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  DEFAULT_CASH_RECEIPT_TEMPLATE,
   formatBusinessDate,
   formatMinor,
   minorUnitExponent,
+  renderCashReceiptSms,
   renderPlaceholders,
   renderReceiptSms,
   renderUnderpaymentNoticeSms,
@@ -57,6 +59,38 @@ describe("formatBusinessDate", () => {
 
   it("returns the ISO value when the date is unparseable", () => {
     expect(formatBusinessDate("not-a-date", "en-GB", "dd/MM/yyyy")).toBe("not-a-date");
+  });
+});
+
+describe("renderCashReceiptSms", () => {
+  const base = {
+    amountMinor: 20_000n,
+    currency: "NGN",
+    locale: "en-NG",
+    dateFormat: "dd/MM/yyyy",
+    assetRef: "KJA-123",
+    receiptNumber: "R-9",
+    businessDate: "2026-06-15",
+  };
+
+  it("falls back to the built-in template when no tenant template is set", () => {
+    const text = renderCashReceiptSms(base);
+    expect(text).toBe(
+      DEFAULT_CASH_RECEIPT_TEMPLATE.replace("{assetRef}", "KJA-123")
+        .replace("{amount}", formatMinor(20_000n, "NGN", "en-NG"))
+        .replace("{receiptNo}", "R-9")
+        .replace("{date}", "15/06/2026"),
+    );
+  });
+
+  it("uses the tenant's cash template when configured", () => {
+    const text = renderCashReceiptSms({
+      ...base,
+      template: "Cash {receiptNo}: {amount} for {assetRef} on {date}.",
+    });
+    expect(text).toContain("Cash R-9");
+    expect(text).toContain("KJA-123");
+    expect(text).not.toMatch(/\{[a-zA-Z]+\}/);
   });
 });
 

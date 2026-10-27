@@ -19,6 +19,8 @@ export interface PostingSpec {
   assetId?: string | null;
   paymentId?: string | null;
   obligationPeriodId?: string | null;
+  /** Collector attribution for cash postings (ADR 0031). */
+  collectorUserId?: string | null;
   memo?: string | null;
 }
 
@@ -167,6 +169,7 @@ export class LedgerService {
         ...(entry.assetId ? { assetId: entry.assetId } : {}),
         ...(entry.paymentId ? { paymentId: entry.paymentId } : {}),
         ...(entry.obligationPeriodId ? { obligationPeriodId: entry.obligationPeriodId } : {}),
+        ...(entry.collectorUserId ? { collectorUserId: entry.collectorUserId } : {}),
       };
     });
 
@@ -177,6 +180,7 @@ export class LedgerService {
       assetId: posting.assetId ?? null,
       paymentId: posting.paymentId ?? null,
       obligationPeriodId: posting.obligationPeriodId ?? null,
+      collectorUserId: posting.collectorUserId ?? null,
       memo: `Reversal of ${request.originalTransactionId}`,
     }));
 
@@ -224,6 +228,7 @@ export class LedgerService {
         assetId: posting.assetId ?? null,
         paymentId: posting.paymentId ?? null,
         obligationPeriodId: posting.obligationPeriodId ?? null,
+        collectorUserId: posting.collectorUserId ?? null,
         memo: posting.memo ?? null,
       };
     });
@@ -246,6 +251,7 @@ export class LedgerService {
       ...(posting.assetId ? { assetId: posting.assetId } : {}),
       ...(posting.paymentId ? { paymentId: posting.paymentId } : {}),
       ...(posting.obligationPeriodId ? { obligationPeriodId: posting.obligationPeriodId } : {}),
+      ...(posting.collectorUserId ? { collectorUserId: posting.collectorUserId } : {}),
       ...(posting.memo ? { memo: posting.memo } : {}),
     }));
   }

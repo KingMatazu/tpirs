@@ -20,3 +20,4 @@ export * from "./verification-service.js";
 export * from "./paid-set-sync-service.js";
 export * from "./scan-service.js";
 export * from "./dispute-service.js";
+export * from "./collector-cash-service.js";

@@ -15,6 +15,14 @@ import {
 } from "./index.js";
 import { money } from "./money.js";
 
+describe("CashError codes", () => {
+  it("carries the asset_unknown code for an unresolvable reference", () => {
+    const error = new CashError("asset_unknown", "no asset matches the reference");
+    expect(error.code).toBe("asset_unknown");
+    expect(error).toBeInstanceOf(CashError);
+  });
+});
+
 describe("transitionWallet", () => {
   it("freezes an active wallet and records the reason", () => {
     expect(

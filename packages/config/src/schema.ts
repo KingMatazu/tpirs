@@ -141,6 +141,13 @@ export interface TenantChannels {
    * startup failure rather than a literal brace in a driver's SMS.
    */
   readonly smsReceiptTemplate: string;
+  /**
+   * SMS receipt sent to the owner when a collector takes cash intake (Phase 7).
+   * Optional because cash intake is a tenant-config feature: when omitted the
+   * code falls back to its built-in default (D38). Same placeholder contract
+   * as `smsReceiptTemplate` — {amount}, {assetRef}, {date}, {receiptNo}.
+   */
+  readonly cashReceiptTemplate?: string;
   /** Typed menu graph used by the pure USSD session engine. */
   readonly menus: readonly TenantMenu[];
   /** Entry node; omitted when `menus` is empty, otherwise defaults to the first menu. */

@@ -31,6 +31,7 @@ export type CashErrorCode =
   | "already_paid"
   | "amount_mismatch"
   | "duplicate_reference"
+  | "asset_unknown"
   | "invalid_amount";
 
 export class CashError extends DomainError {

@@ -440,8 +440,7 @@ export class SmsLogRepository {
       .executeTakeFirst();
   }
 
-  /**
-   * Reads one message. Tenant-scoped, so a delivery worker that is handed an id
+  /** Reads one message. Tenant-scoped, so a delivery worker that is handed an id
    * from another tenant simply finds nothing.
    */
   async findById(tenantId: string, id: string): Promise<SmsLogRow | undefined> {
@@ -450,6 +449,24 @@ export class SmsLogRepository {
       .selectAll()
       .where("tenantId", "=", tenantId)
       .where("id", "=", id)
+      .executeTakeFirst();
+  }
+
+  /**
+   * Reads the cash receipt queued for one intake, if any. The reply to a
+   * replayed intake reports whether the receipt already went out, so the
+   * caller does not enqueue a second one.
+   */
+  async findCashIntakeReceipt(
+    tenantId: string,
+    cashIntakeId: string,
+  ): Promise<SmsLogRow | undefined> {
+    return this.db
+      .selectFrom("smsLog")
+      .selectAll()
+      .where("tenantId", "=", tenantId)
+      .where("cashIntakeId", "=", cashIntakeId)
+      .where("kind", "=", "cash_receipt")
       .executeTakeFirst();
   }
 

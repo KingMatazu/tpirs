@@ -123,6 +123,25 @@ export function renderReceiptSms(input: ReceiptTemplateInput): string {
   });
 }
 
+/**
+ * The template a tenant gets when it does not configure
+ * `channels.cashReceiptTemplate` (D38). The payment receipt template is not
+ * reused: a cash intake is not a gateway payment, and a tenant that wants
+ * different copy can set its own.
+ */
+export const DEFAULT_CASH_RECEIPT_TEMPLATE =
+  "Cash received for {assetRef}: {amount}. Receipt {receiptNo}, {date}.";
+
+export interface CashReceiptTemplateInput extends Omit<ReceiptTemplateInput, "template"> {
+  /** Tenant-configured template; omitted means the built-in default. */
+  readonly template?: string;
+}
+
+/** Renders the receipt SMS for a collector cash intake. */
+export function renderCashReceiptSms(input: CashReceiptTemplateInput): string {
+  return renderReceiptSms({ template: input.template ?? DEFAULT_CASH_RECEIPT_TEMPLATE, ...input });
+}
+
 export interface UnderpaymentNoticeInput {
   /** What is still owed for the day, in minor units. */
   readonly shortfallMinor: bigint;

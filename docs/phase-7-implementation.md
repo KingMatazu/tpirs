@@ -242,49 +242,59 @@ the original row; a frozen wallet refuses a new intake; a deposit replay is a
 no-op; `balanceForCollector` equals the sum of intake amounts minus the sum of
 matched deposit allocations for a seeded day.
 
-## Step 3: Funding account on `ensurePaidForBusinessDay`
+## Step 3: Funding account on `ensurePaidForBusinessDay` (completed)
 
 Small diff, high blast radius. Land it as its own commit with the existing
 payment / obligation / ledger suites green before any cash code exists.
 
-- `EnsurePaidInput` gains `fundingAccount?: "GATEWAY_CLEARING" | "COLLECTOR_CASH"`
-  and `collectorUserId?: string | null`, both optional.
-- The wallet-credit posting uses `input.fundingAccount ?? "GATEWAY_CLEARING"`
-  and passes `collectorUserId` into `LedgerService.postTransaction`.
-- No other behaviour changes: the fee resolution, allocation, rounding and
-  idempotency keying stay exactly as they are.
-- Tests: the phase 4/5/6 suites pass unchanged; one new test proves a
-  `COLLECTOR_CASH` funding posting produces the same allocation outcomes and a
-  balanced transaction.
+- `EnsurePaidInput` gains `fundingAccount?: "GATEWAY_CLEARING" | "COLLECTOR_CASH"`,
+  `collectorUserId?: string | null` and `sourceType?: string`, all optional with
+  byte-identical defaults for the Phases 4–6 callers.
+- The wallet-credit posting uses `input.fundingAccount ?? "GATEWAY_CLEARING"`,
+  attaches the collector only for `COLLECTOR_CASH`, and uses
+  `sourceType: "cash_intake"` for cash funding. `LedgerPosting.collectorUserId`
+  threads through `PostingSpec`, the reversal reconstruction and the repo
+  posting input (ADR 0031).
+- `ensurePaidForBusinessDay` is now a thin wrapper over `settleInScope(scope,
+  input)`, so the cash intake can run lock + checks + settlement + intake
+  record + SMS in ONE `withLedger` transaction (`withTenant` cannot nest).
+- Tests: the phase 4/5/6 suites pass unchanged; new tests prove a
+  `COLLECTOR_CASH` funding posting produces the same allocation outcomes with
+  the collector attributed on the debit leg, and that an unspecified funding
+  account keeps `GATEWAY_CLEARING` with no collector.
 
-## Step 4: `CollectorCashService` — intake
+## Step 4: `CollectorCashService` — intake (completed)
 
-`packages/application/src/collector-cash-service.ts`:
+`packages/application/src/collector-cash-service.ts`; the method is
+`recordIntake` (an admin-form-first shape; an offline-collector path can wrap
+the same logic later):
 
-- `intake({ tenantId, principal, assetRef, amount, clientReference })`:
-  1. Refuse when `config.cashRules.enabled` is false (typed error, no ledger
+  1. Refuse when `config.cashRules.enabled` is false (`cash_disabled`, no ledger
      write).
-  2. Resolve the asset with the same token / short-code / reference resolution
-     the scan service uses.
-  3. `lockWallet` and refuse on `frozen`; then assert the ceiling against the
-     derived balance.
-  4. Price the business day through `FeeEngine`, then reject `already_paid`
-     (D36) before any money is taken.
-  5. Call `ensurePaidForBusinessDay({ fundingAccount: "COLLECTOR_CASH",
-collectorUserId, idempotencyKey: `cash:${clientReference}` })`.
-  6. Insert `cash_intakes`, enqueue the `cash_receipt` SMS in the same
-     transaction through `repos.smsLog.enqueue`, return the receipt and the new
-     balance.
-- `reverseIntake(...)` uses the existing `reversal_requests` dual-approval
-  path; it posts mirrored entries and marks the day back to `unpaid` (the
-  Phase 6 paid-set behaviour already requires that on reversal).
+  2. Resolve the asset in-scope by `assetId` / QR token / reference — the same
+     order the scan service uses, but without opening nested transactions.
+     Nothing matches → `asset_unknown`.
+  3. `lockWallet` and refuse on `frozen`; assert the ceiling against the derived
+     `COLLECTOR_CASH` balance (wallet-level override wins over config).
+  4. Price the business day through `FeeEngine`; reject `already_paid` (D36)
+     and require the exact fee in the tenant's currency (`amount_mismatch`).
+  5. Settle through `settleInScope` with `fundingAccount: "COLLECTOR_CASH"`,
+     source `cash_intake`, idempotency key `cash:${clientReference}`.
+  6. Insert `cash_intakes` (unique client reference; a true replay returns the
+     original row and skips every check), enqueue the `cash_receipt` SMS with
+     `cash_intake_id` attribution, return receipt + derived balance.
+- The receipt body comes from `channels.cashReceiptTemplate` when configured,
+  else the code's default template (D38); the recipient is the owner's phone,
+  exactly like a gateway payment receipt.
+- `reverseIntake` stays on the existing `reversal_requests` dual-approval path;
+  mirrored entries already preserve `collector_user_id`.
 
-Tests (application level, DB-gated where they touch Postgres): replay of the
-same `clientReference` changes nothing and returns the original receipt;
-ceiling breach rejects without posting; frozen rejects without posting; a day
-already paid rejects; a cash intake makes `GET /v1/verify/:token` report
-`paid` for that business day; the response payload contains no field that
-could be read as "unpaid".
+Tests (DB-gated application suite, 9 cases): success path (day paid, wallet
+drained, revenue credited, open intake, SMS to the owner), exact replay
+returns the original intake with no second SMS, `cash_disabled`,
+`already_paid`, ceiling breach leaves ledger and periods untouched,
+`wallet_frozen`, `amount_mismatch` (short and wrong-currency),
+`asset_unknown` by reference and token, and `CashError` as the thrown type.
 
 ## Step 5: Deposits, matching and suspense
 

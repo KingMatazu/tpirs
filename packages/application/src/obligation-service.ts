@@ -5,7 +5,7 @@ import type { FeeEngine, ResolvedFee } from "@tpirs/ports";
 import type { TenantConfig } from "@tpirs/config";
 import type { Kysely } from "kysely";
 import { withLedger } from "./ledger-service.js";
-import type { LedgerRepos } from "./ledger-service.js";
+import type { LedgerContext, LedgerRepos } from "./ledger-service.js";
 
 export class ObligationError extends Error {
   constructor(message: string) {
@@ -25,6 +25,21 @@ export interface EnsurePaidInput {
   readonly sourceId?: string | null;
   /** Key that makes the whole payment idempotent. */
   readonly idempotencyKey?: string | null;
+  /**
+   * Where the money came from before it reached the asset wallet (ADR 0031).
+   * `GATEWAY_CLEARING` (the default) keeps every gateway posting exactly as it
+   * was; `COLLECTOR_CASH` funds a driver's day from the collector's counted
+   * cash.
+   */
+  readonly fundingAccount?: "GATEWAY_CLEARING" | "COLLECTOR_CASH";
+  /**
+   * The collector the cash funding belongs to. Carried onto the ledger entries
+   * so the derived collector balance stays attributable; ignored for the
+   * default funding account.
+   */
+  readonly collectorUserId?: string | null;
+  /** Ledger `source_type`; defaults to `payment` (or `cash_intake` for cash funding). */
+  readonly sourceType?: string;
 }
 
 export interface EnsurePaidResult {
@@ -148,6 +163,21 @@ export class ObligationService {
    * original transactions instead of posting again.
    */
   async ensurePaidForBusinessDay(input: EnsurePaidInput): Promise<EnsurePaidResult> {
+    return withLedger(this.db, input.tenantId, ({ ledger, repos }) =>
+      this.settleInScope({ ledger, repos }, input),
+    );
+  }
+
+  /**
+   * Settles a day inside an existing ledger scope (an open `withLedger` or
+   * `withTenant` transaction).
+   *
+   * The collector cash intake needs this: the wallet lock, the already-paid
+   * check, the settlement posting and the intake record must commit together,
+   * so the caller opens the scope once and hands it in here rather than letting
+   * `ensurePaidForBusinessDay` open a second transaction.
+   */
+  async settleInScope(scope: LedgerContext, input: EnsurePaidInput): Promise<EnsurePaidResult> {
     const { tenantId, config, assetId, amount } = input;
     const model = config.obligations.model;
     const sourceId = input.sourceId ?? input.paymentId ?? null;
@@ -156,132 +186,146 @@ export class ObligationService {
       (input.paymentId === undefined || input.paymentId === null
         ? null
         : `payment:${input.paymentId}`);
+    const fundingAccount = input.fundingAccount ?? "GATEWAY_CLEARING";
+    const collectorId =
+      fundingAccount === "COLLECTOR_CASH" ? (input.collectorUserId ?? null) : null;
 
-    return withLedger(this.db, tenantId, async ({ ledger, repos }) => {
-      await repos.obligations.lockAssetObligations(tenantId, assetId);
+    const { ledger, repos } = scope;
+    await repos.obligations.lockAssetObligations(tenantId, assetId);
 
-      const fee = await this.resolveFee(tenantId, input.assetTypeKey, input.businessDate);
-      if (fee.currency !== amount.currency) {
-        throw new ObligationError(
-          `fee currency ${fee.currency} does not match payment currency ${amount.currency}`,
+    const fee = await this.resolveFee(tenantId, input.assetTypeKey, input.businessDate);
+    if (fee.currency !== amount.currency) {
+      throw new ObligationError(
+        `fee currency ${fee.currency} does not match payment currency ${amount.currency}`,
+      );
+    }
+
+    // 1. Credit the wallet. This happens for every payment, even one that
+    //    settles nothing: the money arrived and must be on the books.
+    //    Both legs carry the asset, so the funding account's balance can be
+    //    attributed per asset during reconciliation. Cash funding also carries
+    //    the collector, because the collector's float balance is derived from
+    //    these entries (ADR 0031).
+    let walletTransaction: TransactionRow | null = null;
+    if (amount.amount > 0) {
+      const walletPost = await ledger.postTransaction(tenantId, {
+        idempotencyKey: paymentKey === null ? null : `${paymentKey}:wallet`,
+        postings: [
+          {
+            accountCode: fundingAccount,
+            direction: "debit",
+            amount,
+            assetId,
+            ...(collectorId === null ? {} : { collectorUserId: collectorId }),
+          },
+          { accountCode: "ASSET_WALLET", direction: "credit", amount, assetId },
+        ],
+        sourceType:
+          input.sourceType ?? (fundingAccount === "COLLECTOR_CASH" ? "cash_intake" : "payment"),
+        sourceId,
+        description:
+          fundingAccount === "COLLECTOR_CASH"
+            ? "Cash intake (wallet credit)"
+            : "Payment received (wallet credit)",
+      });
+      walletTransaction = walletPost.transaction;
+    }
+
+    // 2. Work out which periods exist and what each one costs.
+    const periods = await this.materializePeriods(repos, input, fee);
+
+    // 3. Plan the allocation.
+    const availableMinor =
+      model === "pay_per_use"
+        ? BigInt(amount.amount)
+        : await repos.ledger.accountBalance(tenantId, "ASSET_WALLET", assetId);
+
+    const plan = planAllocation({
+      model,
+      order: config.obligations.allocationOrder,
+      prepaidAllowed: config.obligations.prepaidAllowed,
+      walletBalanceMinor: availableMinor,
+      businessDate: input.businessDate,
+      periods: periods.map((period) => ({
+        id: period.row.id,
+        periodStartDate: period.row.businessDate,
+        priority: period.row.priority,
+        createdAt: period.row.createdAt.toISOString(),
+        amountMinor: period.row.amountMinor,
+        amountPaidMinor: period.row.amountPaidMinor,
+      })),
+    });
+
+    // 4. Apply the plan.
+    const allocationTransactions: TransactionRow[] = [];
+    const periodById = new Map(periods.map((period) => [period.row.id, period]));
+    for (const allocation of plan.allocations) {
+      const period = periodById.get(allocation.periodId);
+      if (period === undefined) continue;
+      const allocationMoney = {
+        amount: Number(allocation.amountMinor),
+        currency: fee.currency,
+      };
+      const post = await ledger.postTransaction(tenantId, {
+        idempotencyKey:
+          paymentKey === null ? null : `${paymentKey}:allocation:${allocation.periodId}`,
+        postings: [
+          {
+            accountCode: "ASSET_WALLET",
+            direction: "debit",
+            amount: allocationMoney,
+            assetId,
+            obligationPeriodId: period.row.id,
+          },
+          {
+            accountCode: "REVENUE_LEVY",
+            direction: "credit",
+            amount: allocationMoney,
+            assetId,
+            obligationPeriodId: period.row.id,
+          },
+        ],
+        sourceType: "allocation",
+        sourceId,
+        description: "Obligation allocation",
+      });
+      if (post.replayed) {
+        allocationTransactions.push(post.transaction);
+        continue;
+      }
+      allocationTransactions.push(post.transaction);
+
+      const snapshot = {
+        feeRuleKey: period.ruleId,
+        feeAmountSnapshotMinor: allocation.amountMinor,
+      };
+      if (allocation.fullyPaid) {
+        await repos.obligations.markPaid(
+          tenantId,
+          period.row.id,
+          post.transaction.id,
+          period.row.amountMinor,
+          snapshot,
+        );
+      } else {
+        await repos.obligations.updatePaidAmount(
+          tenantId,
+          period.row.id,
+          period.row.amountPaidMinor + allocation.amountMinor,
         );
       }
+    }
 
-      // 1. Credit the wallet. This happens for every payment, even one that
-      //    settles nothing: the money arrived and must be on the books.
-      //    Both legs carry the asset, so the gateway clearing balance can be
-      //    attributed per asset during reconciliation.
-      let walletTransaction: TransactionRow | null = null;
-      if (amount.amount > 0) {
-        const walletPost = await ledger.postTransaction(tenantId, {
-          idempotencyKey: paymentKey === null ? null : `${paymentKey}:wallet`,
-          postings: [
-            { accountCode: "GATEWAY_CLEARING", direction: "debit", amount, assetId },
-            { accountCode: "ASSET_WALLET", direction: "credit", amount, assetId },
-          ],
-          sourceType: "payment",
-          sourceId,
-          description: "Payment received (wallet credit)",
-        });
-        walletTransaction = walletPost.transaction;
-      }
+    const primary =
+      periods.find((period) => period.row.businessDate === input.businessDate)?.row ?? null;
 
-      // 2. Work out which periods exist and what each one costs.
-      const periods = await this.materializePeriods(repos, input, fee);
-
-      // 3. Plan the allocation.
-      const availableMinor =
-        model === "pay_per_use"
-          ? BigInt(amount.amount)
-          : await repos.ledger.accountBalance(tenantId, "ASSET_WALLET", assetId);
-
-      const plan = planAllocation({
-        model,
-        order: config.obligations.allocationOrder,
-        prepaidAllowed: config.obligations.prepaidAllowed,
-        walletBalanceMinor: availableMinor,
-        businessDate: input.businessDate,
-        periods: periods.map((period) => ({
-          id: period.row.id,
-          periodStartDate: period.row.businessDate,
-          priority: period.row.priority,
-          createdAt: period.row.createdAt.toISOString(),
-          amountMinor: period.row.amountMinor,
-          amountPaidMinor: period.row.amountPaidMinor,
-        })),
-      });
-
-      // 4. Apply the plan.
-      const allocationTransactions: TransactionRow[] = [];
-      const periodById = new Map(periods.map((period) => [period.row.id, period]));
-      for (const allocation of plan.allocations) {
-        const period = periodById.get(allocation.periodId);
-        if (period === undefined) continue;
-        const allocationMoney = {
-          amount: Number(allocation.amountMinor),
-          currency: fee.currency,
-        };
-        const post = await ledger.postTransaction(tenantId, {
-          idempotencyKey:
-            paymentKey === null ? null : `${paymentKey}:allocation:${allocation.periodId}`,
-          postings: [
-            {
-              accountCode: "ASSET_WALLET",
-              direction: "debit",
-              amount: allocationMoney,
-              assetId,
-              obligationPeriodId: period.row.id,
-            },
-            {
-              accountCode: "REVENUE_LEVY",
-              direction: "credit",
-              amount: allocationMoney,
-              assetId,
-              obligationPeriodId: period.row.id,
-            },
-          ],
-          sourceType: "allocation",
-          sourceId,
-          description: "Obligation allocation",
-        });
-        if (post.replayed) {
-          allocationTransactions.push(post.transaction);
-          continue;
-        }
-        allocationTransactions.push(post.transaction);
-
-        const snapshot = {
-          feeRuleKey: period.ruleId,
-          feeAmountSnapshotMinor: allocation.amountMinor,
-        };
-        if (allocation.fullyPaid) {
-          await repos.obligations.markPaid(
-            tenantId,
-            period.row.id,
-            post.transaction.id,
-            period.row.amountMinor,
-            snapshot,
-          );
-        } else {
-          await repos.obligations.updatePaidAmount(
-            tenantId,
-            period.row.id,
-            period.row.amountPaidMinor + allocation.amountMinor,
-          );
-        }
-      }
-
-      const primary =
-        periods.find((period) => period.row.businessDate === input.businessDate)?.row ?? null;
-
-      return {
-        period: primary,
-        walletTransaction,
-        allocationTransactions,
-        allocatedMinor: plan.appliedMinor,
-        surplusMinor: plan.remainingMinor,
-      };
-    });
+    return {
+      period: primary,
+      walletTransaction,
+      allocationTransactions,
+      allocatedMinor: plan.appliedMinor,
+      surplusMinor: plan.remainingMinor,
+    };
   }
 
   /**

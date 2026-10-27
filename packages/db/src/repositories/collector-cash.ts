@@ -350,6 +350,27 @@ export class CollectorCashRepository {
       .executeTakeFirst();
   }
 
+  /**
+   * Finds the intake a retry would replay, before any check runs.
+   *
+   * The replay must succeed without touching the checks that a fresh intake
+   * has to pass - the day is already paid by now, so an `already_paid` error
+   * would answer a harmless double submit with a failure.
+   */
+  async findIntakeByClientReference(
+    tenantId: string,
+    collectorUserId: string,
+    clientReference: string,
+  ): Promise<CashIntakeRow | undefined> {
+    return this.db
+      .selectFrom("cashIntakes")
+      .selectAll()
+      .where("tenantId", "=", tenantId)
+      .where("collectorUserId", "=", collectorUserId)
+      .where("clientReference", "=", clientReference)
+      .executeTakeFirst();
+  }
+
   /** Intakes still waiting for deposit coverage, oldest cash first. */
   async openIntakesForCollector(
     tenantId: string,

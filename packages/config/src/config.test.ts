@@ -410,6 +410,24 @@ describe("validateTenantConfig", () => {
     expect(run).toThrow(/unknown placeholder '\{amout\}'/);
   });
 
+  it("accepts cash intake without a cash receipt template (code default applies)", () => {
+    const run = configWith();
+    expect(run()).not.toHaveProperty("channels.cashReceiptTemplate", expect.anything());
+  });
+
+  it("validates the cash receipt template like the payment receipt template", () => {
+    const good = configWith((raw) => {
+      (raw.channels as Record<string, unknown>).cashReceiptTemplate =
+        "Cash {receiptNo}: {amount} for {assetRef} on {date}.";
+    });
+    expect(good).not.toThrow();
+
+    const bad = configWith((raw) => {
+      (raw.channels as Record<string, unknown>).cashReceiptTemplate = "Cash {cash}.";
+    });
+    expect(bad).toThrow(/cashReceiptTemplate/);
+  });
+
   it("rejects a default language not in enabled languages", () => {
     const run = configWith((raw) => {
       (raw.locale as Record<string, unknown>).defaultLanguage = "fr";
