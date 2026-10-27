@@ -582,3 +582,99 @@ resolution fields reserved for Phase 8.
 
 - Recommendation: implement a scheduled purge in Phase 8 alongside the
   reconciliation jobs, with a dry-run count and an audit entry per run.
+
+## D35: Over-deposit and unmatched collector cash
+
+**Status:** resolved (Phase 7, ADR 0032).
+
+A collector deposits more than their open intakes cover, or deposits with a
+reference nobody recognises. Options: keep the surplus in suspense; credit the
+collector's next obligation automatically; refund it through the payment
+provider; reject the deposit.
+
+- Decision: **keep it in suspense.** The deposit is recorded with
+  `status = 'suspense'` and no wallet, vehicle or day is credited. Finance
+  matches it to a cash intake once the asset works that day and a payment is
+  allowed, or it stays visible in the exceptions queue.
+- Decision: the surplus is never auto-applied to the next day. Auto-crediting
+  would turn a bank mistake into a free day for a vehicle that may never have
+  worked, and it would hide the discrepancy from finance.
+- Rejected: refund through the provider (the platform is not the merchant of
+  record for a bank transfer, and refunds are Phase 8 work); rejecting the
+  deposit (the money has already arrived and must be recorded).
+
+## D36: Cash intake for a day that is already paid
+
+**Status:** resolved (Phase 7).
+
+Under `pay_per_use` a vehicle can only be paid once per business day. A
+collector taking cash for a day that already has a recorded payment would
+either take the driver's money for nothing or park it as wallet credit.
+
+- Decision: **reject the intake** with a typed `already_paid` error and let the
+  collector verify first (`GET /v1/verify/:token` or the admin lookup). No
+  money changes hands and no ledger entry is posted, so the counter
+  conversation stays honest: "this vehicle is already paid today".
+- Decision: wallet credit is not used here. Underpayment-to-wallet-credit (D19)
+  covers money that arrived through a gateway and could not be refunded
+  instantly; cash at the counter can simply not be taken.
+- Rejected: accepting it and crediting the wallet (creates counter cash that
+  cannot be explained to the driver and complicates the day's reconciliation);
+  accepting and overwriting the period (violates append-only money and the
+  paid-set contract).
+
+## D37: Who may freeze and unfreeze a collector wallet
+
+**Status:** resolved (Phase 7, ADR 0033), with a recorded trigger.
+
+A collector must never be able to unblock themselves, but the supervisor
+standing in the zone is the person who discovers the problem.
+
+- Decision: **freeze** is allowed to `zone_supervisor` and `finance_admin`;
+  **unfreeze** is `finance_admin` only for Phase 7.
+- Decision: both require a reason and are audited; the automatic freeze on a
+  missed deadline records the sweeper as the actor.
+- Trigger for change: when an explicit user-to-zone assignment exists (D39), a
+  supervisor with `cash:unfreeze` may unfreeze collectors in their own zone.
+  The service already takes the caller's principal, so that is a policy change,
+  not a signature change.
+- Rejected: letting supervisors unfreeze now (they would unfreeze by asset
+  zone, so any supervisor could unfreeze a collector who worked one asset in
+  their zone).
+
+## D38: Cash receipt and freeze-notice copy
+
+**Status:** resolved (Phase 7).
+
+A cash receipt is driver-facing copy, so it cannot live in code.
+
+- Decision: a tenant-configured cash receipt template (sibling to
+  `channels.smsReceiptTemplate`) with the placeholders `{amount}`,
+  `{assetRef}`, `{date}` and `{receiptNo}`, validated at load time so an
+  unknown placeholder is a startup failure rather than a literal brace in an
+  SMS.
+- Decision: the freeze and overdue notices go through the channel message
+  catalogue under new keys, so every enabled language must supply them once a
+  tenant has a `messages` catalogue.
+- Rejected: reusing `smsReceiptTemplate` for cash (the wording must not imply a
+  gateway payment, and a receipt that says "payment received" for cash is a
+  reconciliation argument waiting to happen).
+
+## D39: Collector-to-zone scoping for supervisors
+
+**Status:** open (Phase 7, with a recorded trigger).
+
+Supervisor views and freeze authority are scoped by the **asset's** `zone_id`
+snapshotted on the intake, because no user-to-zone table exists. A collector who
+works across zones therefore appears in more than one supervisor's view.
+
+- Options: scope by asset zone (current); add a user-to-zone assignment table
+  and scope by the collector's assigned zone; scope by the zone the cash was
+  taken in, recorded explicitly at intake.
+- Recommendation: keep asset-zone scoping for the pilot and record the
+  limitation openly. Add a user-to-zone assignment when identity work next
+  reopens (it also unblocks D37's supervisor unfreeze and D32's zone-scoped
+  paid-set feed), then scope both views and freeze authority by assignment.
+- Rejected for now: a collector-to-zone column on `collector_wallets` — it
+  would be a second source of truth for zone membership that drifts from
+  whatever identity later introduces.

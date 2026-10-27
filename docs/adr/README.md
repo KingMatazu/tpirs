@@ -33,3 +33,6 @@ Format: context, decision, consequences, alternatives considered.
 - [0028](./0028-verification-status-and-paid-set.md) Verification status and the paid set
 - [0029](./0029-offline-field-app.md) Offline field app and its local store
 - [0030](./0030-scan-and-dispute-ingest.md) Scan and dispute ingest from the field
+- [0031](./0031-collector-cash-wallet.md) Collector cash as a funding account of the settlement path
+- [0032](./0032-cash-deposit-attribution.md) Cash deposit attribution by dedicated reference
+- [0033](./0033-float-ceiling-and-freeze.md) Float ceiling, deposit deadline, and freeze policy

@@ -69,9 +69,10 @@ rather than new accounting.
 3. Record the current `pnpm test` baseline (including the DB-gated suites) so a
    later failure is attributable.
 
-## Step 0: Record decisions and ADRs
+## Step 0: Record decisions and ADRs (completed)
 
-Add to `docs/decisions-needed.md` before code:
+D35–D39 are in `docs/decisions-needed.md`; ADRs 0031–0033 are written and
+indexed. Add to `docs/decisions-needed.md` before code:
 
 | ID  | Decision                                  | Recommendation                                                                                                                                                                                                         |
 | --- | ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
