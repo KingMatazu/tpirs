@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import path from "node:path";
+import { sql } from "kysely";
 import type { AnyDb } from "../connection.js";
 import { createDb, migrateUp, repositories, withSystem, withTenant } from "../index.js";
 
@@ -236,6 +237,76 @@ describeIntegration("collector cash repositories (integration)", () => {
     });
     expect(unfrozen.status).toBe("active");
     expect(unfrozen.frozenReason).toBeNull();
+  });
+
+  it("lists overdue wallets with intact column names and flags them once", async () => {
+    if (TEST_URL === undefined) return;
+    // A stale open intake for A, a fresh one for A2, and a matched one for A3.
+    // `recorded_at` defaults to now(), so the stale row is backdated explicitly:
+    // recorded_at is not money identity, and the sweeper reads it, never writes it.
+    const staleAt = new Date(Date.now() - 10 * 3_600_000);
+    await withTenant(db, tenantId, async (tx) => {
+      const repos = repositories(tx);
+      for (const [collector, reference] of [
+        [collectorA, `overdue-${stamp}`],
+        [collectorA2, `fresh-${stamp}`],
+        [collectorA3, `covered-${stamp}`],
+      ] as const) {
+        await repos.collectorCash.ensureWallet(tenantId, collector);
+        const created = await repos.collectorCash.insertIntakeIfAbsent(tenantId, {
+          collectorUserId: collector,
+          clientReference: reference,
+          assetId,
+          zoneId: null,
+          businessDate: "2026-10-27",
+          amountMinor: 500n,
+          currency: "NGN",
+          receiptNumber: `RC-${stamp}-${reference}`,
+        });
+        if (created.existed) throw new Error(`intake ${reference} already existed`);
+        if (reference === `covered-${stamp}`) {
+          await repos.collectorCash.markIntakeMatched(tenantId, created.intake.id);
+        }
+      }
+      await sql`update cash_intakes set recorded_at = ${staleAt}
+                 where tenant_id = ${tenantId} and client_reference = ${`overdue-${stamp}`}`.execute(
+        tx,
+      );
+    });
+
+    const cutoff = new Date(Date.now() - 8 * 3_600_000);
+    const overdue = await withTenant(db, tenantId, async (tx) =>
+      repositories(tx).collectorCash.overdueWallets(tenantId, cutoff),
+    );
+    // Raw SQL results pass through the CamelCasePlugin, so this also proves the
+    // aliases: a broken alias reads undefined and fails the FK on insert.
+    expect(overdue.map((row) => row.collectorUserId)).toEqual([collectorA]);
+    expect(overdue[0]?.status).toBe("active");
+    expect(overdue[0]?.overdueSince).toBeNull();
+    expect(overdue[0]?.floatCeilingMinor).toBeNull();
+
+    // The flag is set once: a second mark, or a concurrent one, changes nothing.
+    const flagged = await withTenant(db, tenantId, async (tx) =>
+      repositories(tx).collectorCash.markOverdue(tenantId, collectorA, new Date()),
+    );
+    const flaggedAgain = await withTenant(db, tenantId, async (tx) =>
+      repositories(tx).collectorCash.markOverdue(tenantId, collectorA, new Date()),
+    );
+    expect(flagged).toBe(true);
+    expect(flaggedAgain).toBe(false);
+    const after = await withTenant(db, tenantId, async (tx) =>
+      repositories(tx).collectorCash.findWallet(tenantId, collectorA),
+    );
+    expect(after?.overdueSince).not.toBeNull();
+
+    // Clearing works both directions, so a fresh window can start later.
+    await withTenant(db, tenantId, async (tx) =>
+      repositories(tx).collectorCash.clearOverdue(tenantId, collectorA),
+    );
+    const cleared = await withTenant(db, tenantId, async (tx) =>
+      repositories(tx).collectorCash.findWallet(tenantId, collectorA),
+    );
+    expect(cleared?.overdueSince).toBeNull();
   });
 
   it("refuses to rewrite an intake's money identity after the fact", async () => {

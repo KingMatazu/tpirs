@@ -21,3 +21,5 @@ export * from "./paid-set-sync-service.js";
 export * from "./scan-service.js";
 export * from "./dispute-service.js";
 export * from "./collector-cash-service.js";
+export * from "./cash-wallet-service.js";
+export * from "./cash-deadline-sweeper.js";

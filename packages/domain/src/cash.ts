@@ -34,6 +34,8 @@ export type CashErrorCode =
   | "asset_unknown"
   | "deposit_unknown"
   | "deposit_state"
+  | "wallet_unknown"
+  | "reason_required"
   | "invalid_amount";
 
 export class CashError extends DomainError {

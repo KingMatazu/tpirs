@@ -4,6 +4,8 @@ import {
   createChannelDeliveryService,
   createChannelOutboxSweeper,
   CHANNEL_DELIVERY_QUEUE,
+  createCashDeadlineSweeper,
+  createCashWalletService,
   createSmsDeliveryService,
   createSmsOutboxSweeper,
   SMS_DELIVERY_QUEUE,
@@ -31,6 +33,14 @@ export interface WorkerDeps {
   readonly channelProviders?: ChannelProviderFactory;
   /** How often the outbox is swept. Intake never knows a worker is listening. */
   readonly sweepIntervalMs?: number;
+  /**
+   * How often collection deadlines are swept (ADR 0033). Separate from the
+   * outbox cadence because a sweep scans every cash-enabled tenant, which is
+   * cheap per run but not something to do every few seconds.
+   */
+  readonly cashSweepIntervalMs?: number;
+  /** The clock deadlines are measured against; injected by tests. */
+  readonly now?: () => Date;
 }
 
 export interface Worker {
@@ -131,12 +141,33 @@ export function createWorker(deps: WorkerDeps): Worker {
 
   const sweeper = createSmsOutboxSweeper({ db, queue, telemetry });
   const channelSweeper = createChannelOutboxSweeper({ db, queue, telemetry });
+
+  // The deadline sweeper needs wallet transitions only, not the fee engine that
+  // intake pricing needs, so it takes the wallet service directly. It runs on
+  // its own timer: a sweep is one query per cash-enabled tenant, and running it
+  // twice changes nothing, which is why it needs no queue and no retries.
+  const cashSweeper = createCashDeadlineSweeper({
+    db,
+    cash: createCashWalletService({ db, ...(deps.now === undefined ? {} : { now: deps.now }) }),
+    telemetry,
+    ...(deps.now === undefined ? {} : { now: deps.now }),
+  });
+
   const sweepIntervalMs = deps.sweepIntervalMs ?? 5_000;
+  const cashSweepIntervalMs = deps.cashSweepIntervalMs ?? 60_000;
   let sweepTimer: ReturnType<typeof setInterval> | undefined;
+  let cashTimer: ReturnType<typeof setInterval> | undefined;
 
   async function sweepAll(): Promise<void> {
     await sweeper.sweep();
     await channelSweeper.sweep();
+  }
+
+  async function sweepCash(): Promise<void> {
+    const summary = await cashSweeper.sweep();
+    if (summary.flagged > 0 || summary.frozen > 0) {
+      telemetry.log("info", "cash deadline sweep", { ...summary });
+    }
   }
 
   async function start(): Promise<void> {
@@ -146,7 +177,13 @@ export function createWorker(deps: WorkerDeps): Worker {
         telemetry.captureError(error, { stage: "outbox-sweep" });
       });
     }, sweepIntervalMs);
+    cashTimer = setInterval(() => {
+      void sweepCash().catch((error: unknown) => {
+        telemetry.captureError(error, { stage: "cash-deadline-sweep" });
+      });
+    }, cashSweepIntervalMs);
     await sweepAll();
+    await sweepCash();
     telemetry.log("info", "worker started", {
       queues: `${SMS_DELIVERY_QUEUE},${CHANNEL_DELIVERY_QUEUE}`,
     });
@@ -156,6 +193,10 @@ export function createWorker(deps: WorkerDeps): Worker {
     if (sweepTimer !== undefined) {
       clearInterval(sweepTimer);
       sweepTimer = undefined;
+    }
+    if (cashTimer !== undefined) {
+      clearInterval(cashTimer);
+      cashTimer = undefined;
     }
     await queue.stop();
   }

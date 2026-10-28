@@ -72,6 +72,15 @@ supervisor standing in the zone is the person who discovers the problem.
   deposits closes to zero, and one overdue wallet with `freezeOnShortfall:
 true` produces an audit entry, a frozen wallet, and a `409` on the next
   intake; with the flag false it produces the audit entry and the notice only.
+- The notice is an append-only audit entry (`cash.wallet.overdue`) plus the
+  wallet's `overdue_since`, not an SMS: staff carry no phone in this schema.
+  D40 records the deferral and the trigger (a verified staff phone or push
+  token), after which the D38 catalogue keys arrive and the sweeper additionally
+  enqueues a real outbox row.
+- The sweeper runs on the worker's timer (default every 60 s) rather than as a
+  queue handler. A sweep has no per-item delivery step to enqueue, it is
+  idempotent, and its only input is the clock, so the timer is both the
+  schedule and the retry; nothing about the freeze decision changes.
 - A collector who is frozen while holding cash can still be verified, still
   appears in reports, and still owes the same amount — the freeze stops the
   bleeding rather than rewriting history.

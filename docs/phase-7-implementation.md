@@ -353,24 +353,71 @@ intakes clears both; a manual match posts only what the intake takes and repeats
 as a no-op; a cross-tenant match is `deposit_unknown`; a mismatched currency
 goes to suspense instead of posting.
 
-## Step 6: Deadlines, freeze and the worker
+## Step 6: Deadlines, freeze and the worker (completed)
 
-- `packages/application/src/cash-deadline-sweeper.ts`, registered on the
-  existing Postgres job queue alongside the SMS and channel sweepers in
-  `apps/worker/src/worker.ts`.
-- For each tenant with cash enabled: find wallets with open intakes older than
-  `cashRules.depositDeadlineHours`, set `overdue_since`, queue the supervisor
-  notice (idempotent: one notice per wallet per deadline window), and freeze
-  when `freezeOnShortfall` is true. Freezing writes an audit entry with the
-  sweeper as the actor.
-- `CollectorCashService.freeze(...)` / `unfreeze(...)`: permission-guarded
-  (`cash:freeze` / `cash:unfreeze`), reason required, audited, idempotent.
-  Unfreeze is finance-only; the service takes the caller's principal so a later
-  zone-scoped supervisor rule is a policy change, not a signature change.
-- Tests with a fake clock and an explicit business date: a run before the
-  deadline is a no-op; a run after it flags once; `freezeOnShortfall: false`
-  flags without freezing; a frozen collector's next intake returns `409`;
-  verification for that collector's assets still works.
+Application and worker only; the HTTP routes land in Step 7.
+
+- **Wallet state lives in its own service.** `cash-wallet-service.ts` owns
+  `freeze`, `unfreeze` and the wallet view (derived balance + open-intake
+  total), because the deadline sweeper needs state transitions and must not
+  depend on the fee engine intake pricing needs. `CollectorCashService.freeze
+/ .unfreeze` delegate to it, so there is exactly one implementation behind
+  both entry points. A transition takes the caller's `CashActor` — a
+  `Principal` (checked: own tenant, `cash:freeze` / `cash:unfreeze`) or
+  `{ kind: "system" }` (the sweeper, trusted by construction) — so a later
+  zone-scoped supervisor rule is a policy change, not a signature change
+  (ADR 0033).
+- **Reasons are required and every transition is audited once.** A blank reason
+  is `CashError("reason_required")`; a real transition records
+  `cash.wallet.frozen` / `cash.wallet.unfrozen` with the actor, the before and
+  after state, and the reason. A repeated freeze/unfreeze returns the current
+  view and writes **no** second audit entry — a double click is not a state
+  change. `unfreeze` also clears `overdue_since`: the next sweep re-flags if
+  the money is still out, which is a new deadline window, not an amnesty.
+- **The sweeper is `cash-deadline-sweeper.ts`.** One sweep lists the tenants
+  (default: every tenant in one system transaction — the worker has no tenant
+  to scan with), validates each config in process (a broken config is reported
+  and skipped, never guessed at), and for each cash-enabled tenant queries
+  wallets whose _open_ intakes are past `depositDeadlineHours` measured from
+  `recorded_at` as an instant (ADR 0033: hours, not calendar days).
+- **Idempotency is a conditional UPDATE.** `markOverdue` sets `overdue_since`
+  only when it is null and the wallet is active, and returns whether it
+  changed, so two concurrent sweeps (or a retried run) produce one flag and
+  one `cash.wallet.overdue` audit entry. The entry carries the oldest open
+  intake, its timestamp, the open-intake count and total, and the derived
+  balance, with minor units as strings (audit payloads are JSON).
+- **The notice is an audit entry, not an SMS (D40).** Staff carry no phone in
+  this schema; the supervisor view reads the audit entry and the wallet flag.
+  Catalogue keys and outbox rows arrive when staff phones do — the recorded
+  trigger, kept in D40 alongside the D38 note.
+- **`freezeOnShortfall: false` flags and notices without freezing.** With it
+  true, the sweeper freezes through the same service as a human, as
+  `{ kind: "system" }`, with the shortfall as the reason.
+- **Cash arriving clears the flag.** After a webhook deposit or a manual match
+  that leaves the collector with no open intakes, `overdue_since` is cleared,
+  so the next deadline window starts from the next intake.
+- **The worker runs the sweep on its own timer** (`cashSweepIntervalMs`,
+  default 60 s) alongside the outbox sweepers, and the clock is injectable
+  (`now`). The plan's "registered on the job queue" resolves to the worker
+  timer, the same cadence mechanism the SMS and channel sweepers use: a sweep
+  has no per-item delivery step to enqueue, and an idempotent sweep needs no
+  retry bookkeeping — the timer is the retry.
+- **Repository fix found by the new tests:** `overdueWallets`'s raw SQL read
+  snake_case result keys that the CamelCasePlugin renames, so every wallet came
+  back with an undefined `collectorUserId` (never exercised before Step 6).
+  Columns are aliased to camelCase in the SQL and locked in by a repository
+  test that also proves the flag-once behaviour.
+- New `CashErrorCode`s: `reason_required`, `wallet_unknown` (a freeze/unfreeze
+  or view for a collector with no wallet row).
+
+Tests: 11 new DB-gated cases — freeze (reason, audit, view, permission refusal
+for a collector, blank reason, no-op repeat), unfreeze (finance-only, clears the
+overdue flag), frozen wallet refuses the next intake while verification still
+answers `paid`, the four sweeper behaviours (no-op before the deadline; flag
+once without freezing when configured; freeze when configured; flag cleared by
+a covering deposit), plus the repository test for `overdueWallets` /
+`markOverdue`. The worker suite proves the wiring (`start` runs the cash sweep;
+`stop` clears both timers).
 
 ## Step 7: API and contracts
 

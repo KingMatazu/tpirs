@@ -130,15 +130,29 @@ export class CollectorCashRepository {
       .executeTakeFirstOrThrow();
   }
 
-  /** Records that a shortfall has been flagged without freezing the wallet. */
-  async markOverdue(tenantId: string, collectorUserId: string, overdueSince: Date): Promise<void> {
-    await this.db
+  /**
+   * Records that a shortfall has been flagged, once per deadline window.
+   *
+   * Returns true only when this call set `overdue_since`; a wallet already
+   * flagged (or already frozen) returns false and the caller must not record a
+   * second notice. The condition is in the UPDATE rather than in a prior read,
+   * so two concurrent sweeps cannot both win.
+   */
+  async markOverdue(
+    tenantId: string,
+    collectorUserId: string,
+    overdueSince: Date,
+  ): Promise<boolean> {
+    const result = await this.db
       .updateTable("collectorWallets")
       .set({ overdueSince, updatedAt: new Date() })
       .where("tenantId", "=", tenantId)
       .where("collectorUserId", "=", collectorUserId)
       .where("status", "=", "active")
-      .execute();
+      .where("overdueSince", "is", null)
+      .returning("id")
+      .executeTakeFirst();
+    return result !== undefined;
   }
 
   async clearOverdue(tenantId: string, collectorUserId: string): Promise<void> {
@@ -179,21 +193,31 @@ export class CollectorCashRepository {
    * flagged and need no second notice.
    */
   async overdueWallets(tenantId: string, cutoff: Date): Promise<CollectorWalletRow[]> {
+    // Columns are aliased to camelCase because the CamelCasePlugin renames raw
+    // SQL result keys too: a snake_case alias would come back renamed and the
+    // map below would read `undefined`.
     const result = await sql<{
       id: string;
-      collector_user_id: string;
+      collectorUserId: string;
       status: string;
-      frozen_at: Date | null;
-      frozen_reason: string | null;
-      overdue_since: Date | null;
-      float_ceiling_minor: bigint | null;
-      deposit_instruction_id: string | null;
-      created_at: Date;
-      updated_at: Date;
+      frozenAt: Date | null;
+      frozenReason: string | null;
+      overdueSince: Date | null;
+      floatCeilingMinor: bigint | null;
+      depositInstructionId: string | null;
+      createdAt: Date;
+      updatedAt: Date;
     }>`
-      select w.id, w.collector_user_id, w.status, w.frozen_at, w.frozen_reason,
-             w.overdue_since, w.float_ceiling_minor, w.deposit_instruction_id,
-             w.created_at, w.updated_at
+      select w.id,
+             w.collector_user_id as "collectorUserId",
+             w.status,
+             w.frozen_at as "frozenAt",
+             w.frozen_reason as "frozenReason",
+             w.overdue_since as "overdueSince",
+             w.float_ceiling_minor as "floatCeilingMinor",
+             w.deposit_instruction_id as "depositInstructionId",
+             w.created_at as "createdAt",
+             w.updated_at as "updatedAt"
       from collector_wallets w
       where w.tenant_id = ${tenantId}
         and w.status = 'active'
@@ -204,19 +228,20 @@ export class CollectorCashRepository {
             and i.status = 'open'
             and i.recorded_at < ${cutoff}
         )
+      order by w.collector_user_id
     `.execute(this.db);
     return result.rows.map((row) => ({
       id: row.id,
       tenantId,
-      collectorUserId: row.collector_user_id,
+      collectorUserId: row.collectorUserId,
       status: row.status === "frozen" ? ("frozen" as const) : ("active" as const),
-      frozenAt: row.frozen_at,
-      frozenReason: row.frozen_reason,
-      overdueSince: row.overdue_since,
-      floatCeilingMinor: row.float_ceiling_minor,
-      depositInstructionId: row.deposit_instruction_id,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
+      frozenAt: row.frozenAt,
+      frozenReason: row.frozenReason,
+      overdueSince: row.overdueSince,
+      floatCeilingMinor: row.floatCeilingMinor,
+      depositInstructionId: row.depositInstructionId,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
     }));
   }
 

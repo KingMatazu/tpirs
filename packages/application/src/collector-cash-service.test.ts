@@ -4,13 +4,15 @@ import { createDb, migrateUp, repositories, withSystem, withTenant } from "@tpir
 import type { AnyDb } from "@tpirs/db";
 import { validateTenantConfig } from "@tpirs/config";
 import type { TenantConfig } from "@tpirs/config";
-import { businessDate, CashError, money } from "@tpirs/domain";
+import { businessDate, CashError, ForbiddenError, money, principal } from "@tpirs/domain";
 import type { BusinessDate } from "@tpirs/domain";
 import { createConfigFeeEngine } from "@tpirs/fee-engine-config";
 import { createMockPaymentProvider, mockWebhookSignature } from "@tpirs/payment-provider-mock";
 import type { PaymentProvider } from "@tpirs/ports";
 import { createPaymentService } from "./payment-service.js";
 import { CollectorCashService } from "./collector-cash-service.js";
+import { createCashDeadlineSweeper } from "./cash-deadline-sweeper.js";
+import { createVerificationService } from "./verification-service.js";
 
 const TEST_URL = process.env.TEST_DATABASE_URL;
 const migrationsDir = path.resolve(import.meta.dirname, "../../db/migrations");
@@ -26,7 +28,12 @@ const TODAY: BusinessDate = businessDate("2026-06-15");
  */
 function testConfig(
   slug: string,
-  floats: { ceilingMinor?: number; disabled?: boolean } = {},
+  options: {
+    ceilingMinor?: number;
+    disabled?: boolean;
+    freezeOnShortfall?: boolean;
+    depositDeadlineHours?: number;
+  } = {},
 ): TenantConfig {
   return validateTenantConfig({
     identity: {
@@ -87,10 +94,10 @@ function testConfig(
       menus: [],
     },
     cashRules: {
-      enabled: !floats.disabled,
-      floatCeilingMinor: floats.ceilingMinor ?? 1_000_000,
-      depositDeadlineHours: 8,
-      freezeOnShortfall: true,
+      enabled: !options.disabled,
+      floatCeilingMinor: options.ceilingMinor ?? 1_000_000,
+      depositDeadlineHours: options.depositDeadlineHours ?? 8,
+      freezeOnShortfall: options.freezeOnShortfall ?? true,
     },
     payments: { underpaymentPolicy: "wallet" },
     featureFlags: { disputes: true, prepay: false, offlineMode: true, anomalyAlerts: true },
@@ -146,7 +153,12 @@ describeIntegration("CollectorCashService (integration)", () => {
 
   /** A fresh tenant with one bike asset and one collector, so no test shares a wallet. */
   async function makeTenant(
-    options: { ceilingMinor?: number; disabled?: boolean } = {},
+    options: {
+      ceilingMinor?: number;
+      disabled?: boolean;
+      freezeOnShortfall?: boolean;
+      depositDeadlineHours?: number;
+    } = {},
   ): Promise<TenantFixture> {
     const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const slug = `cash${stamp.replace(/[^a-z0-9]/g, "")}`.slice(0, 30);
@@ -688,5 +700,279 @@ describeIntegration("CollectorCashService (integration)", () => {
     expect(fixture.webhook.outcome).toBe("deposit_suspense");
     expect(fixture.deposit?.status).toBe("suspense");
     expect(fixture.balance).toBe(BigInt(BIKE_FEE));
+  });
+
+  // ----------------------------------------- freeze and unfreeze (ADR 0033)
+
+  /**
+   * A zone supervisor as the API would build it: a real user row (the audit
+   * entry has a foreign key) holding `cash:freeze` and not `cash:unfreeze`.
+   */
+  function supervisor(tenant: TenantFixture) {
+    return principal({
+      userId: tenant.financeUserId,
+      tenantId: tenant.tenantId,
+      displayName: "Supervisor",
+      roles: ["zone_supervisor"],
+      permissions: ["cash:read", "cash:freeze", "cash:intake"],
+    });
+  }
+
+  function financeActor(tenant: TenantFixture) {
+    return principal({
+      userId: tenant.financeUserId,
+      tenantId: tenant.tenantId,
+      displayName: "Finance",
+      roles: ["finance_admin"],
+      permissions: ["cash:read", "cash:freeze", "cash:unfreeze", "cash:deposit:match"],
+    });
+  }
+
+  function collectorActor(tenant: TenantFixture) {
+    return principal({
+      userId: tenant.collectorUserId,
+      tenantId: tenant.tenantId,
+      displayName: "Collector",
+      roles: ["collector"],
+      permissions: ["cash:read", "cash:intake"],
+    });
+  }
+
+  /** The wallet row as it stands now, straight from the database. */
+  async function walletOf(tenant: TenantFixture) {
+    return withTenant(db, tenant.tenantId, async (tx) =>
+      repositories(tx).collectorCash.findWallet(tenant.tenantId, tenant.collectorUserId),
+    );
+  }
+
+  async function auditFor(tenant: TenantFixture, action: string, entityId?: string) {
+    return withTenant(db, tenant.tenantId, async (tx) =>
+      repositories(tx).audit.search({
+        action,
+        limit: 20,
+        ...(entityId === undefined ? {} : { entityId }),
+      }),
+    );
+  }
+
+  it("freezes with a reason, audits the actor and reports the derived position", async () => {
+    const tenant = await makeTenant();
+    await service.recordIntake(baseInput(tenant));
+
+    const view = await service.freeze({
+      tenantId: tenant.tenantId,
+      collectorUserId: tenant.collectorUserId,
+      reason: "cash not deposited by the deadline",
+      actor: supervisor(tenant),
+    });
+
+    expect(view.status).toBe("frozen");
+    expect(view.frozenReason).toBe("cash not deposited by the deadline");
+    expect(view.frozenAt).toBeInstanceOf(Date);
+    expect(view.balanceMinor).toBe(BigInt(BIKE_FEE));
+    expect(view.openIntakeTotalMinor).toBe(BigInt(BIKE_FEE));
+
+    const wallet = await walletOf(tenant);
+    const audited = await auditFor(tenant, "cash.wallet.frozen", wallet?.id);
+    expect(audited).toHaveLength(1);
+    expect(audited[0]?.actorUserId).toBe(tenant.financeUserId);
+  });
+
+  it("refuses a collector freezing their own wallet", async () => {
+    const tenant = await makeTenant();
+    await expect(
+      service.freeze({
+        tenantId: tenant.tenantId,
+        collectorUserId: tenant.collectorUserId,
+        reason: "let me back in",
+        actor: collectorActor(tenant),
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenError);
+    expect((await walletOf(tenant))?.status).not.toBe("frozen");
+  });
+
+  it("refuses a freeze with no reason", async () => {
+    const tenant = await makeTenant();
+    await expect(
+      service.freeze({
+        tenantId: tenant.tenantId,
+        collectorUserId: tenant.collectorUserId,
+        reason: "   ",
+        actor: supervisor(tenant),
+      }),
+    ).rejects.toMatchObject({ code: "reason_required" });
+  });
+
+  it("treats a repeated freeze as a no-op, without a second audit entry", async () => {
+    const tenant = await makeTenant();
+    const first = await service.freeze({
+      tenantId: tenant.tenantId,
+      collectorUserId: tenant.collectorUserId,
+      reason: "missed deadline",
+      actor: supervisor(tenant),
+    });
+    const second = await service.freeze({
+      tenantId: tenant.tenantId,
+      collectorUserId: tenant.collectorUserId,
+      reason: "missed deadline, again",
+      actor: supervisor(tenant),
+    });
+
+    expect(second.status).toBe("frozen");
+    expect(second.frozenAt?.toISOString()).toBe(first.frozenAt?.toISOString());
+    expect(second.frozenReason).toBe("missed deadline");
+    expect(await auditFor(tenant, "cash.wallet.frozen")).toHaveLength(1);
+  });
+
+  it("keeps unfreeze finance-only and clears the overdue flag", async () => {
+    const tenant = await makeTenant();
+    await service.freeze({
+      tenantId: tenant.tenantId,
+      collectorUserId: tenant.collectorUserId,
+      reason: "missed deadline",
+      actor: supervisor(tenant),
+    });
+    await withTenant(db, tenant.tenantId, async (tx) =>
+      repositories(tx).collectorCash.markOverdue(
+        tenant.tenantId,
+        tenant.collectorUserId,
+        new Date("2026-06-16T09:00:00Z"),
+      ),
+    );
+
+    await expect(
+      service.unfreeze({
+        tenantId: tenant.tenantId,
+        collectorUserId: tenant.collectorUserId,
+        reason: "deposit confirmed at the bank",
+        actor: supervisor(tenant),
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenError);
+
+    const view = await service.unfreeze({
+      tenantId: tenant.tenantId,
+      collectorUserId: tenant.collectorUserId,
+      reason: "deposit confirmed at the bank",
+      actor: financeActor(tenant),
+    });
+    expect(view.status).toBe("active");
+    expect(view.frozenReason).toBeNull();
+    expect(view.overdueSince).toBeNull();
+    expect(await auditFor(tenant, "cash.wallet.unfrozen")).toHaveLength(1);
+  });
+
+  it("refuses the next intake while frozen and keeps verification working", async () => {
+    const tenant = await makeTenant();
+    await service.recordIntake(baseInput(tenant));
+    await service.freeze({
+      tenantId: tenant.tenantId,
+      collectorUserId: tenant.collectorUserId,
+      reason: "missed deadline",
+      actor: supervisor(tenant),
+    });
+
+    // The intake is refused with the code the API turns into 409.
+    await expect(service.recordIntake(baseInput(tenant))).rejects.toMatchObject({
+      code: "wallet_frozen",
+    });
+
+    // Freezing a collector's wallet is not a statement about the vehicles whose
+    // cash they took: the day stays paid (ADR 0033).
+    const verification = createVerificationService({
+      db,
+      loadConfig: (id) => Promise.resolve(configs.get(id)),
+      now: () => new Date("2026-06-15T09:00:00Z"),
+    });
+    const status = await verification.statusForAsset(tenant.tenantId, tenant.assetId);
+    expect(status.paymentStatus).toBe("paid");
+  });
+
+  // ----------------------------------- deposit deadline sweeper (ADR 0033)
+
+  const HOUR_MS = 3_600_000;
+
+  /**
+   * The sweeper at a chosen instant, examining only this file's tenants.
+   *
+   * The production sweeper reads every tenant in one system transaction; the
+   * test injects the `configs` map so a shared database's other tenants (and
+   * runs from previous sessions) cannot leak into the summary.
+   */
+  function sweeperAt(now: Date) {
+    return createCashDeadlineSweeper({
+      db,
+      cash: service,
+      tenants: async () => [...configs].map(([id, config]) => ({ id, config })),
+      now: () => now,
+    });
+  }
+
+  it("leaves a collector alone until the deadline passes", async () => {
+    const tenant = await makeTenant({ freezeOnShortfall: false });
+    await service.recordIntake(baseInput(tenant));
+
+    const summary = await sweeperAt(new Date()).sweep();
+
+    expect(summary.flagged).toBe(0);
+    expect(summary.frozen).toBe(0);
+    expect((await walletOf(tenant))?.overdueSince).toBeNull();
+    expect(await auditFor(tenant, "cash.wallet.overdue")).toHaveLength(0);
+  });
+
+  it("flags an overdue collector once, without freezing when the tenant said so", async () => {
+    const tenant = await makeTenant({ freezeOnShortfall: false });
+    await service.recordIntake(baseInput(tenant));
+    const afterDeadline = new Date(Date.now() + 9 * HOUR_MS);
+
+    const first = await sweeperAt(afterDeadline).sweep();
+    expect(first.flagged).toBeGreaterThan(0);
+
+    const wallet = await walletOf(tenant);
+    expect(wallet?.status).toBe("active");
+    expect(wallet?.overdueSince).not.toBeNull();
+    const audited = await auditFor(tenant, "cash.wallet.overdue", wallet?.id);
+    expect(audited).toHaveLength(1);
+    expect(audited[0]?.actorUserId).toBeNull();
+
+    // The same sweep again: one notice per deadline window.
+    const second = await sweeperAt(afterDeadline).sweep();
+    expect(second.flagged).toBe(0);
+    expect(await auditFor(tenant, "cash.wallet.overdue", wallet?.id)).toHaveLength(1);
+  });
+
+  it("freezes an overdue collector when the tenant asks for it", async () => {
+    const tenant = await makeTenant({ freezeOnShortfall: true });
+    await service.recordIntake(baseInput(tenant));
+
+    const summary = await sweeperAt(new Date(Date.now() + 9 * HOUR_MS)).sweep();
+    expect(summary.frozen).toBeGreaterThan(0);
+
+    const wallet = await walletOf(tenant);
+    expect(wallet?.status).toBe("frozen");
+    expect(wallet?.overdueSince).not.toBeNull();
+    expect(wallet?.frozenReason).toContain("8h");
+
+    const audited = await auditFor(tenant, "cash.wallet.frozen", wallet?.id);
+    expect(audited).toHaveLength(1);
+    expect(audited[0]?.actorUserId).toBeNull();
+  });
+
+  it("clears the overdue flag once a deposit covers every intake", async () => {
+    const tenant = await makeTenant({ freezeOnShortfall: false });
+    const instruction = await provisionInstruction(tenant);
+    if (instruction === undefined) throw new Error("instruction not found");
+    await service.recordIntake(baseInput(tenant));
+    await withTenant(db, tenant.tenantId, async (tx) =>
+      repositories(tx).collectorCash.markOverdue(
+        tenant.tenantId,
+        tenant.collectorUserId,
+        new Date("2026-06-16T09:00:00Z"),
+      ),
+    );
+    expect((await walletOf(tenant))?.overdueSince).not.toBeNull();
+
+    const webhook = await deliverDepositWebhook(tenant.tenantId, instruction.reference);
+    expect(webhook.outcome).toBe("deposit_matched");
+    expect((await walletOf(tenant))?.overdueSince).toBeNull();
   });
 });

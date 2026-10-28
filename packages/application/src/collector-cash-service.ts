@@ -10,6 +10,8 @@ import { PortError } from "@tpirs/ports";
 import type { FeeEngine, PaymentProvider, ResolvedFee } from "@tpirs/ports";
 import type { TenantConfig } from "@tpirs/config";
 import type { TenantConfigLoader } from "./asset-service.js";
+import { CashWalletService } from "./cash-wallet-service.js";
+import type { CashWalletTransitionInput, CashWalletView } from "./cash-wallet-service.js";
 import { ObligationService } from "./obligation-service.js";
 import { withLedger } from "./ledger-service.js";
 import type { LedgerContext } from "./ledger-service.js";
@@ -106,7 +108,28 @@ function assetRefOf(attributes: Readonly<Record<string, unknown>>, shortCode: st
  * translate them into stable problem details without parsing messages.
  */
 export class CollectorCashService {
-  constructor(private readonly deps: CollectorCashServiceDeps) {}
+  /** Wallet state lives in its own service so the sweeper can reuse it (ADR 0033). */
+  private readonly wallets: CashWalletService;
+
+  constructor(private readonly deps: CollectorCashServiceDeps) {
+    this.wallets = new CashWalletService({
+      db: deps.db,
+      ...(deps.now === undefined ? {} : { now: deps.now }),
+    });
+  }
+
+  /**
+   * Freezes a collector's wallet (ADR 0033). Permission-guarded on
+   * `cash:freeze`; the sweeper calls the same implementation as `system`.
+   */
+  async freeze(input: CashWalletTransitionInput): Promise<CashWalletView> {
+    return this.wallets.freeze(input);
+  }
+
+  /** Unfreezes a collector's wallet; `cash:unfreeze` is finance-only today. */
+  async unfreeze(input: CashWalletTransitionInput): Promise<CashWalletView> {
+    return this.wallets.unfreeze(input);
+  }
 
   async requireConfig(tenantId: string): Promise<TenantConfig> {
     const config = await this.deps.loadConfig(tenantId);
@@ -299,6 +322,7 @@ export class CollectorCashService {
       const status: CashDepositResult["outcome"] =
         budget === 0n && depositMinor === depositsCovered(allocations) ? "matched" : "partial";
       await repos.collectorCash.setDepositOutcome(tenantId, deposit.id, { status });
+      await this.clearOverdueWhenDeposited(repos, tenantId, collector);
       return this.depositResult(repos, deposit, false, status);
     });
   }
@@ -418,6 +442,7 @@ export class CollectorCashService {
       const status: CashDepositResult["outcome"] =
         previouslyAllocated + requested === deposit.amountMinor ? "matched" : "partial";
       await repos.collectorCash.setDepositOutcome(tenantId, deposit.id, { status });
+      await this.clearOverdueWhenDeposited(repos, tenantId, deposit.collectorUserId);
       const updated = await repos.collectorCash.findDepositById(tenantId, deposit.id);
       return this.depositResult(repos, updated ?? deposit, false, status);
     });
@@ -447,6 +472,25 @@ export class CollectorCashService {
       currency: deposit.currency,
       replayed,
     };
+  }
+
+  /**
+   * Clears an overdue flag once the collector owes nothing.
+   *
+   * `overdue_since` means "this collector is past the deposit deadline". A
+   * deposit that leaves no open intake ends that condition, and the next
+   * deadline window starts fresh from the next intake rather than inheriting
+   * the old flag (ADR 0033).
+   */
+  private async clearOverdueWhenDeposited(
+    repos: LedgerContext["repos"],
+    tenantId: string,
+    collectorUserId: string,
+  ): Promise<void> {
+    const open = await repos.collectorCash.openIntakesForCollector(tenantId, collectorUserId);
+    if (open.length === 0) {
+      await repos.collectorCash.clearOverdue(tenantId, collectorUserId);
+    }
   }
 
   /** The amount of the collector's open intakes deposits have not covered yet. */

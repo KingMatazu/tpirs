@@ -656,6 +656,9 @@ A cash receipt is driver-facing copy, so it cannot live in code.
 - Decision: the freeze and overdue notices go through the channel message
   catalogue under new keys, so every enabled language must supply them once a
   tenant has a `messages` catalogue.
+- Phase 7 note: the catalogue keys are deferred with the delivery channel —
+  staff have no phone number yet, so the Phase 7 notice is an audit entry plus
+  the wallet flag (D40). The keys arrive when staff phones do.
 - Rejected: reusing `smsReceiptTemplate` for cash (the wording must not imply a
   gateway payment, and a receipt that says "payment received" for cash is a
   reconciliation argument waiting to happen).
@@ -678,3 +681,29 @@ works across zones therefore appears in more than one supervisor's view.
 - Rejected for now: a collector-to-zone column on `collector_wallets` — it
   would be a second source of truth for zone membership that drifts from
   whatever identity later introduces.
+
+## D40: How the deposit-deadline notice reaches a supervisor
+
+**Status:** resolved (Phase 7, delivery deferred with a recorded trigger).
+
+ADR 0033 asks the deadline sweeper to "queue the supervisor notice", and D38
+says the notice copy lives in the channel message catalogue. Neither says who
+receives it: the `users` table has no phone column, and `sms_log` /
+`channel_messages` both require a recipient.
+
+- Decision: for Phase 7 the notice is an **append-only audit entry**
+  (`cash.wallet.overdue`, one per wallet per deadline window, deduplicated by
+  `overdue_since`) carrying the numbers a supervisor needs — oldest open
+  intake, open-intake total, derived balance, deadline hours — plus the
+  `overdue_since` flag on the wallet row. The supervisor view (Step 8) reads
+  those two, so the notice is durable and searchable without a delivery
+  channel. `freezeOnShortfall: true` additionally records `cash.wallet.frozen`
+  with the sweeper as the actor.
+- Decision: SMS/push delivery of the notice is deferred until staff carry a
+  verified phone (or a push token). That is the recorded trigger; when it
+  arrives, the D38 channel-catalogue keys get added and the sweeper enqueues a
+  real outbox row — the audit entry and the flag stay either way.
+- Rejected: inventing a recipient (the tenant's `supportContacts.phone` gets
+  finance-side noise, not the zone supervisor standing in the park); adding a
+  nullable `phone` to `users` in this step (identity verification is a
+  mini-project, and a phone nobody verified is a notice nobody receives).
