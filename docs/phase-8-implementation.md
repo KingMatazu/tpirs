@@ -70,7 +70,7 @@ inventing a second definition of "the float is wrong".
 - Phases 0–7 green: `pnpm lint`, `pnpm typecheck`, `pnpm test`,
   `scripts/ci/integration.sh`, `scripts/ci/migration-check.sh`.
 - Migration 0013 applied (deposit identity is the webhook event).
-- Decisions D41–D48 recorded in `docs/decisions-needed.md`; ADRs 0034–0039
+- Decisions D41–D48 recorded in `docs/decisions-needed.md`; ADRs 0034–0040
   written before the code they describe lands.
 - Three new dependencies accepted with ADRs (see below).
 
@@ -82,11 +82,11 @@ be added to `allowBuilds` with a note.
 
 | Need              | Choice                                                                                                                                   | Alternatives considered                             | ADR  |
 | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- | ---- |
-| Cron schedule     | `cron-parser` — computes the next occurrence, timezone-aware; the worker keeps its own timer and does not hand scheduling to the library | `croner`; hand-rolled `HH:MM` reader; fixed polling | 0036 |
+| Cron schedule     | `cron-parser` — computes the next occurrence, timezone-aware; the worker keeps its own timer and does not hand scheduling to the library | `croner`; hand-rolled `HH:MM` reader; fixed polling | 0040 |
 | PDF export        | `pdf-lib` — pure JS, no native build, no postinstall                                                                                     | `pdfkit`; headless browser                          | 0034 |
-| XLSX export       | `exceljs` — MIT, no native build                                                                                                         | SheetJS community edition; hand-rolled OOXML        | 0035 |
+| XLSX export       | `exceljs` — MIT, no native build                                                                                                         | SheetJS community edition; hand-rolled OOXML        | 0034 |
 | CSV export        | none — the format is a line writer                                                                                                       | a CSV library                                       | 0034 |
-| Settlement import | none — CSV parsing with a configured column map                                                                                          | full CSV library                                    | 0037 |
+| Settlement import | none — CSV parsing with a configured column map                                                                                          | full CSV library                                    | 0035 |
 
 ## Data model (migration 0014)
 
@@ -229,23 +229,25 @@ vehicle is not an event; the test suite asserts that explicitly.
 
 ## Step 0: Plan, decisions and ADRs
 
-- Record D41–D48 in `docs/decisions-needed.md` with the proposed answers below.
-- ADRs 0034–0039 (export adapters, settlement import, reconciliation runs,
-  compliance reporting, anomaly rules, cron scheduling). Follow the existing
-  short format: context, decision, consequences, alternatives.
+- Record D41–D48 in `docs/decisions-needed.md` with the answers below. **Done**;
+  D49 (where fees appear in reports) is recorded as open for the pilot.
+- ADRs 0034–0040 (export adapters, settlement import, settlement posting and the
+  fee leg, reconciliation runs and exceptions, compliance reporting, anomaly
+  rules, cron scheduling). **Done.** Follow the existing short format: context,
+  decision, consequences, alternatives.
 - This file is the plan; keep it current as decisions land.
 - Commit: `docs: phase 8 plan and decisions`.
 
-| Decision | Proposed answer                                                                                                                          |
-| -------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| D41      | Runs are versioned and append-only; sign-off is the only transition; a re-run after sign-off creates a new version                       |
-| D42      | Statement identity is file hash + row hash; matching is by provider reference inside the tenant                                          |
-| D43      | Exceptions have `open/resolved/waived`; resolution needs `reconciliation:run` and a note; unresolved items carry forward by `dedupe_key` |
-| D44      | Compliance denominator excludes `unknown`, reported separately                                                                           |
-| D45      | Fee difference posts to `GATEWAY_FEES` within `feeToleranceMinor`; anything else is an exception                                         |
-| D46      | Anomaly rules are config-driven, off by default, deduped per window, delivered as persisted events + audit                               |
-| D47      | Exports are synchronous with a 100k-row / one-month cap; CSV, PDF, XLSX                                                                  |
-| D48      | The worker computes the next run from the config cron expression with `cron-parser`; the timer interval is the check cadence             |
+| Decision | Answer (recorded)                                                                                                                             |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| D41      | Runs are versioned and append-only; sign-off is the only transition; a re-run after sign-off creates a version (ADR 0037)                     |
+| D42      | Statement identity is file hash + row hash; matching is by provider reference inside the tenant (ADR 0035)                                    |
+| D43      | Exceptions have `open/resolved/waived`; resolution needs `reconciliation:run` and a note; open items carry forward by `dedupe_key` (ADR 0037) |
+| D44      | Compliance denominator excludes `unknown`, reported separately (ADR 0038)                                                                     |
+| D45      | Fee difference posts to `GATEWAY_FEES` within `feeToleranceMinor`; anything else is an exception (ADR 0036)                                   |
+| D46      | Anomaly rules are config-driven, off by default, deduped per window, delivered as persisted events + audit (ADR 0039)                         |
+| D47      | Exports are synchronous with a 100k-row / one-month cap; CSV, PDF, XLSX (ADR 0034)                                                            |
+| D48      | The worker computes the next run from the config cron expression with `cron-parser` (ADR 0040)                                                |
 
 ## Step 1: Ports, contracts and export adapters
 
@@ -259,9 +261,13 @@ vehicle is not an event; the test suite asserts that explicitly.
   the column mapping from tenant config; no bank format lives in core.
 - `packages/adapters/export-service/{csv,pdf,xlsx}` with package names
   `@tpirs/export-service-csv`, `-pdf`, `-xlsx`. The existing mock stays for
-  tests. All four pass the `ExportService` conformance suite; CSV is parsed
+  tests. All four pass the `ExportService` conformance suite, and the suite is
+  extended to cover every declared format rather than CSV alone; CSV is parsed
   back, XLSX is re-opened with `exceljs`, PDF is checked for a valid structure
   and the expected text.
+- `PaymentProvider.Settlement` gains an optional fee (ADR 0035), so an API feed
+  can report the gateway's cut while adapters that cannot leave it absent. Both
+  payment adapters and their fixture suites must still pass unchanged.
 - Commit: `feat(adapters): settlement import and export adapters`.
 
 ## Step 2: Schema and migration 0014
@@ -430,3 +436,5 @@ hook for the whole repo.
 - Zone-scoped supervisor visibility for collections (D39).
 - Anomaly tuning against real pilot data; all rules ship disabled.
 - Archiving of old reconciliation runs under `compliance.retentionDays`.
+- The exact gross / fee / net column set in `daily-collections`, to be settled
+  with the first finance user (D49, open).

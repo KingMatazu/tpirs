@@ -707,3 +707,232 @@ receives it: the `users` table has no phone column, and `sms_log` /
   finance-side noise, not the zone supervisor standing in the park); adding a
   nullable `phone` to `users` in this step (identity verification is a
   mini-project, and a phone nobody verified is a notice nobody receives).
+
+## D41: Reconciliation run and sign-off model
+
+**Status:** resolved (Phase 8, ADR 0037).
+
+A day's reconciliation changes as data arrives: a statement is uploaded late, a
+payment settles after midnight, a collector deposits the next morning. The
+question is what "the run for 3 March" means when the evidence is still moving.
+
+- Options: one mutable run row per day, updated as data arrives; one immutable
+  run per attempt, versioned by `run_seq`, with sign-off as a transition; a run
+  per check with no day-level object.
+- Decision: **versioned, append-only runs.** Each attempt inserts a new row with
+  `run_seq + 1` for the same `(tenant_id, business_date)`. Statuses are
+  `running`, `completed`, `failed` and `signed_off`; **sign-off is the only
+  transition** a completed run allows, and it records the actor, the instant and
+  a required note. A re-run after sign-off creates a new version that needs its
+  own sign-off; the signed-off version is never edited. A database trigger
+  rejects updates to any other column and rejects deletes outright.
+- Decision: the checklist and both tolerance snapshots are stored **on the run
+  that computed them**, so a later config change cannot rewrite why yesterday
+  passed. Finance signs a specific `run_id`, not "the day".
+- Rejected: mutating one run per day (it destroys the evidence that a late
+  payment arrived, which is exactly what an auditor asks about); one row per
+  check with no day object (nothing to sign, and the finance conversation is
+  per day).
+
+## D42: Settlement statement identity and matching
+
+**Status:** resolved (Phase 8, ADR 0035).
+
+A bank statement is a file with no signature, no event id and no idempotency
+key. Uploaded twice — or with overlapping date ranges — it must not double
+count.
+
+- Options: trust the filename or the period; hash the file; hash each row and
+  match on amount and date; hash the file plus hash each normalised row.
+- Decision: **file hash and row hash.** `settlement_imports` is unique on
+  `(tenant_id, provider, file_hash)` over the raw bytes, so a byte-identical
+  re-upload is a no-op that reports the original import. `settlement_rows` is
+  unique on `(tenant_id, import_id, row_hash)` over the _normalised_ fields
+  (reference, amount, currency, settled date), so a statement re-exported with
+  different formatting or an overlapping range cannot create a second row for
+  the same transaction.
+- Decision: **matching is by provider reference inside the tenant**, and a row
+  only matches when exactly one payment carries that reference. Amount and date
+  are never the matching key: two drivers can pay the same levy on the same day.
+- Decision: `PaymentProvider.Settlement` gains an optional fee so an API feed
+  can carry the gateway's cut; an adapter that cannot report a fee reports
+  none, and the resulting difference is either inside `feeToleranceMinor` or an
+  exception. No adapter is allowed to invent a fee.
+- Rejected: year-to-date "already seen" logic keyed on amount and date (it
+  silently merges two genuine identical payments); trusting period labels
+  (banks re-issue statements); a provider-specific parser in the core (bank
+  formats differ per state, so the column map is tenant config).
+
+## D43: Exception lifecycle
+
+**Status:** resolved (Phase 8, ADR 0037).
+
+An exception that is discovered on Monday and still true on Tuesday must not
+appear twice in the queue, and it must not silently disappear either.
+
+- Options: one row per day (the queue grows by the size of the problem); one row
+  per condition with a status; no persistence at all (recompute from the run).
+- Decision: **one row per open condition**, keyed by `dedupe_key` =
+  `kind:subject_type:subject_id`. It records `first_seen_run_id` and
+  `last_seen_run_id`, so "how long has this been open" is answerable.
+- Decision: statuses are `open`, `resolved` and `waived`. Resolving or waiving
+  requires `reconciliation:run`, a non-empty note and writes an audit entry
+  naming the actor. If the same condition reappears **after** it was resolved or
+  waived, a **new** row is created: closing something is a fact, and reopening
+  it would erase who closed it and why.
+- Decision: severity is `blocking`, `warning` or `info`. Only blocking
+  exceptions stop sign-off, and the run stores the count it knows about, so a
+  queue filtered to "warning" cannot hide a blocker.
+- Rejected: auto-closing an exception when the next run no longer sees it
+  (a statement row unmatched on Monday that matches on Tuesday should be
+  _reported_ as resolved, not vanish); a `reopened` status (two timestamps are
+  clearer than one status that means two things).
+
+## D44: What the compliance rate measures
+
+**Status:** resolved (Phase 8, ADR 0038).
+
+Under `pay_per_use` a vehicle that does not work owes nothing, so paid days ÷
+registered assets punishes a fleet for being idle and rewards a tenant that
+registers fewer vehicles. The brief fixes the definition; the details still
+needed recording.
+
+- Decision: **compliance rate = paid scans ÷ scans with a known result**, over
+  the reporting range. `paid` scans are the numerator; the denominator is
+  `paid + no_payment_recorded`. `unknown` scans (the platform could not
+  determine a status) are **excluded from the denominator and reported in their
+  own column**, so a bad lookup degrades data quality visibly instead of
+  flattering or deflating the rate.
+- Decision: rates are grouped by business day, zone, officer and asset type, and
+  a rate is omitted (not shown as 0%) when the denominator is zero.
+- Decision: the zone is the one snapshotted on the scan (`scans.zone_id` at
+  record time), not the asset's current zone, so a later reassignment does not
+  rewrite history.
+- Rejected: counting a vehicle's paid days against calendar days (idle days are
+  not violations); counting `unknown` as non-compliant (it blames the platform's
+  lookup for the driver's behaviour); counting disputes in flight (a dispute is
+  a review, not a result).
+
+## D45: What a matched settlement posts
+
+**Status:** resolved (Phase 8, ADR 0036).
+
+`GATEWAY_CLEARING` only ever grows: nothing moves the gateway's debt to the
+bank. A matched statement row is the moment that truth changes, and gateways
+settle **net of fees**, so the bank amount is not the payment amount.
+
+- Options: reconcile without posting (leaves the clearing account permanently
+  overstated); post only exact-amount matches (a real gateway's net settlement
+  then never posts, so the account still grows); post with a fee leg inside a
+  tolerance; model each gateway's fee schedule.
+- Decision: **post with a fee leg.** A matched row posts one balanced
+  transaction inside the tolerance: debit `SETTLEMENT_BANK` by the bank amount,
+  debit `GATEWAY_FEES` by the difference, credit `GATEWAY_CLEARING` by the full
+  payment amount. A new `gateway_fees` account type and `GATEWAY_FEES` standard
+  account (class `expense`) hold the fee, so it is visible as a cost of
+  collection rather than as a mysterious shortfall.
+- Decision: the difference must be **non-negative and within
+  `reconciliation.feeToleranceMinor`**. A larger gap, a negative gap (the bank
+  received more than was charged), an unmatched row, a currency mismatch or a
+  lump sum covering several payments **posts nothing** and becomes an
+  exception. Over-settlement never drives `GATEWAY_CLEARING` negative.
+- Decision: posting is idempotent on `settlement_rows.id` with
+  `source_type = 'settlement'`, so re-importing, re-running or retrying cannot
+  post twice.
+- Rejected: modelling each gateway's fee schedule (fees change without notice
+  and differ per merchant; a wrong model would post wrong money silently);
+  accepting any difference as a fee (that is how a real shortfall hides);
+  posting the fee to `SUSPENSE` (it is a known, explainable cost, not an
+  unexplained amount).
+
+## D46: Anomaly rules, thresholds, and how an alert is delivered
+
+**Status:** resolved (Phase 8, ADR 0039).
+
+"A vehicle with no payments is not an anomaly" is settled by the brief. What is
+left is what _is_ anomalous, who decides, and how anyone hears about it.
+
+- Decision: **rules are tenant config, disabled by default**, each with a
+  `key`, `enabled`, `windowDays` (trailing baseline) and a threshold
+  (`thresholdPercent` and/or `thresholdMinor`). The first rules cover collector
+  intake volume, deposit lag, zone compliance, officer scan volume and suspense
+  growth — **never a single asset**.
+- Decision: an anomaly is a **persisted event**, deduplicated on
+  `(rule_key, subject, window_end)`, carrying observed, baseline and threshold,
+  with an `open`/`acknowledged` status. Acknowledging requires
+  `reconciliation:run` and writes an audit entry.
+- Decision: **v1 delivery is the persisted event plus the audit entry**, the
+  same answer as D40. `reconciliation.notifyRole` selects who is expected to
+  look, not a phone number; a staff SMS/push channel is deferred with a recorded
+  trigger (a verified staff phone or push token).
+- Decision: a rule that cannot compute a baseline (not enough history) records
+  nothing rather than firing on the first data point.
+- Rejected: alerting on any vehicle with no payments (that is the false
+  accusation the platform exists to avoid); sending SMS now (no staff phone
+  exists, and a noisy first week would train people to ignore the channel);
+  hardcoding thresholds (pilot volumes are unknown, and each tenant's normal
+  differs).
+
+## D47: Export formats, size limits and sync versus queue
+
+**Status:** resolved (Phase 8, ADR 0034).
+
+`ExportService` declares `csv`, `pdf` and `xlsx`, but only a mock adapter exists.
+Reports cannot be handed to a state finance team as JSON.
+
+- Options: CSV only; CSV and PDF; all three; queued exports behind a job.
+- Decision: **all three are real in Phase 8** — a hand-written CSV adapter
+  (RFC 4180 quoting), `pdf-lib` for PDF and `exceljs` for XLSX, each passing the
+  shared `ExportService` conformance suite. Both libraries are pure JavaScript
+  with no postinstall script, which matters because pnpm 11 blocks build
+  scripts.
+- Decision: exports are **synchronous with a hard cap of 100,000 rows or one
+  calendar month**, whichever is hit first; beyond it the route returns
+  `range_too_large` and the caller narrows the range. A queued export behind
+  `JobQueue` is Phase 10 work if load tests justify it.
+- Decision: money is exported as integer minor units in its own column with the
+  currency named once per file, and dates use the tenant's locale and timezone.
+  PDF carries the tenant's branding from config (app name, header, footer); XLSX
+  carries typed cells and a header row; CSV stays plain and parseable.
+- Rejected: a headless browser for PDF (a Chromium dependency for a table);
+  SheetJS community edition for XLSX (licence and maintenance questions);
+  streaming or queued exports now (no evidence of the volume that needs it).
+
+## D48: How the worker decides it is time to reconcile
+
+**Status:** resolved (Phase 8, ADR 0040).
+
+Tenant config stores a cron expression (`reconciliation.schedule`), and the
+worker already runs a timer for the SMS outbox and the cash sweeper.
+
+- Options: a fixed polling sweep that skips days already done; a hand-rolled
+  reader for an `HH:MM` subset; a cron library.
+- Decision: **`cron-parser` behind one helper**, `nextOccurrence(schedule,
+after, timeZone)`. The worker keeps its own timer; on each tick it asks whether
+  the next occurrence for that tenant has passed and, if the business day has no
+  completed run, enqueues `(tenantId, businessDate)`. The job's idempotency key
+  is that pair, so two workers cannot double-run, and a restart mid-day does not
+  re-run a day that already completed.
+- Decision: an invalid cron expression fails at **config load**, not at 02:00,
+  and the timezone is the tenant's `locale.timezone`, so DST does not shift the
+  run by an hour in the wrong direction.
+- Rejected: a hand-rolled `HH:MM` parser (it would accept a config it cannot
+  honour); a fixed polling sweep (it ignores the configured schedule, and a
+  tenant that reconciles at 23:00 would be swept at the wrong time); running the
+  reconciliation inside the timer tick (a slow run would block the SMS outbox).
+
+## D49: Where sell-side fees appear in reports
+
+**Status:** open (Phase 8, recorded for the pilot).
+
+Once D45 posts gateway fees, a report can show levy revenue, gross collections
+or net receipts, and the three differ by the fee and by cash that never touched
+a gateway.
+
+- Options: revenue only; gross collections with fees as a separate line; net
+  receipts only.
+- Recommendation: report **gross collections, the fee as its own line, and net
+  receipts**, with `daily-collections` reconciling the three. Net-only would
+  hide the cost of collection; gross-only would overstate what reached the bank.
+  Settle the exact column set with the first finance user during the pilot
+  rather than guessing now.

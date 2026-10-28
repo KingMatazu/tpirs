@@ -36,3 +36,10 @@ Format: context, decision, consequences, alternatives considered.
 - [0031](./0031-collector-cash-wallet.md) Collector cash as a funding account of the settlement path
 - [0032](./0032-cash-deposit-attribution.md) Cash deposit attribution by dedicated reference
 - [0033](./0033-float-ceiling-and-freeze.md) Float ceiling, deposit deadline, and freeze policy
+- [0034](./0034-export-adapters.md) Export adapters for CSV, PDF and XLSX
+- [0035](./0035-settlement-import.md) Settlement import as its own port
+- [0036](./0036-settlement-posting-fee-leg.md) Settlement posting and the fee leg
+- [0037](./0037-reconciliation-runs-and-exceptions.md) Reconciliation runs, exceptions, and sign-off
+- [0038](./0038-compliance-reporting.md) Compliance reporting from scan results
+- [0039](./0039-anomaly-rules.md) Anomaly rules and how an alert is delivered
+- [0040](./0040-cron-scheduling.md) Cron scheduling with `cron-parser`
