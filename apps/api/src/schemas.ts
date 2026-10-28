@@ -188,6 +188,86 @@ const errorEnvelopeSchema = {
   },
 };
 
+const cashWallet = {
+  $id: "CashWallet",
+  type: "object",
+  required: [
+    "collectorUserId",
+    "status",
+    "frozenAt",
+    "frozenReason",
+    "overdueSince",
+    "floatCeilingMinor",
+    "balanceMinor",
+    "openIntakeTotalMinor",
+  ],
+  properties: {
+    collectorUserId: { type: "string" },
+    status: { type: "string", enum: ["active", "frozen"] },
+    frozenAt: { type: "string", nullable: true },
+    frozenReason: { type: "string", nullable: true },
+    overdueSince: { type: "string", nullable: true },
+    floatCeilingMinor: { type: "string", nullable: true },
+    /** Derived COLLECTOR_CASH position; bigint rows serialize as strings. */
+    balanceMinor: { type: "string" },
+    openIntakeTotalMinor: { type: "string" },
+  },
+};
+
+const cashIntake = {
+  $id: "CashIntake",
+  type: "object",
+  required: [
+    "id",
+    "collectorUserId",
+    "assetId",
+    "zoneId",
+    "businessDate",
+    "amountMinor",
+    "currency",
+    "status",
+    "receiptNumber",
+    "recordedAt",
+  ],
+  properties: {
+    id: { type: "string" },
+    collectorUserId: { type: "string" },
+    assetId: { type: "string" },
+    zoneId: { type: "string", nullable: true },
+    businessDate: { type: "string" },
+    amountMinor: { type: "string" },
+    currency: { type: "string" },
+    status: { type: "string", enum: ["open", "matched", "reversed"] },
+    receiptNumber: { type: "string" },
+    recordedAt: { type: "string" },
+  },
+};
+
+const cashDeposit = {
+  $id: "CashDeposit",
+  type: "object",
+  required: [
+    "id",
+    "provider",
+    "providerReference",
+    "collectorUserId",
+    "amountMinor",
+    "currency",
+    "status",
+    "createdAt",
+  ],
+  properties: {
+    id: { type: "string" },
+    provider: { type: "string" },
+    providerReference: { type: "string" },
+    collectorUserId: { type: "string", nullable: true },
+    amountMinor: { type: "string" },
+    currency: { type: "string" },
+    status: { type: "string", enum: ["matched", "partial", "suspense"] },
+    createdAt: { type: "string" },
+  },
+};
+
 /** Component schemas registered once; routes reference them via $ref. */
 export const sharedSchemas: readonly Record<string, unknown>[] = [
   staffUser,
@@ -197,6 +277,9 @@ export const sharedSchemas: readonly Record<string, unknown>[] = [
   outboxMessage,
   auditEntry,
   errorEnvelopeSchema,
+  cashWallet,
+  cashIntake,
+  cashDeposit,
 ];
 
 export const errorResponseSchema = { $ref: "ErrorEnvelope#" };
@@ -789,5 +872,233 @@ export const getDisputeSchema: FastifySchema = {
       required: ["dispute"],
       properties: { dispute: { type: "object", additionalProperties: true } },
     },
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Collector cash (Phase 7, Step 7)
+// ---------------------------------------------------------------------------
+
+const collectorParams = {
+  type: "object",
+  required: ["collectorUserId"],
+  properties: { collectorUserId: { type: "string" } },
+} as const;
+
+const cashPageQuery = {
+  type: "object",
+  properties: {
+    cursor: { type: "string" },
+    limit: { type: "string" },
+    collectorUserId: { type: "string" },
+    status: { type: "string" },
+  },
+} as const;
+
+export const createCashIntakeSchema: FastifySchema = {
+  body: {
+    type: "object",
+    required: ["collectorUserId", "clientReference", "amountMinor"],
+    properties: {
+      collectorUserId: { type: "string" },
+      clientReference: { type: "string" },
+      /** Integer minor units as a string; the fee engine checks the exact amount. */
+      amountMinor: { type: "string" },
+      currency: { type: "string" },
+      assetId: { type: "string" },
+      token: { type: "string" },
+      reference: { type: "string" },
+      businessDate: { type: "string" },
+      zoneId: { type: "string", nullable: true },
+    },
+  },
+  response: {
+    200: {
+      type: "object",
+      required: [
+        "intakeId",
+        "collectorUserId",
+        "assetId",
+        "assetRef",
+        "receiptNumber",
+        "businessDate",
+        "balanceMinor",
+        "smsQueued",
+        "replayed",
+      ],
+      properties: {
+        intakeId: { type: "string" },
+        collectorUserId: { type: "string" },
+        assetId: { type: "string" },
+        assetRef: { type: "string" },
+        receiptNumber: { type: "string" },
+        businessDate: { type: "string" },
+        balanceMinor: { type: "string" },
+        smsQueued: { type: "boolean" },
+        replayed: { type: "boolean" },
+      },
+    },
+    400: errorResponseSchema,
+    403: errorResponseSchema,
+    404: errorResponseSchema,
+    409: errorResponseSchema,
+  },
+};
+
+export const listCashWalletsSchema: FastifySchema = {
+  response: {
+    200: {
+      type: "object",
+      required: ["wallets"],
+      properties: { wallets: { type: "array", items: { $ref: "CashWallet#" } } },
+    },
+  },
+};
+
+export const getCashWalletSchema: FastifySchema = {
+  params: collectorParams,
+  querystring: {
+    type: "object",
+    properties: { limit: { type: "string" }, cursor: { type: "string" } },
+  },
+  response: {
+    200: {
+      type: "object",
+      required: ["wallet", "intakes"],
+      properties: {
+        wallet: { $ref: "CashWallet#" },
+        intakes: { type: "array", items: { $ref: "CashIntake#" } },
+        nextCursor: { type: "string", nullable: true },
+      },
+    },
+    403: errorResponseSchema,
+    404: errorResponseSchema,
+  },
+};
+
+export const freezeWalletSchema: FastifySchema = {
+  params: collectorParams,
+  body: {
+    type: "object",
+    required: ["reason"],
+    properties: { reason: { type: "string" } },
+  },
+  response: {
+    200: {
+      type: "object",
+      required: ["wallet"],
+      properties: { wallet: { $ref: "CashWallet#" } },
+    },
+    400: errorResponseSchema,
+    403: errorResponseSchema,
+    404: errorResponseSchema,
+  },
+};
+
+export const listCashDepositsSchema: FastifySchema = {
+  querystring: cashPageQuery,
+  response: {
+    200: {
+      type: "object",
+      required: ["deposits", "nextCursor", "hasMore"],
+      properties: {
+        deposits: { type: "array", items: { $ref: "CashDeposit#" } },
+        nextCursor: { type: "string", nullable: true },
+        hasMore: { type: "boolean" },
+      },
+    },
+  },
+};
+
+export const matchCashDepositSchema: FastifySchema = {
+  params: idParams,
+  body: {
+    type: "object",
+    required: ["intakeId"],
+    properties: {
+      intakeId: { type: "string" },
+      /** Optional cap, in minor units as a string; defaults to what both sides absorb. */
+      amountMinor: { type: "string" },
+    },
+  },
+  response: {
+    200: {
+      type: "object",
+      required: [
+        "depositId",
+        "outcome",
+        "collectorUserId",
+        "allocatedMinor",
+        "currency",
+        "replayed",
+      ],
+      properties: {
+        depositId: { type: "string" },
+        outcome: { type: "string", enum: ["matched", "partial", "suspense"] },
+        collectorUserId: { type: "string", nullable: true },
+        allocatedMinor: { type: "string" },
+        currency: { type: "string" },
+        replayed: { type: "boolean" },
+      },
+    },
+    400: errorResponseSchema,
+    403: errorResponseSchema,
+    404: errorResponseSchema,
+    409: errorResponseSchema,
+  },
+};
+
+export const reverseCashIntakeSchema: FastifySchema = {
+  params: idParams,
+  body: {
+    type: "object",
+    required: ["reason"],
+    properties: { reason: { type: "string" } },
+  },
+  response: {
+    202: {
+      type: "object",
+      required: ["intakeId", "reversalRequestId", "status"],
+      properties: {
+        intakeId: { type: "string" },
+        reversalRequestId: { type: "string" },
+        status: { type: "string" },
+      },
+    },
+    400: errorResponseSchema,
+    403: errorResponseSchema,
+    404: errorResponseSchema,
+    409: errorResponseSchema,
+  },
+};
+
+export const provisionDepositInstructionSchema: FastifySchema = {
+  params: collectorParams,
+  body: {
+    type: "object",
+    properties: { provider: { type: "string" } },
+  },
+  response: {
+    200: {
+      type: "object",
+      required: ["instruction"],
+      properties: {
+        instruction: {
+          type: "object",
+          required: ["id", "collectorUserId", "provider", "reference", "kind", "status"],
+          properties: {
+            id: { type: "string" },
+            collectorUserId: { type: "string" },
+            provider: { type: "string" },
+            reference: { type: "string" },
+            kind: { type: "string" },
+            status: { type: "string" },
+          },
+        },
+      },
+    },
+    400: errorResponseSchema,
+    403: errorResponseSchema,
+    409: errorResponseSchema,
   },
 };

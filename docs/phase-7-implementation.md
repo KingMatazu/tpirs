@@ -419,7 +419,7 @@ a covering deposit), plus the repository test for `overdueWallets` /
 `markOverdue`. The worker suite proves the wiring (`start` runs the cash sweep;
 `stop` clears both timers).
 
-## Step 7: API and contracts
+## Step 7: API and contracts (completed)
 
 `apps/api/src/routes/cash.ts` plus schemas in `schemas.ts`:
 
@@ -435,15 +435,65 @@ a covering deposit), plus the repository test for `overdueWallets` /
 | `POST /v1/cash/intakes/:id/reverse`                             | `payment:manage`     |
 | `POST /v1/cash/collectors/:collectorUserId/deposit-instruction` | `payment:manage`     |
 
-- `Idempotency-Key` required on every money POST; add the new paths to
-  `defaultMoneyPostMatches` in `packages/api-client/src/index.ts`.
-- Route-level rate limits reuse the `field.ts` pattern; list endpoints use the
-  standard opaque cursor.
-- Regenerate in order: `pnpm --filter @tpirs/api build` →
-  `pnpm --filter @tpirs/api-client build`, commit the `schema.gen.ts` diff.
-- RBAC tests: a collector cannot read another collector's wallet or intake; a
-  supervisor sees only intakes in its zones and cannot unfreeze; finance sees
-  the tenant and can both; the auditor reads and cannot mutate.
+- **Money is a string on the wire.** Requests carry `amountMinor` as integer
+  minor units in a string and responses serialize every `bigint` the same way
+  (`balanceMinor`, `allocatedMinor`, `floatCeilingMinor`); currency defaults to
+  the tenant's `locale.currency` when the body omits it.
+- **`Idempotency-Key` on every money POST.** The six new paths are in
+  `defaultMoneyPostMatches`, so the generated client stamps a key before the
+  request leaves the dashboard. The intake route also accepts the header as a
+  fallback for `clientReference`, so a client that only sends the header still
+  gets a replay-safe intake.
+- **`CashErrorCode` → HTTP in one table.** `asset_unknown`, `wallet_unknown`,
+  `intake_unknown` and `deposit_unknown` are 404; `wallet_frozen`,
+  `already_paid`, `deposit_state`, `intake_state`, `duplicate_reference`,
+  `ceiling_exceeded` and `provider_required` are 409; `amount_mismatch`,
+  `invalid_amount`, `reason_required` and `cash_disabled` are 400. The envelope
+  carries the domain code, so the dashboard can branch without parsing
+  messages. `ForbiddenError` from the service keeps the global 403 path.
+- **Reversal is a request, not a posting.** `POST /v1/cash/intakes/:id/reverse`
+  returns **202** with `{ intakeId, reversalRequestId, status: "pending" }` and
+  moves nothing: it opens a `reversal_requests` row through
+  `LedgerService.requestReversal` (Step 3's dual-approval path). A second,
+  different finance user approves it, which writes the mirrored entries and
+  nets the collector's derived balance to zero. The plan's route table scopes
+  this step to the request; the approval endpoint ships with the Phase 9
+  reversals screen that consumes it. The intake stays `open` while the request
+  is pending, because the cash is still in the collector's hands.
+- **Wallet detail carries the intake register.** There is no separate
+  `GET /v1/cash/intakes` in the table, so `GET /v1/cash/wallets/:collectorUserId`
+  returns `{ wallet, intakes, nextCursor }` — the collector's intakes, newest
+  first, `limit` defaulting to 50 — which is exactly what the Step 8 detail
+  screen renders.
+- **`deposit-instruction` resolves the provider from config**, not from code:
+  the tenant's `providers` binding with `port: "PaymentProvider"` picks the
+  adapter, and a body `provider` still overrides it so finance can test a second
+  adapter. A tenant with no binding is `provider_required` (409) rather than a
+  silent default; the adapter's `createDepositAttribution` supplies the
+  reference and kind (ADR 0032).
+- **Scoping is permission-shaped until D39 closes.** A collector (`cash:read`
+  without `cash:freeze` / `cash:unfreeze` / `cash:deposit:read`) sees only their
+  own wallet, and an intake for anyone else is 403; supervisors, finance and
+  auditors see the tenant. The plan's "supervisor sees only its zones" needs a
+  user↔zone assignment that does not exist yet, so D39 keeps that gap visible
+  instead of inventing a scope from the asset's zone.
+- Regenerated in order (`pnpm --filter @tpirs/api build` →
+  `pnpm --filter @tpirs/api-client build`); the `schema.gen.ts` and
+  `openapi.json` diffs are contract output, 37 paths.
+- Route-level rate limits were **not** added: these endpoints are staff-only
+  behind bearer auth, and the abuse controls in `field.ts` exist for
+  unauthenticated driver traffic.
+
+Tests: nine DB-gated cases in `apps/api/src/routes/cash.routes.test.ts` — auth
+required; intake once plus replay; intake-for-another-collector 403; a
+collector's wallet list filtered to self, another wallet 403, own detail with
+its intakes; supervisor freeze (blank reason 400, then frozen), supervisor
+unfreeze refused, finance unfreeze; auditor reads and is refused on freeze and
+intake; suspense deposit matched to an open intake (then a no-op replay, and a
+zero balance with no open intake total); reversal returns 202 with a pending
+request, moves no money, and an unknown intake is 404; deposit instruction
+provisioned through the mock adapter. `packages/api-client/src/index.test.ts`
+adds the six money paths to the idempotency test.
 
 ## Step 8: Admin surface (`apps/admin`)
 

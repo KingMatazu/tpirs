@@ -16,6 +16,7 @@ import { registerVerifyRoutes } from "./routes/verify.js";
 import { registerVerificationAndSyncRoutes } from "./routes/field.js";
 import { registerWebhookRoutes } from "./routes/webhooks.js";
 import { registerPaymentRoutes } from "./routes/payments.js";
+import { registerCashRoutes } from "./routes/cash.js";
 import { registerChannelRoutes } from "./routes/channels.js";
 import { registerAuditRoutes } from "./routes/audit.js";
 
@@ -94,6 +95,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     registerAuditRoutes(app, { db: options.db });
     if (options.services !== undefined) {
       registerPaymentRoutes(app, { services: options.services });
+      registerCashRoutes(app, { services: options.services });
     }
   }
 

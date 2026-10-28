@@ -69,6 +69,25 @@ export class CashWalletService {
     return this.transition(input, "unfreeze");
   }
 
+  /**
+   * Every wallet in the tenant with its derived position.
+   *
+   * The list is not paginated: a tenant has one wallet per collector, and the
+   * supervisor view needs the whole set to answer "who is over the deadline".
+   * The derived balance costs one aggregate per wallet, which is the same
+   * query the detail view runs.
+   */
+  async list(tenantId: string): Promise<CashWalletView[]> {
+    return withTenant(this.deps.db, tenantId, async (tx) => {
+      const repos = repositories(tx);
+      const views: CashWalletView[] = [];
+      for (const wallet of await repos.collectorCash.listWallets(tenantId)) {
+        views.push(await this.view(repos, wallet));
+      }
+      return views;
+    });
+  }
+
   /** The wallet and its derived position; `wallet_unknown` when absent. */
   async wallet(tenantId: string, collectorUserId: string): Promise<CashWalletView> {
     return withTenant(this.deps.db, tenantId, async (tx) => {

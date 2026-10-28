@@ -101,8 +101,18 @@ export function setRuntimeFetch(fetchImpl: typeof globalThis.fetch): void {
 }
 
 const defaultMoneyPostMatches = (path: string): boolean =>
-  // /v1/payments/:id/resolve is the only money-affecting POST today.
-  new RegExp("^/v1/payments/[^/]+/resolve/?$").test(path);
+  // Money-affecting POSTs: suspense resolution, collector cash intake,
+  // deposit matching, intake reversal and deposit-instruction provisioning.
+  // Every one of them creates or moves money, so the client must stamp an
+  // Idempotency-Key before the request leaves the browser (ADR 0031).
+  [
+    "^/v1/payments/[^/]+/resolve/?$",
+    "^/v1/cash/intakes/?$",
+    "^/v1/cash/intakes/[^/]+/reverse/?$",
+    "^/v1/cash/deposits/[^/]+/match/?$",
+    "^/v1/cash/collectors/[^/]+/deposit-instruction/?$",
+    "^/v1/cash/wallets/[^/]+/(freeze|unfreeze)/?$",
+  ].some((pattern) => new RegExp(pattern).test(path));
 
 /**
  * Creates the typed API client. Attachments applied here and nowhere else:

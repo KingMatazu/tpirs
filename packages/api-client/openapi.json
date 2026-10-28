@@ -290,6 +290,154 @@
           }
         },
         "title": "ErrorEnvelope"
+      },
+      "def-7": {
+        "type": "object",
+        "required": [
+          "collectorUserId",
+          "status",
+          "frozenAt",
+          "frozenReason",
+          "overdueSince",
+          "floatCeilingMinor",
+          "balanceMinor",
+          "openIntakeTotalMinor"
+        ],
+        "properties": {
+          "collectorUserId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "frozen"
+            ]
+          },
+          "frozenAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "frozenReason": {
+            "type": "string",
+            "nullable": true
+          },
+          "overdueSince": {
+            "type": "string",
+            "nullable": true
+          },
+          "floatCeilingMinor": {
+            "type": "string",
+            "nullable": true
+          },
+          "balanceMinor": {
+            "type": "string"
+          },
+          "openIntakeTotalMinor": {
+            "type": "string"
+          }
+        },
+        "title": "CashWallet"
+      },
+      "def-8": {
+        "type": "object",
+        "required": [
+          "id",
+          "collectorUserId",
+          "assetId",
+          "zoneId",
+          "businessDate",
+          "amountMinor",
+          "currency",
+          "status",
+          "receiptNumber",
+          "recordedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "collectorUserId": {
+            "type": "string"
+          },
+          "assetId": {
+            "type": "string"
+          },
+          "zoneId": {
+            "type": "string",
+            "nullable": true
+          },
+          "businessDate": {
+            "type": "string"
+          },
+          "amountMinor": {
+            "type": "string"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "matched",
+              "reversed"
+            ]
+          },
+          "receiptNumber": {
+            "type": "string"
+          },
+          "recordedAt": {
+            "type": "string"
+          }
+        },
+        "title": "CashIntake"
+      },
+      "def-9": {
+        "type": "object",
+        "required": [
+          "id",
+          "provider",
+          "providerReference",
+          "collectorUserId",
+          "amountMinor",
+          "currency",
+          "status",
+          "createdAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "providerReference": {
+            "type": "string"
+          },
+          "collectorUserId": {
+            "type": "string",
+            "nullable": true
+          },
+          "amountMinor": {
+            "type": "string"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "matched",
+              "partial",
+              "suspense"
+            ]
+          },
+          "createdAt": {
+            "type": "string"
+          }
+        },
+        "title": "CashDeposit"
       }
     }
   },
@@ -753,6 +901,817 @@
                       "$ref": "#/components/schemas/def-3"
                     }
                   }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/cash/intakes": {
+      "post": {
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "collectorUserId",
+                  "clientReference",
+                  "amountMinor"
+                ],
+                "properties": {
+                  "collectorUserId": {
+                    "type": "string"
+                  },
+                  "clientReference": {
+                    "type": "string"
+                  },
+                  "amountMinor": {
+                    "type": "string"
+                  },
+                  "currency": {
+                    "type": "string"
+                  },
+                  "assetId": {
+                    "type": "string"
+                  },
+                  "token": {
+                    "type": "string"
+                  },
+                  "reference": {
+                    "type": "string"
+                  },
+                  "businessDate": {
+                    "type": "string"
+                  },
+                  "zoneId": {
+                    "type": "string",
+                    "nullable": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "intakeId",
+                    "collectorUserId",
+                    "assetId",
+                    "assetRef",
+                    "receiptNumber",
+                    "businessDate",
+                    "balanceMinor",
+                    "smsQueued",
+                    "replayed"
+                  ],
+                  "properties": {
+                    "intakeId": {
+                      "type": "string"
+                    },
+                    "collectorUserId": {
+                      "type": "string"
+                    },
+                    "assetId": {
+                      "type": "string"
+                    },
+                    "assetRef": {
+                      "type": "string"
+                    },
+                    "receiptNumber": {
+                      "type": "string"
+                    },
+                    "businessDate": {
+                      "type": "string"
+                    },
+                    "balanceMinor": {
+                      "type": "string"
+                    },
+                    "smsQueued": {
+                      "type": "boolean"
+                    },
+                    "replayed": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/def-6"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/def-6"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/def-6"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/def-6"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/cash/wallets": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "wallets"
+                  ],
+                  "properties": {
+                    "wallets": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/def-7"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/cash/wallets/{collectorUserId}": {
+      "get": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "limit",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "cursor",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "collectorUserId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "wallet",
+                    "intakes"
+                  ],
+                  "properties": {
+                    "wallet": {
+                      "$ref": "#/components/schemas/def-7"
+                    },
+                    "intakes": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/def-8"
+                      }
+                    },
+                    "nextCursor": {
+                      "type": "string",
+                      "nullable": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/def-6"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/def-6"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/cash/wallets/{collectorUserId}/freeze": {
+      "post": {
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "collectorUserId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "wallet"
+                  ],
+                  "properties": {
+                    "wallet": {
+                      "$ref": "#/components/schemas/def-7"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/def-6"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/def-6"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/def-6"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/cash/wallets/{collectorUserId}/unfreeze": {
+      "post": {
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "collectorUserId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "wallet"
+                  ],
+                  "properties": {
+                    "wallet": {
+                      "$ref": "#/components/schemas/def-7"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/def-6"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/def-6"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/def-6"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/cash/deposits": {
+      "get": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "cursor",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "limit",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "collectorUserId",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "status",
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "deposits",
+                    "nextCursor",
+                    "hasMore"
+                  ],
+                  "properties": {
+                    "deposits": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/def-9"
+                      }
+                    },
+                    "nextCursor": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "hasMore": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/cash/deposits/{id}/match": {
+      "post": {
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "intakeId"
+                ],
+                "properties": {
+                  "intakeId": {
+                    "type": "string"
+                  },
+                  "amountMinor": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "depositId",
+                    "outcome",
+                    "collectorUserId",
+                    "allocatedMinor",
+                    "currency",
+                    "replayed"
+                  ],
+                  "properties": {
+                    "depositId": {
+                      "type": "string"
+                    },
+                    "outcome": {
+                      "type": "string",
+                      "enum": [
+                        "matched",
+                        "partial",
+                        "suspense"
+                      ]
+                    },
+                    "collectorUserId": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "allocatedMinor": {
+                      "type": "string"
+                    },
+                    "currency": {
+                      "type": "string"
+                    },
+                    "replayed": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/def-6"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/def-6"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/def-6"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/def-6"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/cash/intakes/{id}/reverse": {
+      "post": {
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "intakeId",
+                    "reversalRequestId",
+                    "status"
+                  ],
+                  "properties": {
+                    "intakeId": {
+                      "type": "string"
+                    },
+                    "reversalRequestId": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/def-6"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/def-6"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/def-6"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/def-6"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/cash/collectors/{collectorUserId}/deposit-instruction": {
+      "post": {
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "provider": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "collectorUserId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "instruction"
+                  ],
+                  "properties": {
+                    "instruction": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "collectorUserId",
+                        "provider",
+                        "reference",
+                        "kind",
+                        "status"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "collectorUserId": {
+                          "type": "string"
+                        },
+                        "provider": {
+                          "type": "string"
+                        },
+                        "reference": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/def-6"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/def-6"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/def-6"
                 }
               }
             }

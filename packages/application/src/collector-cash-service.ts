@@ -3,7 +3,13 @@ import { CashError, assertWithinCeiling, canIntake, money } from "@tpirs/domain"
 import type { BusinessDate, Money } from "@tpirs/domain";
 import { assetTypeId, tenantId as tenantRef } from "@tpirs/domain";
 import { randomOpaqueId } from "@tpirs/crypto";
-import type { CashDepositRow, CollectorDepositInstructionRow } from "@tpirs/db";
+import type {
+  CashDepositRow,
+  CashIntakeRow,
+  CollectorDepositInstructionRow,
+  ListDepositsFilter,
+  ListIntakesFilter,
+} from "@tpirs/db";
 import { repositories, withTenant } from "@tpirs/db";
 import type { AnyDb } from "@tpirs/db";
 import { PortError } from "@tpirs/ports";
@@ -131,6 +137,36 @@ export class CollectorCashService {
     return this.wallets.unfreeze(input);
   }
 
+  /** One collector's wallet and derived position; `wallet_unknown` when absent. */
+  async wallet(tenantId: string, collectorUserId: string): Promise<CashWalletView> {
+    return this.wallets.wallet(tenantId, collectorUserId);
+  }
+
+  /** Every wallet in the tenant, for the supervisor view (D39 scoping is open). */
+  async listWallets(tenantId: string): Promise<readonly CashWalletView[]> {
+    return this.wallets.list(tenantId);
+  }
+
+  /** The tenant's intake register, newest first, cursor-paginated. */
+  async listIntakes(
+    tenantId: string,
+    filter: ListIntakesFilter = {},
+  ): Promise<{ rows: CashIntakeRow[]; nextCursor: string | null; hasMore: boolean }> {
+    return withTenant(this.deps.db, tenantId, async (tx) =>
+      repositories(tx).collectorCash.listIntakes(tenantId, filter),
+    );
+  }
+
+  /** The tenant's deposit register, newest first, cursor-paginated. */
+  async listDeposits(
+    tenantId: string,
+    filter: ListDepositsFilter = {},
+  ): Promise<{ rows: CashDepositRow[]; nextCursor: string | null; hasMore: boolean }> {
+    return withTenant(this.deps.db, tenantId, async (tx) =>
+      repositories(tx).collectorCash.listDeposits(tenantId, filter),
+    );
+  }
+
   async requireConfig(tenantId: string): Promise<TenantConfig> {
     const config = await this.deps.loadConfig(tenantId);
     if (config === undefined) {
@@ -209,6 +245,79 @@ export class CollectorCashService {
         reference: attribution.value,
         kind: attribution.kind,
       });
+    });
+  }
+
+  /**
+   * Provisions a deposit instruction without the caller naming a gateway: the
+   * tenant's `PaymentProvider` binding picks the adapter (D21 — providers are
+   * configuration, never code). An explicit `provider` still wins, so finance
+   * can test a second adapter against one tenant.
+   */
+  async provisionCollectorDepositInstruction(input: {
+    readonly tenantId: string;
+    readonly collectorUserId: string;
+    readonly provider?: string;
+  }): Promise<CollectorDepositInstructionRow> {
+    const config = await this.requireConfig(input.tenantId);
+    const provider =
+      input.provider ??
+      config.providers.find((binding) => binding.port === "PaymentProvider")?.adapter;
+    if (provider === undefined) {
+      throw new CashError(
+        "provider_required",
+        "no PaymentProvider adapter is configured for this tenant",
+      );
+    }
+    return this.provisionDepositInstruction({
+      tenantId: input.tenantId,
+      collectorUserId: input.collectorUserId,
+      provider,
+    });
+  }
+
+  /**
+   * Asks for an intake's ledger transaction to be reversed (ADR 0033).
+   *
+   * Intake reversal is money leaving the revenue account, so it rides the
+   * existing `reversal_requests` dual-approval path: this opens the request and
+   * posts nothing. A second, different finance user approves it through the
+   * ledger service, which writes the mirrored entries — including
+   * `collector_user_id`, so the collector's derived balance nets to zero.
+   *
+   * The intake stays `open` while the request is pending: the cash is still in
+   * the collector's hands, and the day is still settled until the reversal is
+   * approved.
+   */
+  async requestIntakeReversal(input: {
+    readonly tenantId: string;
+    readonly intakeId: string;
+    readonly reason: string;
+    readonly requestedByUserId: string;
+    readonly isSystemAdmin?: boolean;
+  }): Promise<{ intakeId: string; reversalRequestId: string; status: string }> {
+    const reason = input.reason.trim();
+    if (reason === "") {
+      throw new CashError("reason_required", "a reason is required to reverse an intake");
+    }
+    return withLedger(this.deps.db, input.tenantId, async ({ ledger, repos }) => {
+      const intake = await repos.collectorCash.findIntakeById(input.tenantId, input.intakeId);
+      if (intake === undefined) {
+        throw new CashError("intake_unknown", `intake ${input.intakeId} was not found`);
+      }
+      if (intake.status === "reversed") {
+        throw new CashError("intake_state", "the intake is already reversed");
+      }
+      if (intake.transactionId === null) {
+        throw new CashError("intake_state", "the intake has no ledger transaction to reverse");
+      }
+      const request = await ledger.requestReversal(input.tenantId, {
+        originalTransactionId: intake.transactionId,
+        reason,
+        requestedByUserId: input.requestedByUserId,
+        ...(input.isSystemAdmin === undefined ? {} : { isSystemAdmin: input.isSystemAdmin }),
+      });
+      return { intakeId: intake.id, reversalRequestId: request.id, status: request.status };
     });
   }
 

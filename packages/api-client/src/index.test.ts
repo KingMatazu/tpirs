@@ -75,6 +75,40 @@ describe("api client request plumbing", () => {
     expect(loginCall?.request.headers.get("authorization")).toBe("Bearer tok-1");
   });
 
+  it("keys every cash money POST, including freeze and provisioning", async () => {
+    const { fetch: stubbed, calls } = stubFetch(
+      async () => new globalThis.Response("{}", { status: 200 }),
+    );
+    const client = createApiClient({
+      baseUrl: "http://api.test",
+      idempotencyKeyPrefix: "dash",
+      fetch: stubbed,
+    });
+    const moneyPaths = [
+      "/v1/cash/intakes",
+      "/v1/cash/intakes/in_1/reverse",
+      "/v1/cash/deposits/dp_1/match",
+      "/v1/cash/collectors/u_1/deposit-instruction",
+      "/v1/cash/wallets/u_1/freeze",
+      "/v1/cash/wallets/u_1/unfreeze",
+    ];
+    for (const path of moneyPaths) {
+      await post(client, path, {});
+    }
+    expect(calls).toHaveLength(moneyPaths.length);
+    for (const call of calls) {
+      expect(call.request.headers.get("idempotency-key") ?? "").toMatch(/^dash-/);
+    }
+
+    // A read-only cash route is not a money POST.
+    const { fetch: readStub, calls: readCalls } = stubFetch(
+      async () => new globalThis.Response("{}", { status: 200 }),
+    );
+    const readClient = createApiClient({ baseUrl: "http://api.test", fetch: readStub });
+    await readClient.GET("/v1/cash/wallets");
+    expect(readCalls[0]?.request.headers.get("idempotency-key")).toBe(null);
+  });
+
   it("keys money POSTs uniquely per call", async () => {
     const { fetch: stubbed, calls } = stubFetch(
       async () => new globalThis.Response("{}", { status: 200 }),

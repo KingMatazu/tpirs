@@ -35,6 +35,9 @@ export type CashErrorCode =
   | "deposit_unknown"
   | "deposit_state"
   | "wallet_unknown"
+  | "intake_unknown"
+  | "intake_state"
+  | "provider_required"
   | "reason_required"
   | "invalid_amount";
 

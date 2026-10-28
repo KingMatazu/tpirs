@@ -6,6 +6,7 @@ import { createQrTokenSigner } from "@tpirs/crypto";
 import type { AnyDb } from "@tpirs/db";
 import type {
   AssetService,
+  CollectorCashService,
   DisputeService,
   InboundSmsService,
   OtpService,
@@ -20,6 +21,7 @@ import type {
 import type { QrTokenSigner } from "@tpirs/domain";
 import {
   createAssetService,
+  createCollectorCashService,
   createDisputeService,
   createDriverChannelService,
   createInboundSmsService,
@@ -106,6 +108,8 @@ export interface Services {
   readonly channelProviders: ChannelProviderFactory;
   /** Paid-set snapshot/delta feed for the offline field app. */
   readonly paidSetSync: PaidSetSyncService;
+  /** Collector cash: intake, wallets, deposits and their matching. */
+  readonly collectorCash: CollectorCashService;
 }
 
 /**
@@ -131,6 +135,14 @@ export async function buildServices(deps: ServiceDeps): Promise<Services> {
   const paymentProviders = deps.paymentProviders ?? {};
   const feeEngine = createConfigFeeEngine({ loadConfig });
   const payment = createPaymentService({
+    db: deps.db,
+    loadConfig,
+    feeEngine,
+    providerFor: (name) => paymentProviders[name],
+    now: () => deps.clock.now(),
+  });
+
+  const collectorCash = createCollectorCashService({
     db: deps.db,
     loadConfig,
     feeEngine,
@@ -199,5 +211,6 @@ export async function buildServices(deps: ServiceDeps): Promise<Services> {
     rateLimiter,
     channelProviders,
     paidSetSync,
+    collectorCash,
   };
 }
