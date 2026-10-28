@@ -616,13 +616,17 @@ adds the six money paths to the idempotency test.
   deleting later ones (and their allocations), which is the only way the old
   schema can represent the data.
 
-## Step 11: Documentation
+## Step 11: Documentation (completed)
 
-- This file (kept current as decisions land), ADRs 0031–0033.
-- `docs/runbooks/collector-cash.md`: how to provision a deposit instruction,
-  take cash, match a suspense deposit, freeze and unfreeze, and reconcile a
-  wallet by hand.
-- `README.md`, `AGENTS.md` phase state, and `docs/adr/README.md` index.
+- `docs/runbooks/collector-cash.md`: provisioning a deposit instruction, taking
+  cash from the dashboard and the API, matching a suspense deposit, freeze and
+  unfreeze (including the sweeper's behaviour), hand reconciliation SQL, and a
+  troubleshooting table keyed on the error codes the routes return.
+- This file (kept current as decisions land), ADRs 0031–0033 (0032 now records
+  the migration-0013 deposit-identity correction), and the
+  `docs/adr/README.md` index, which already lists them.
+- `README.md` and `AGENTS.md` now record Phase 7 as delivered and Phase 8 as
+  the next phase.
 
 ## Acceptance mapping
 

@@ -5,9 +5,10 @@ per-use levy system for bikes and tuk-tuks; the same codebase is resold to other
 states by writing configuration, not code.
 
 See `AGENTS.md` for the full build brief (design principles, ports and adapters,
-phases, and the quality bar). This README covers how to run the repo. Phases 0–6
-are implemented; Phase 6 adds verification, the paid-set delta feed and the
-offline officer field app (see `docs/runbooks/field-operations.md`).
+phases, and the quality bar). This README covers how to run the repo. Phases 0–7
+are implemented; Phase 7 adds the collector cash wallet — intakes, dedicated
+deposit instructions, deposit matching, the deadline sweeper and freeze/unfreeze
+(see `docs/runbooks/collector-cash.md`).
 
 ## Layout
 
