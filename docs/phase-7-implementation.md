@@ -197,8 +197,11 @@ Indexes: `(tenant_id, collector_user_id, recorded_at desc)`,
 (`matched` / `partial` / `suspense`), `matched_intake_ids` via a join table or
 an ordered `cash_deposit_allocations` row set (prefer the allocation table: a
 deposit may clear several intakes), `transaction_id`, `raw_event_id`,
-`created_at`. `unique (tenant_id, provider, provider_reference)` gives webhook
-replay safety.
+`created_at`. A partial unique index on `webhook_event_id` gives webhook replay
+safety — the plan originally keyed this on
+`(tenant_id, provider, provider_reference)`, which cannot work because that
+reference is the collector's long-lived destination; migration 0013 made the
+correction and left that triple as a plain lookup index.
 
 ### `sms_log`
 
@@ -572,21 +575,46 @@ adds the six money paths to the idempotency test.
   and the test asserts that message specifically. Omitting the template is
   valid and falls back to `DEFAULT_CASH_RECEIPT_TEMPLATE`.
 
-## Step 10: Tests and the verification gauntlet
+## Step 10: Tests and the verification gauntlet (completed)
 
-- `collector-cash.day-close.test.ts` — the first acceptance check: N intakes
-  and matching deposits for one collector leave `intake − deposits = 0`, equal
-  to the derived `COLLECTOR_CASH` balance, with debits equal to credits across
-  every posting.
+- `collector-cash.day-close.test.ts` — the first acceptance check: three
+  intakes and three matching deposits for one collector leave
+  `intake − posted deposits = 0`, equal to the derived `COLLECTOR_CASH`
+  balance, every intake and deposit `matched`, revenue equal to three fees,
+  and debits equal to credits across every posting. A second case deposits
+  after the first intake only, to prove the float starts fresh instead of
+  reusing a cleared one. Shared fixtures live in
+  `packages/application/src/test-support/cash-day.ts`.
 - `collector-cash.freeze.test.ts` — the second acceptance check: a sweeper run
-  past the deadline flags the shortfall and freezes per config; intake returns
-  `409`; with `freezeOnShortfall: false` it flags without freezing.
-- Negative tests: forged asset reference, replay of an intake, replay of a
-  deposit webhook, wrong currency, ceiling breach, cross-tenant wallet access,
-  a collector calling finance routes.
+  past the deadline flags the shortfall once (audit `cash.wallet.overdue`) and
+  freezes per config (`cash.wallet.frozen`, reason names the configured
+  deadline), the next intake is refused with `wallet_frozen`, and finance can
+  unfreeze. With `freezeOnShortfall: false` the same sweep only flags, the
+  collector keeps working, and the deposits clear `overdue_since`.
+- **Deposit identity corrected while writing these tests (migration 0013).**
+  `cash_deposits` was unique on `(tenant_id, provider, provider_reference)`,
+  but that reference is the collector's long-lived destination, not the
+  transfer id — so the second evening deposit looked like a replay and never
+  posted; day-close stalled at one deposit per collector. The unique key moved
+  to `webhook_event_id` (partial index), the old constraint became a plain
+  lookup index, and `CollectorCashService.ingestDeposit` now takes the
+  webhook's own transaction (`scope`) so the deposit can reference the event
+  row in the same commit. Replay is still a no-op: `webhook_events` answers
+  `duplicate` first. Covered by "records a second transfer to the same
+  destination as its own deposit" (matched, then suspense) and the pinned
+  replay test in `collector-cash-service.test.ts`.
+- Negative tests: forged asset reference (`404 asset_unknown`), wrong currency
+  (`400 amount_mismatch`), replay of an intake (same receipt, `replayed`),
+  replay of a deposit webhook (`duplicate`), ceiling breach, cross-tenant
+  match (`deposit_unknown`), and a collector calling every finance route
+  (`403`) — split between `apps/api/src/routes/cash.routes.test.ts` and
+  `collector-cash-service.test.ts`.
 - Gates, in order: `pnpm format` → `pnpm lint` → `pnpm typecheck` →
   `pnpm test`, then `sh scripts/ci/integration.sh` and
-  `pnpm ci:migration-check` (both need Docker).
+  `pnpm ci:migration-check` (both need Docker). Migration 0013's `down()`
+  restores the old constraint by keeping the first deposit per destination and
+  deleting later ones (and their allocations), which is the only way the old
+  schema can represent the data.
 
 ## Step 11: Documentation
 

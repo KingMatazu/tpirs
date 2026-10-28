@@ -337,9 +337,28 @@ describeIntegration("collector cash repositories (integration)", () => {
     });
   });
 
-  it("records an unrecognised deposit as suspense and keeps replays inert", async () => {
+  it("identifies a deposit by its webhook event, not by the destination", async () => {
     if (TEST_URL === undefined) return;
+    // The destination reference is the collector's long-lived account: every
+    // evening's transfer carries the same value, and only the event differs
+    // (migration 0013).
     const reference = `DEP-${stamp}`;
+    const events = await withTenant(db, tenantId, async (tx) => {
+      const repos = repositories(tx);
+      const first = await repos.webhookEvents.record(tenantId, {
+        provider: "paystack",
+        providerEventId: `${reference}-e1`,
+        rawBody: "{}",
+      });
+      const second = await repos.webhookEvents.record(tenantId, {
+        provider: "paystack",
+        providerEventId: `${reference}-e2`,
+        rawBody: "{}",
+      });
+      if (first === undefined || second === undefined) throw new Error("events not recorded");
+      return { first: first.id, second: second.id };
+    });
+
     const created = await withTenant(db, tenantId, async (tx) => {
       const repos = repositories(tx);
       return repos.collectorCash.insertDepositIfAbsent(tenantId, {
@@ -347,6 +366,7 @@ describeIntegration("collector cash repositories (integration)", () => {
         providerReference: reference,
         amountMinor: 1000n,
         currency: "NGN",
+        webhookEventId: events.first,
       });
     });
     expect(created.existed).toBe(false);
@@ -360,10 +380,24 @@ describeIntegration("collector cash repositories (integration)", () => {
         providerReference: reference,
         amountMinor: 1000n,
         currency: "NGN",
+        webhookEventId: events.first,
       });
     });
     expect(replay.existed).toBe(true);
     expect(replay.deposit.id).toBe(created.deposit.id);
+
+    const nextTransfer = await withTenant(db, tenantId, async (tx) => {
+      const repos = repositories(tx);
+      return repos.collectorCash.insertDepositIfAbsent(tenantId, {
+        provider: "paystack",
+        providerReference: reference,
+        amountMinor: 1000n,
+        currency: "NGN",
+        webhookEventId: events.second,
+      });
+    });
+    expect(nextTransfer.existed).toBe(false);
+    expect(nextTransfer.deposit.id).not.toBe(created.deposit.id);
   });
 
   it("matches open intakes oldest-first and leaves the surplus in suspense", async () => {

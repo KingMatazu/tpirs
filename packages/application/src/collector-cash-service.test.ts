@@ -432,20 +432,25 @@ describeIntegration("CollectorCashService (integration)", () => {
     );
   }
 
-  /** Delivers one webhook as the gateway would, with a valid mock signature. */
+  /**
+   * Delivers one webhook as the gateway would, with a valid mock signature.
+   * `eventId` pins the provider event so a test can replay the *same* transfer
+   * (the deposit identity is the event, not the destination reference).
+   */
   async function deliverDepositWebhook(
     tenantId: string,
     reference: string,
     body: { amount: number; currency?: string; status?: "success" | "failed" } = {
       amount: BIKE_FEE,
     },
+    eventId?: string,
   ) {
     const endpointToken = await paymentService.provisionEndpoint({
       tenantId,
       provider: "mock",
     });
     const rawBody = JSON.stringify({
-      providerEventId: `dep-${Math.random().toString(36).slice(2, 10)}`,
+      providerEventId: eventId ?? `dep-${Math.random().toString(36).slice(2, 10)}`,
       providerReference: reference,
       amount: { amount: body.amount, currency: body.currency ?? "NGN" },
       status: body.status ?? "success",
@@ -550,11 +555,24 @@ describeIntegration("CollectorCashService (integration)", () => {
     const instruction = await provisionInstruction(tenant);
     if (instruction === undefined) throw new Error("instruction not found");
     await service.recordIntake({ ...baseInput(tenant), clientReference: "cli-1" });
-    const first = await deliverDepositWebhook(tenant.tenantId, instruction.reference);
+    const eventId = `dep-replay-${Math.random().toString(36).slice(2, 8)}`;
+    const first = await deliverDepositWebhook(
+      tenant.tenantId,
+      instruction.reference,
+      { amount: BIKE_FEE },
+      eventId,
+    );
     expect(first.outcome).toBe("deposit_matched");
 
-    const second = await deliverDepositWebhook(tenant.tenantId, instruction.reference);
-    expect(second.outcome).toBe("deposit_matched");
+    // The same transfer delivered twice: `webhook_events` answers duplicate and
+    // nothing else happens.
+    const second = await deliverDepositWebhook(
+      tenant.tenantId,
+      instruction.reference,
+      { amount: BIKE_FEE },
+      eventId,
+    );
+    expect(second.outcome).toBe("duplicate");
     const after = await withTenant(db, tenant.tenantId, async (tx) => {
       const repos = repositories(tx);
       return {
@@ -563,7 +581,37 @@ describeIntegration("CollectorCashService (integration)", () => {
         balance: await repos.ledger.collectorCashBalance(tenant.tenantId, tenant.collectorUserId),
       };
     });
-    expect(after.deposits).toBe(1); // unique (tenant, provider, reference)
+    expect(after.deposits).toBe(1);
+    expect(after.balance).toBe(0n);
+  });
+
+  it("records a second transfer to the same destination as its own deposit", async () => {
+    const tenant = await makeTenant();
+    const instruction = await provisionInstruction(tenant);
+    if (instruction === undefined) throw new Error("instruction not found");
+    await service.recordIntake({ ...baseInput(tenant), clientReference: "cli-two-1" });
+
+    // The destination reference is long-lived: an evening deposit every day uses
+    // the same value, and only the provider event distinguishes the transfers
+    // (migration 0013).
+    const first = await deliverDepositWebhook(tenant.tenantId, instruction.reference);
+    expect(first.outcome).toBe("deposit_matched");
+    const second = await deliverDepositWebhook(tenant.tenantId, instruction.reference);
+    // Nothing is open for the second transfer, so it waits in suspense (D35).
+    expect(second.outcome).toBe("deposit_suspense");
+
+    const after = await withTenant(db, tenant.tenantId, async (tx) => {
+      const repos = repositories(tx);
+      const rows = (await repos.collectorCash.listDeposits(tenant.tenantId, { limit: 100 })).rows;
+      return {
+        deposits: rows.length,
+        statuses: rows.map((row) => row.status),
+        balance: await repos.ledger.collectorCashBalance(tenant.tenantId, tenant.collectorUserId),
+      };
+    });
+    expect(after.deposits).toBe(2);
+    expect(after.statuses).toContain("matched");
+    expect(after.statuses).toContain("suspense");
     expect(after.balance).toBe(0n);
   });
 

@@ -507,6 +507,80 @@ describeIntegration("api collector cash (integration)", () => {
     expect(missing.statusCode).toBe(404);
   });
 
+  it("refuses a forged asset reference and cash in the wrong currency", async () => {
+    const token = await login("cash.collector");
+    const headers = { authorization: `Bearer ${token}` };
+
+    // A sticker the registry never issued: the intake is refused rather than
+    // settling an asset by guesswork.
+    const forged = await app.inject({
+      method: "POST",
+      url: "/v1/cash/intakes",
+      headers,
+      payload: {
+        collectorUserId: collectorId,
+        clientReference: `forged-${slug}`,
+        amountMinor: String(FEE_MINOR),
+        token: "not-a-real-sticker",
+      },
+    });
+    expect(forged.statusCode).toBe(404);
+    expect((forged.json() as { error: { code: string } }).error.code).toBe("asset_unknown");
+
+    // The tenant collects NGN; a collector cannot hand over another currency
+    // and have the platform price it by accident.
+    const currency = await app.inject({
+      method: "POST",
+      url: "/v1/cash/intakes",
+      headers,
+      payload: {
+        collectorUserId: collectorId,
+        clientReference: `currency-${slug}`,
+        amountMinor: String(FEE_MINOR),
+        currency: "USD",
+        assetId,
+      },
+    });
+    expect(currency.statusCode).toBe(400);
+    expect((currency.json() as { error: { code: string } }).error.code).toBe("amount_mismatch");
+  });
+
+  it("refuses every finance route to a collector", async () => {
+    const token = await login("cash.collector");
+    const headers = { authorization: `Bearer ${token}` };
+
+    const freeze = await app.inject({
+      method: "POST",
+      url: `/v1/cash/wallets/${otherCollectorId}/freeze`,
+      headers,
+      payload: { reason: "I am not a supervisor" },
+    });
+    expect(freeze.statusCode).toBe(403);
+
+    const unfreeze = await app.inject({
+      method: "POST",
+      url: `/v1/cash/wallets/${otherCollectorId}/unfreeze`,
+      headers,
+      payload: { reason: "nor finance" },
+    });
+    expect(unfreeze.statusCode).toBe(403);
+
+    const deposits = await app.inject({
+      method: "GET",
+      url: "/v1/cash/deposits",
+      headers,
+    });
+    expect(deposits.statusCode).toBe(403);
+
+    const match = await app.inject({
+      method: "POST",
+      url: `/v1/cash/deposits/${depositId}/match`,
+      headers,
+      payload: { intakeId },
+    });
+    expect(match.statusCode).toBe(403);
+  });
+
   it("provisions a deposit instruction from the tenant's configured provider", async () => {
     const token = await login("cash.finance");
     const response = await app.inject({

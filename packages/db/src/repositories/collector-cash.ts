@@ -492,8 +492,13 @@ export class CollectorCashRepository {
   // --------------------------------------------------------------- deposits
 
   /**
-   * Inserts a deposit unless the provider already reported it. Replay-safe per
-   * `(tenant_id, provider, provider_reference)`, exactly like a payment webhook.
+   * Inserts a deposit unless the provider already reported that transfer.
+   *
+   * The identity is the webhook event (`webhook_event_id`), not the reference:
+   * the reference is the collector's long-lived deposit destination, so the same
+   * value appears on every evening's transfer (migration 0013). A genuine replay
+   * is already stopped by `webhook_events` before this runs; the unique index on
+   * `webhook_event_id` is the second line of defence inside the transaction.
    */
   async insertDepositIfAbsent(
     tenantId: string,
@@ -506,15 +511,16 @@ export class CollectorCashRepository {
       webhookEventId?: string | null;
     },
   ): Promise<{ deposit: CashDepositRow; existed: boolean }> {
-    const existing = await this.db
-      .selectFrom("cashDeposits")
-      .selectAll()
-      .where("tenantId", "=", tenantId)
-      .where("provider", "=", params.provider)
-      .where("providerReference", "=", params.providerReference)
-      .executeTakeFirst();
-    if (existing !== undefined) {
-      return { deposit: existing, existed: true };
+    if (params.webhookEventId !== undefined && params.webhookEventId !== null) {
+      const existing = await this.db
+        .selectFrom("cashDeposits")
+        .selectAll()
+        .where("tenantId", "=", tenantId)
+        .where("webhookEventId", "=", params.webhookEventId)
+        .executeTakeFirst();
+      if (existing !== undefined) {
+        return { deposit: existing, existed: true };
+      }
     }
     const inserted = await this.db
       .insertInto("cashDeposits")
@@ -527,7 +533,10 @@ export class CollectorCashRepository {
         collectorUserId: params.collectorUserId ?? null,
         webhookEventId: params.webhookEventId ?? null,
       })
-      .onConflict((oc) => oc.columns(["tenantId", "provider", "providerReference"]).doNothing())
+      // No conflict target: the only unique key this insert can break is
+      // `webhook_event_id` (the primary key is generated), and naming a partial
+      // index as a target is not inferable when the event is absent.
+      .onConflict((oc) => oc.doNothing())
       .returningAll()
       .executeTakeFirst();
     if (inserted !== undefined) {
@@ -537,8 +546,11 @@ export class CollectorCashRepository {
       .selectFrom("cashDeposits")
       .selectAll()
       .where("tenantId", "=", tenantId)
-      .where("provider", "=", params.provider)
-      .where("providerReference", "=", params.providerReference)
+      .where(
+        "webhookEventId",
+        "=",
+        params.webhookEventId === undefined ? null : params.webhookEventId,
+      )
       .executeTakeFirstOrThrow();
     return { deposit: afterConflict, existed: true };
   }

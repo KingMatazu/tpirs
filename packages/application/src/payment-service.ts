@@ -402,7 +402,16 @@ export function createPaymentService(deps: PaymentServiceDeps): PaymentService {
       event.providerReference,
     );
     if (depositInstruction !== undefined) {
-      const deposit = await collectorCash.ingestDeposit({ tenantId, config, provider, event });
+      const deposit = await collectorCash.ingestDeposit({
+        tenantId,
+        config,
+        provider,
+        event,
+        webhookEventId: eventRow.id,
+        // Same transaction that recorded the event: the deposit's identity is
+        // that row, and a second transaction could not see it yet.
+        scope: { ledger: new LedgerService(tx, repos), repos },
+      });
       // A recognised deposit reference never reaches the payment path, but the
       // delivery still ties the event to the outcome it produced.
       await repos.webhookEvents.markProcessed(tenantId, eventRow.id, null);

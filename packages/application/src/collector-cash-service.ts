@@ -335,14 +335,29 @@ export class CollectorCashService {
     readonly tenantId: string;
     readonly config: TenantConfig;
     readonly provider: string;
+    /**
+     * The stored webhook event row. It is the deposit's identity: the reference
+     * is the collector's long-lived destination, so the same value arrives with
+     * every transfer (migration 0013).
+     */
+    readonly webhookEventId?: string | null;
     readonly event: {
       readonly providerEventId: string;
       readonly providerReference: string;
       readonly amount: Money;
       readonly status: "success" | "failed";
     };
+    /**
+     * An already-open tenant scope. The webhook pipeline records the event and
+     * then calls this inside the same transaction; opening a second one would
+     * not see the uncommitted `webhook_events` row the deposit points at.
+     */
+    readonly scope?: LedgerContext;
   }): Promise<CashDepositResult | undefined> {
-    return withLedger(this.deps.db, input.tenantId, async ({ ledger, repos }) => {
+    const work = async ({
+      ledger,
+      repos,
+    }: LedgerContext): Promise<CashDepositResult | undefined> => {
       const tenantId = input.tenantId;
       const instruction = await repos.collectorCash.findActiveInstruction(
         tenantId,
@@ -359,6 +374,7 @@ export class CollectorCashService {
         amountMinor: BigInt(input.event.amount.amount),
         currency: input.event.amount.currency,
         collectorUserId: instruction.collectorUserId,
+        ...(input.webhookEventId === undefined ? {} : { webhookEventId: input.webhookEventId }),
       });
 
       // A replay answers with the record and changes nothing.
@@ -433,7 +449,11 @@ export class CollectorCashService {
       await repos.collectorCash.setDepositOutcome(tenantId, deposit.id, { status });
       await this.clearOverdueWhenDeposited(repos, tenantId, collector);
       return this.depositResult(repos, deposit, false, status);
-    });
+    };
+
+    return input.scope === undefined
+      ? withLedger(this.deps.db, input.tenantId, work)
+      : work(input.scope);
   }
 
   /**

@@ -67,9 +67,20 @@ bank counter.
   leaves any remainder in suspense. The action is idempotent, permission-gated
   on `cash:deposit:match`, and written to the audit log with the actor and the
   before/after state.
-- **Replay safety is a unique constraint.** `cash_deposits` is unique on
-  `(tenant_id, provider, provider_reference)`, so a provider retry is a no-op
-  exactly like a replayed payment webhook (ADR 0016).
+- **Replay safety is keyed on the transfer, not the destination.** Migration
+  0012 first made `cash_deposits` unique on
+  `(tenant_id, provider, provider_reference)`, which read the reference as the
+  transfer id. It is not: the reference is the collector's long-lived virtual
+  account or narration, so a collector who deposits every evening reuses it and
+  the second deposit looked like a replay and never posted. Migration 0013
+  makes the webhook event the identity instead — a partial unique index on
+  `webhook_event_id` — and keeps `(tenant_id, provider, provider_reference)` as
+  a plain lookup index. A genuine provider retry is still a no-op: the
+  `webhook_events` dedupe (ADR 0016) stops it before the deposit row is
+  written, and the unique index is the second line of defence inside the same
+  transaction. The deposit intake therefore runs in the webhook's own
+  transaction (`scope`), not a nested one, so it can reference the event row it
+  belongs to.
 
 ## Consequences
 
@@ -87,6 +98,9 @@ bank counter.
 - Deposits that arrive before the intake they fund (a collector paying in
   early) sit in suspense until finance matches them; the system does not hold
   unearned credit on a collector's behalf.
+- A collector can deposit daily to the same destination without a rotation,
+  which is what a bank transfer in real life looks like; the transfer identity
+  is the provider event the gateway reports.
 
 ## Alternatives considered
 
