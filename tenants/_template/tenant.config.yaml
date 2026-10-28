@@ -76,6 +76,10 @@ channels:
   smsKeyword: "LEVY"
   otpMessageTemplate: "Template Levy: your verification code is {code}."
   smsReceiptTemplate: "Template Levy receipt {receiptNo}: {amount} paid for {assetRef} on {date}."
+  # Collector cash receipt (D38). Kept separate from the gateway receipt on
+  # purpose: cash is not a gateway payment. Placeholders: {amount}, {assetRef},
+  # {date}, {receiptNo}. Omit it to use the built-in default copy.
+  cashReceiptTemplate: "Template Levy cash {amount} for {assetRef}. Receipt {receiptNo}, {date}."
   startMenu: "main"
   messages:
     en:

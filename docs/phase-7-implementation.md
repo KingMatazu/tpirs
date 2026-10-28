@@ -537,15 +537,40 @@ adds the six money paths to the idempotency test.
   required reason, finance-only unfreeze, deposit match) and the helper test
   pins the pre-fill, overdue, held-hours, candidate and label rules.
 
-## Step 9: Seed and tenant template
+## Step 9: Seed and tenant template (completed)
 
-- Seed: a wallet for `alpha.collector`, an active deposit instruction, and one
-  deterministic intake + matching deposit pair so the day-close demo can be
-  run without touching the API by hand.
-- `tenants/_template/tenant.config.yaml` and the admin test fixture: cash rules
-  and the cash receipt / freeze notice message keys in every enabled language.
-- `packages/config` validator: the cash receipt template placeholder check
-  (D38), with an error naming the offending placeholder.
+- **Seed** (`packages/db/src/seed-cash.ts`, called from `seed.ts` through the
+  alpha tenant's `cashDemo` entry): a wallet for `alpha.collector`, an active
+  deposit instruction, and one settled cash day — intake plus the matching
+  deposit, with `Dr COLLECTOR_CASH / Cr ASSET_WALLET`, the allocation to
+  `REVENUE_LEVY`, `Dr SETTLEMENT_BANK / Cr COLLECTOR_CASH`, one allocation row,
+  the intake `matched` and the deposit `matched`. The derived `COLLECTOR_CASH`
+  balance is therefore 0 and nothing is open, which is the day-close story the
+  demo tells; verified against the local database after `pnpm db:seed`.
+- **The demo day is written by the seed, not by the services.** `@tpirs/db`
+  cannot import `@tpirs/application` (that would invert the dependency), so the
+  helper writes the rows in the same order the services do and says so. The
+  Step 10 and repository tests assert the arithmetic through the service path,
+  so a drift between the two shows up as a failing reconciliation rather than
+  as silently wrong demo data.
+- **Idempotent and config-driven.** Re-running the seed skips the tenant once the
+  demo wallet exists, and the asset type, fee rule, currency, provider, and
+  business day (`todayInTimeZone(config.locale.timezone, now)`) all come from
+  the validated config. The only literals are demo data (plate, short code,
+  client reference) attached to the fake tenant.
+- **`tenants/_template/tenant.config.yaml` and the admin fixture** gained
+  `channels.cashReceiptTemplate` next to `smsReceiptTemplate`, with the
+  placeholders `{amount}`, `{assetRef}`, `{date}`, `{receiptNo}` (D38).
+  `cashRules` was already in both from Step 1.
+- **Freeze/overdue catalogue keys are deliberately absent.** D38 recorded that
+  the notice keys arrive with a delivery channel; D40 makes the Phase 7 notice
+  an audit entry plus the wallet flag, so adding message keys now would be
+  config no consumer reads. The trigger is written down in D38/D40.
+- **`packages/config` validates the cash receipt template** with the same
+  placeholder rules as the payment receipt, naming the offending placeholder in
+  the error (`channels.cashReceiptTemplate has unknown placeholder '{cash}'`),
+  and the test asserts that message specifically. Omitting the template is
+  valid and falls back to `DEFAULT_CASH_RECEIPT_TEMPLATE`.
 
 ## Step 10: Tests and the verification gauntlet
 

@@ -5,6 +5,7 @@ import { SYSTEM_ROLES } from "@tpirs/domain";
 import { hashPassword } from "@tpirs/crypto";
 import { validateTenantConfig } from "@tpirs/config";
 import type { TenantConfig } from "@tpirs/config";
+import { seedCollectorCashDay, type CashDemoSeed } from "./seed-cash.js";
 
 export type SeedFn = (db: AnyDb) => Promise<void>;
 
@@ -20,6 +21,8 @@ interface FakeTenant {
     readonly password: string;
     readonly roleKeys: readonly string[];
   }[];
+  /** One settled cash day for the demo collector, when the tenant wants one. */
+  readonly cashDemo?: CashDemoSeed;
 }
 
 /** Shared shape for the two fake tenants, differing only by configuration. */
@@ -296,6 +299,16 @@ const FAKE_TENANTS: readonly FakeTenant[] = [
         roleKeys: ["collector"],
       },
     ],
+    cashDemo: {
+      collectorUsername: "alpha.collector",
+      ownerName: "Alpha Demo Owner",
+      ownerPhone: "+2348000000001",
+      plateNumber: "ALPHA001",
+      shortCode: "B000001",
+      clientReference: "seed-alpha-cash-day-1",
+      provider: "mock",
+      depositReference: "cash-dep-seed-alpha-collector",
+    },
   },
   {
     slug: "beta-state",
@@ -349,6 +362,7 @@ const FAKE_TENANTS: readonly FakeTenant[] = [
  * shared system-role definitions.
  */
 export const seed: SeedFn = async (db) => {
+  const now = new Date();
   for (const fake of FAKE_TENANTS) {
     const config = validateTenantConfig(fake.config);
     await withSystem(db, async (tx) => {
@@ -399,6 +413,16 @@ export const seed: SeedFn = async (db) => {
             await repos.roles.assignToUser({ tenantId: tenant.id, userId: created.id, roleId });
           }
         }
+      }
+
+      if (fake.cashDemo !== undefined) {
+        await seedCollectorCashDay({
+          repos,
+          tenantId: tenant.id,
+          config,
+          demo: fake.cashDemo,
+          now,
+        });
       }
     });
   }

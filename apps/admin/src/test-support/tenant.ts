@@ -65,6 +65,7 @@ channels:
   smsKeyword: "LEVY"
   otpMessageTemplate: "Example: your code is {code}"
   smsReceiptTemplate: "Example receipt {receiptNo}: {amount} paid for {assetRef} on {date}."
+  cashReceiptTemplate: "Example cash {amount} for {assetRef}. Receipt {receiptNo}, {date}."
   startMenu: "main"
   messages:
     en:

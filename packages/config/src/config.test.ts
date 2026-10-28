@@ -425,7 +425,7 @@ describe("validateTenantConfig", () => {
     const bad = configWith((raw) => {
       (raw.channels as Record<string, unknown>).cashReceiptTemplate = "Cash {cash}.";
     });
-    expect(bad).toThrow(/cashReceiptTemplate/);
+    expect(bad).toThrow(/cashReceiptTemplate has unknown placeholder '\{cash\}'/);
   });
 
   it("rejects a default language not in enabled languages", () => {
