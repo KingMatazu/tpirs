@@ -1,13 +1,14 @@
 import type { Money } from "./money.js";
 
-export type AccountClass = "asset" | "liability" | "revenue";
+export type AccountClass = "asset" | "liability" | "revenue" | "expense";
 export type AccountType =
   | "asset_wallet"
   | "revenue_levy"
   | "gateway_clearing"
   | "settlement_bank"
   | "suspense"
-  | "collector_cash";
+  | "collector_cash"
+  | "gateway_fees";
 export type LedgerDirection = "debit" | "credit";
 export type ObligationStatus = "unpaid" | "paid" | "waived";
 export type ReversalStatus = "pending" | "approved" | "rejected";
@@ -104,4 +105,5 @@ export const STANDARD_ACCOUNTS: readonly {
   { code: "SETTLEMENT_BANK", accountType: "settlement_bank", accountClass: "asset" },
   { code: "SUSPENSE", accountType: "suspense", accountClass: "liability" },
   { code: "COLLECTOR_CASH", accountType: "collector_cash", accountClass: "asset" },
+  { code: "GATEWAY_FEES", accountType: "gateway_fees", accountClass: "expense" },
 ];

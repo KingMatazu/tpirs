@@ -4,6 +4,19 @@ import pg from "pg";
 
 /** JSONB columns are parsed by pg into JS values; typed loosely at the row boundary. */
 type Json = ColumnType<unknown, unknown, unknown>;
+
+/**
+ * Encodes a value for a `jsonb` column.
+ *
+ * `pg` serialises a JS array as a Postgres *array literal* (`{}`), which a
+ * `jsonb` column rejects, while an object happens to serialise as JSON. Relying
+ * on that inconsistency means a JSON array column only fails at runtime, so
+ * every jsonb write goes through this function and is sent as JSON text.
+ */
+export function jsonb(value: unknown): string {
+  return JSON.stringify(value);
+}
+
 /** pg returns `Date` for timestamptz; inserts/updates accept a Date. */
 type Timestamp = Date;
 
@@ -451,6 +464,109 @@ export interface CashDepositAllocationTable {
   createdAt: Generated<Timestamp>;
 }
 
+/** One settlement statement file, identified by the hash of its bytes. */
+export interface SettlementImportTable {
+  id: Generated<string>;
+  tenantId: string;
+  provider: string;
+  source: Generated<"statement" | "api">;
+  filename: string;
+  fileHash: string;
+  periodStart: string | null;
+  periodEnd: string | null;
+  rowCount: Generated<number>;
+  rejectedCount: Generated<number>;
+  importedByUserId: string | null;
+  importedAt: Generated<Timestamp>;
+  status: Generated<"imported" | "failed">;
+}
+
+/** One normalised statement line; evidence, not a payment. */
+export interface SettlementRowTable {
+  id: Generated<string>;
+  tenantId: string;
+  importId: string;
+  rowNumber: number;
+  rowHash: string;
+  providerReference: string;
+  amountMinor: bigint;
+  feeMinor: Generated<bigint>;
+  currency: string;
+  settledAt: Timestamp;
+  description: string | null;
+  raw: Json;
+  paymentId: string | null;
+  transactionId: string | null;
+  status: Generated<"unmatched" | "matched" | "posted" | "excluded">;
+  createdAt: Generated<Timestamp>;
+  updatedAt: Generated<Timestamp>;
+}
+
+/** One attempt at reconciling one business day; versioned, append-only. */
+export interface ReconciliationRunTable {
+  id: Generated<string>;
+  tenantId: string;
+  businessDate: string;
+  runSeq: number;
+  status: Generated<"running" | "completed" | "failed" | "signed_off">;
+  checklist: Json;
+  toleranceSnapshot: bigint;
+  feeToleranceSnapshot: bigint;
+  exceptionCount: Generated<number>;
+  startedAt: Generated<Timestamp>;
+  completedAt: Timestamp | null;
+  failureReason: string | null;
+  signedOffByUserId: string | null;
+  signedOffAt: Timestamp | null;
+  signOffNote: string | null;
+}
+
+/** One open condition found by a run, carried forward by `dedupe_key`. */
+export interface ReconciliationExceptionTable {
+  id: Generated<string>;
+  tenantId: string;
+  runId: string;
+  dedupeKey: string;
+  kind: string;
+  severity: "blocking" | "warning" | "info";
+  subjectType: string;
+  subjectId: Generated<string>;
+  expectedMinor: bigint | null;
+  actualMinor: bigint | null;
+  differenceMinor: bigint | null;
+  currency: string | null;
+  businessDate: string;
+  detail: Json;
+  firstSeenRunId: string;
+  lastSeenRunId: string;
+  status: Generated<"open" | "resolved" | "waived">;
+  resolutionNote: string | null;
+  resolvedByUserId: string | null;
+  resolvedAt: Timestamp | null;
+  createdAt: Generated<Timestamp>;
+  updatedAt: Generated<Timestamp>;
+}
+
+/** One statistical deviation, deduplicated per rule, subject and window. */
+export interface AnomalyEventTable {
+  id: Generated<string>;
+  tenantId: string;
+  ruleKey: string;
+  subjectType: string;
+  subjectId: Generated<string>;
+  windowStart: string;
+  windowEnd: string;
+  observed: string;
+  baseline: string;
+  threshold: string;
+  severity: "warning" | "info";
+  detail: Json;
+  status: Generated<"open" | "acknowledged">;
+  acknowledgedByUserId: string | null;
+  acknowledgedAt: Timestamp | null;
+  createdAt: Generated<Timestamp>;
+}
+
 export interface Database {
   tenants: TenantTable;
   zones: ZoneTable;
@@ -483,6 +599,11 @@ export interface Database {
   cashIntakes: CashIntakeTable;
   cashDeposits: CashDepositTable;
   cashDepositAllocations: CashDepositAllocationTable;
+  settlementImports: SettlementImportTable;
+  settlementRows: SettlementRowTable;
+  reconciliationRuns: ReconciliationRunTable;
+  reconciliationExceptions: ReconciliationExceptionTable;
+  anomalyEvents: AnomalyEventTable;
 }
 
 export type TenantRow = Selectable<TenantTable>;
@@ -511,6 +632,11 @@ export type CollectorDepositInstructionRow = Selectable<CollectorDepositInstruct
 export type CashIntakeRow = Selectable<CashIntakeTable>;
 export type CashDepositRow = Selectable<CashDepositTable>;
 export type CashDepositAllocationRow = Selectable<CashDepositAllocationTable>;
+export type SettlementImportRow = Selectable<SettlementImportTable>;
+export type SettlementRowRow = Selectable<SettlementRowTable>;
+export type ReconciliationRunRow = Selectable<ReconciliationRunTable>;
+export type ReconciliationExceptionRow = Selectable<ReconciliationExceptionTable>;
+export type AnomalyEventRow = Selectable<AnomalyEventTable>;
 
 export interface DbOptions {
   readonly connectionString: string;

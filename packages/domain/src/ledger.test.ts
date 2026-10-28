@@ -97,6 +97,7 @@ describe("ledger", () => {
       "SETTLEMENT_BANK",
       "SUSPENSE",
       "COLLECTOR_CASH",
+      "GATEWAY_FEES",
     ]);
   });
 });

@@ -65,6 +65,13 @@ const STANDARD_ACCOUNTS = [
     account_type: "collector_cash",
     account_class: "asset",
   },
+  {
+    // The gateway's cut, booked when a matched settlement posts (ADR 0036).
+    code: "GATEWAY_FEES",
+    name: "Gateway fees",
+    account_type: "gateway_fees",
+    account_class: "expense",
+  },
 ] as const;
 
 export class AccountRepository {

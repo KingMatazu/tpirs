@@ -272,18 +272,25 @@ vehicle is not an event; the test suite asserts that explicitly.
 
 ## Step 2: Schema and migration 0014
 
-- The five tables above, the `gateway_fees` enum value, and the standard
-  account. RLS policies, tenant indexes, immutability triggers on runs, and a
-  rejecting trigger on the settlement-object columns.
-- `down()` reversible on an empty database; `pnpm ci:migration-check` is part of
-  the gates.
-- Repository methods: `settlementImports.record/findByHash`,
-  `settlements.listUnmatched/listForRange/markPosted`,
-  `reconciliation.createRun/completeRun/signOff/findLatest`,
-  `exceptions.upsertForRun/list/resolve`,
-  `anomalies.record/list/acknowledge`.
-- Tests: cross-tenant isolation, duplicate file/row hashes, run immutability,
-  sign-off idempotence.
+- The five tables above, the `gateway_fees` account type plus the `expense`
+  account class it needs, and the standard account. RLS policies, tenant
+  indexes, an immutability trigger on runs, and a rejecting trigger on the
+  settlement-row evidence columns (amount, fee, currency, reference, settled at,
+  row hash). **Done.**
+- `down()` reversible on an empty database, and it refuses to drop the new enum
+  values while an account still uses them; `pnpm ci:migration-check` is part of
+  the gates. **Done.**
+- Repository methods, as implemented: settlement imports record/find by hash/find
+  by id/mark failed; settlement rows insert/list/find/mark matched/mark posted/mark
+  excluded; reconciliation create/complete/fail/sign off/find latest/find signed
+  off/list; exceptions upsert for run/list/find/resolve; anomalies
+  record/list/acknowledge. **Done.**
+- `jsonb()` in `packages/db/src/connection.ts` encodes every jsonb write: `pg`
+  serialises a JS array as a Postgres array literal, which a jsonb column
+  rejects — a checklist is an array and would only fail at runtime.
+- Tests: cross-tenant isolation, duplicate file/row hashes, run immutability and
+  idempotent sign-off, settlement-evidence immutability, open-exception
+  carry-forward, anomaly window dedupe. **Done.**
 - Commit: `feat(db): reconciliation, settlement and anomaly tables`.
 
 ## Step 3: Domain rules

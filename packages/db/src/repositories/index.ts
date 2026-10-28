@@ -8,6 +8,13 @@ import { CollectorCashRepository } from "./collector-cash.js";
 import { DeviceRepository } from "./device.js";
 import { DisputeRepository } from "./dispute.js";
 import { OwnerRepository } from "./owner.js";
+import {
+  AnomalyEventRepository,
+  ReconciliationExceptionRepository,
+  ReconciliationRepository,
+  SettlementImportRepository,
+  SettlementRepository,
+} from "./reconciliation.js";
 import { ScanRepository } from "./scan.js";
 import {
   AccountRepository,
@@ -38,6 +45,7 @@ export * from "./dispute.js";
 export * from "./ledger.js";
 export * from "./owner.js";
 export * from "./payments.js";
+export * from "./reconciliation.js";
 export * from "./role.js";
 export * from "./scan.js";
 export * from "./session.js";
@@ -70,6 +78,11 @@ export function repositories(db: Transaction<Database>): {
   scans: ScanRepository;
   disputes: DisputeRepository;
   collectorCash: CollectorCashRepository;
+  settlementImports: SettlementImportRepository;
+  settlements: SettlementRepository;
+  reconciliation: ReconciliationRepository;
+  exceptions: ReconciliationExceptionRepository;
+  anomalies: AnomalyEventRepository;
 } {
   return {
     tenants: new TenantRepository(db),
@@ -95,5 +108,10 @@ export function repositories(db: Transaction<Database>): {
     scans: new ScanRepository(db),
     disputes: new DisputeRepository(db),
     collectorCash: new CollectorCashRepository(db),
+    settlementImports: new SettlementImportRepository(db),
+    settlements: new SettlementRepository(db),
+    reconciliation: new ReconciliationRepository(db),
+    exceptions: new ReconciliationExceptionRepository(db),
+    anomalies: new AnomalyEventRepository(db),
   };
 }
