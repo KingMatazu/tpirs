@@ -26,6 +26,8 @@ function toWalletJson(wallet: {
   floatCeilingMinor: bigint | null;
   balanceMinor: bigint;
   openIntakeTotalMinor: bigint;
+  oldestOpenIntakeAt: Date | null;
+  lastDepositAt: Date | null;
 }) {
   return {
     collectorUserId: wallet.collectorUserId,
@@ -37,6 +39,9 @@ function toWalletJson(wallet: {
       wallet.floatCeilingMinor === null ? null : wallet.floatCeilingMinor.toString(),
     balanceMinor: wallet.balanceMinor.toString(),
     openIntakeTotalMinor: wallet.openIntakeTotalMinor.toString(),
+    oldestOpenIntakeAt:
+      wallet.oldestOpenIntakeAt === null ? null : wallet.oldestOpenIntakeAt.toISOString(),
+    lastDepositAt: wallet.lastDepositAt === null ? null : wallet.lastDepositAt.toISOString(),
   };
 }
 

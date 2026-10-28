@@ -9,12 +9,7 @@
     "schemas": {
       "def-0": {
         "type": "object",
-        "required": [
-          "userId",
-          "tenantId",
-          "displayName",
-          "roles"
-        ],
+        "required": ["userId", "tenantId", "displayName", "roles"],
         "properties": {
           "userId": {
             "type": "string"
@@ -55,11 +50,7 @@
           },
           "status": {
             "type": "string",
-            "enum": [
-              "active",
-              "suspended",
-              "retired"
-            ]
+            "enum": ["active", "suspended", "retired"]
           },
           "zoneId": {
             "type": "string",
@@ -84,12 +75,7 @@
       },
       "def-2": {
         "type": "object",
-        "required": [
-          "id",
-          "displayName",
-          "phone",
-          "phoneVerifiedAt"
-        ],
+        "required": ["id", "displayName", "phone", "phoneVerifiedAt"],
         "properties": {
           "id": {
             "type": "string"
@@ -129,12 +115,7 @@
           },
           "status": {
             "type": "string",
-            "enum": [
-              "applied",
-              "credited",
-              "suspense",
-              "rejected"
-            ]
+            "enum": ["applied", "credited", "suspense", "rejected"]
           },
           "amountMinor": {
             "type": "string"
@@ -177,14 +158,7 @@
       },
       "def-4": {
         "type": "object",
-        "required": [
-          "id",
-          "kind",
-          "recipient",
-          "body",
-          "status",
-          "createdAt"
-        ],
+        "required": ["id", "kind", "recipient", "body", "status", "createdAt"],
         "properties": {
           "id": {
             "type": "string"
@@ -265,17 +239,11 @@
       },
       "def-6": {
         "type": "object",
-        "required": [
-          "error"
-        ],
+        "required": ["error"],
         "properties": {
           "error": {
             "type": "object",
-            "required": [
-              "code",
-              "message",
-              "requestId"
-            ],
+            "required": ["code", "message", "requestId"],
             "properties": {
               "code": {
                 "type": "string"
@@ -301,7 +269,9 @@
           "overdueSince",
           "floatCeilingMinor",
           "balanceMinor",
-          "openIntakeTotalMinor"
+          "openIntakeTotalMinor",
+          "oldestOpenIntakeAt",
+          "lastDepositAt"
         ],
         "properties": {
           "collectorUserId": {
@@ -309,10 +279,7 @@
           },
           "status": {
             "type": "string",
-            "enum": [
-              "active",
-              "frozen"
-            ]
+            "enum": ["active", "frozen"]
           },
           "frozenAt": {
             "type": "string",
@@ -335,6 +302,14 @@
           },
           "openIntakeTotalMinor": {
             "type": "string"
+          },
+          "oldestOpenIntakeAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "lastDepositAt": {
+            "type": "string",
+            "nullable": true
           }
         },
         "title": "CashWallet"
@@ -378,11 +353,7 @@
           },
           "status": {
             "type": "string",
-            "enum": [
-              "open",
-              "matched",
-              "reversed"
-            ]
+            "enum": ["open", "matched", "reversed"]
           },
           "receiptNumber": {
             "type": "string"
@@ -427,11 +398,7 @@
           },
           "status": {
             "type": "string",
-            "enum": [
-              "matched",
-              "partial",
-              "suspense"
-            ]
+            "enum": ["matched", "partial", "suspense"]
           },
           "createdAt": {
             "type": "string"
@@ -450,11 +417,7 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": [
-                  "tenantSlug",
-                  "username",
-                  "password"
-                ],
+                "required": ["tenantSlug", "username", "password"],
                 "properties": {
                   "tenantSlug": {
                     "type": "string"
@@ -470,10 +433,7 @@
                   },
                   "device": {
                     "type": "object",
-                    "required": [
-                      "deviceId",
-                      "platform"
-                    ],
+                    "required": ["deviceId", "platform"],
                     "properties": {
                       "deviceId": {
                         "type": "string"
@@ -495,13 +455,7 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": [
-                    "token",
-                    "expiresAt",
-                    "user",
-                    "refreshToken",
-                    "refreshExpiresAt"
-                  ],
+                  "required": ["token", "expiresAt", "user", "refreshToken", "refreshExpiresAt"],
                   "properties": {
                     "token": {
                       "type": "string"
@@ -535,13 +489,7 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": [
-                    "token",
-                    "expiresAt",
-                    "user",
-                    "refreshToken",
-                    "refreshExpiresAt"
-                  ],
+                  "required": ["token", "expiresAt", "user", "refreshToken", "refreshExpiresAt"],
                   "properties": {
                     "token": {
                       "type": "string"
@@ -584,13 +532,7 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": [
-                    "userId",
-                    "tenantId",
-                    "displayName",
-                    "roles",
-                    "permissions"
-                  ],
+                  "required": ["userId", "tenantId", "displayName", "roles", "permissions"],
                   "properties": {
                     "userId": {
                       "type": "string"
@@ -714,10 +656,7 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": [
-                    "entries",
-                    "nextCursor"
-                  ],
+                  "required": ["entries", "nextCursor"],
                   "properties": {
                     "entries": {
                       "type": "array",
@@ -764,9 +703,7 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": [
-                    "payments"
-                  ],
+                  "required": ["payments"],
                   "properties": {
                     "payments": {
                       "type": "array",
@@ -801,9 +738,7 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": [
-                    "payments"
-                  ],
+                  "required": ["payments"],
                   "properties": {
                     "payments": {
                       "type": "array",
@@ -838,9 +773,7 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": [
-                    "messages"
-                  ],
+                  "required": ["messages"],
                   "properties": {
                     "messages": {
                       "type": "array",
@@ -864,9 +797,7 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": [
-                  "assetId"
-                ],
+                "required": ["assetId"],
                 "properties": {
                   "assetId": {
                     "type": "string"
@@ -893,9 +824,7 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": [
-                    "payment"
-                  ],
+                  "required": ["payment"],
                   "properties": {
                     "payment": {
                       "$ref": "#/components/schemas/def-3"
@@ -916,11 +845,7 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": [
-                  "collectorUserId",
-                  "clientReference",
-                  "amountMinor"
-                ],
+                "required": ["collectorUserId", "clientReference", "amountMinor"],
                 "properties": {
                   "collectorUserId": {
                     "type": "string"
@@ -1058,9 +983,7 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": [
-                    "wallets"
-                  ],
+                  "required": ["wallets"],
                   "properties": {
                     "wallets": {
                       "type": "array",
@@ -1111,10 +1034,7 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": [
-                    "wallet",
-                    "intakes"
-                  ],
+                  "required": ["wallet", "intakes"],
                   "properties": {
                     "wallet": {
                       "$ref": "#/components/schemas/def-7"
@@ -1165,9 +1085,7 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": [
-                  "reason"
-                ],
+                "required": ["reason"],
                 "properties": {
                   "reason": {
                     "type": "string"
@@ -1194,9 +1112,7 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": [
-                    "wallet"
-                  ],
+                  "required": ["wallet"],
                   "properties": {
                     "wallet": {
                       "$ref": "#/components/schemas/def-7"
@@ -1247,9 +1163,7 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": [
-                  "reason"
-                ],
+                "required": ["reason"],
                 "properties": {
                   "reason": {
                     "type": "string"
@@ -1276,9 +1190,7 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": [
-                    "wallet"
-                  ],
+                  "required": ["wallet"],
                   "properties": {
                     "wallet": {
                       "$ref": "#/components/schemas/def-7"
@@ -1364,11 +1276,7 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": [
-                    "deposits",
-                    "nextCursor",
-                    "hasMore"
-                  ],
+                  "required": ["deposits", "nextCursor", "hasMore"],
                   "properties": {
                     "deposits": {
                       "type": "array",
@@ -1399,9 +1307,7 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": [
-                  "intakeId"
-                ],
+                "required": ["intakeId"],
                 "properties": {
                   "intakeId": {
                     "type": "string"
@@ -1445,11 +1351,7 @@
                     },
                     "outcome": {
                       "type": "string",
-                      "enum": [
-                        "matched",
-                        "partial",
-                        "suspense"
-                      ]
+                      "enum": ["matched", "partial", "suspense"]
                     },
                     "collectorUserId": {
                       "type": "string",
@@ -1520,9 +1422,7 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": [
-                  "reason"
-                ],
+                "required": ["reason"],
                 "properties": {
                   "reason": {
                     "type": "string"
@@ -1549,11 +1449,7 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": [
-                    "intakeId",
-                    "reversalRequestId",
-                    "status"
-                  ],
+                  "required": ["intakeId", "reversalRequestId", "status"],
                   "properties": {
                     "intakeId": {
                       "type": "string"
@@ -1646,9 +1542,7 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": [
-                    "instruction"
-                  ],
+                  "required": ["instruction"],
                   "properties": {
                     "instruction": {
                       "type": "object",
@@ -1727,10 +1621,7 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": [
-                  "assetTypeKey",
-                  "attributes"
-                ],
+                "required": ["assetTypeKey", "attributes"],
                 "properties": {
                   "assetTypeKey": {
                     "type": "string"
@@ -1747,10 +1638,7 @@
                   },
                   "owner": {
                     "type": "object",
-                    "required": [
-                      "displayName",
-                      "phone"
-                    ],
+                    "required": ["displayName", "phone"],
                     "properties": {
                       "displayName": {
                         "type": "string"
@@ -1772,9 +1660,7 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": [
-                    "asset"
-                  ],
+                  "required": ["asset"],
                   "properties": {
                     "asset": {
                       "$ref": "#/components/schemas/def-1"
@@ -1844,9 +1730,7 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": [
-                    "assets"
-                  ],
+                  "required": ["assets"],
                   "properties": {
                     "assets": {
                       "type": "array",
@@ -1881,10 +1765,7 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": [
-                    "asset",
-                    "photos"
-                  ],
+                  "required": ["asset", "photos"],
                   "properties": {
                     "asset": {
                       "$ref": "#/components/schemas/def-1"
@@ -1893,10 +1774,7 @@
                       "type": "array",
                       "items": {
                         "type": "object",
-                        "required": [
-                          "id",
-                          "url"
-                        ],
+                        "required": ["id", "url"],
                         "properties": {
                           "id": {
                             "type": "string"
@@ -1924,9 +1802,7 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": [
-                  "attributes"
-                ],
+                "required": ["attributes"],
                 "properties": {
                   "attributes": {
                     "type": "object",
@@ -1954,9 +1830,7 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": [
-                    "asset"
-                  ],
+                  "required": ["asset"],
                   "properties": {
                     "asset": {
                       "$ref": "#/components/schemas/def-1"
@@ -1977,10 +1851,7 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": [
-                  "contentType",
-                  "content"
-                ],
+                "required": ["contentType", "content"],
                 "properties": {
                   "contentType": {
                     "type": "string"
@@ -2010,9 +1881,7 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": [
-                    "ok"
-                  ],
+                  "required": ["ok"],
                   "properties": {
                     "ok": {
                       "type": "boolean"
@@ -2090,9 +1959,7 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": [
-                    "asset"
-                  ],
+                  "required": ["asset"],
                   "properties": {
                     "asset": {
                       "$ref": "#/components/schemas/def-1"
@@ -2113,10 +1980,7 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": [
-                  "displayName",
-                  "phone"
-                ],
+                "required": ["displayName", "phone"],
                 "properties": {
                   "displayName": {
                     "type": "string"
@@ -2136,9 +2000,7 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": [
-                    "owner"
-                  ],
+                  "required": ["owner"],
                   "properties": {
                     "owner": {
                       "$ref": "#/components/schemas/def-2"
@@ -2170,9 +2032,7 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": [
-                    "owner"
-                  ],
+                  "required": ["owner"],
                   "properties": {
                     "owner": {
                       "$ref": "#/components/schemas/def-2"
@@ -2212,9 +2072,7 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": [
-                    "sent"
-                  ],
+                  "required": ["sent"],
                   "properties": {
                     "sent": {
                       "type": "boolean"
@@ -2235,10 +2093,7 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": [
-                  "ownerId",
-                  "code"
-                ],
+                "required": ["ownerId", "code"],
                 "properties": {
                   "ownerId": {
                     "type": "string"
@@ -2258,9 +2113,7 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": [
-                    "owner"
-                  ],
+                  "required": ["owner"],
                   "properties": {
                     "owner": {
                       "$ref": "#/components/schemas/def-2"
@@ -2323,10 +2176,7 @@
                       "type": "array",
                       "items": {
                         "type": "object",
-                        "required": [
-                          "id",
-                          "url"
-                        ],
+                        "required": ["id", "url"],
                         "properties": {
                           "id": {
                             "type": "string"
@@ -2342,11 +2192,7 @@
                     },
                     "paymentStatus": {
                       "type": "string",
-                      "enum": [
-                        "paid",
-                        "no_payment_recorded",
-                        "unknown"
-                      ]
+                      "enum": ["paid", "no_payment_recorded", "unknown"]
                     },
                     "businessDate": {
                       "type": "string"
@@ -2388,9 +2234,7 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": [
-                    "results"
-                  ],
+                  "required": ["results"],
                   "properties": {
                     "results": {
                       "type": "array",
@@ -2424,11 +2268,7 @@
                           },
                           "paymentStatus": {
                             "type": "string",
-                            "enum": [
-                              "paid",
-                              "no_payment_recorded",
-                              "unknown"
-                            ]
+                            "enum": ["paid", "no_payment_recorded", "unknown"]
                           },
                           "businessDate": {
                             "type": "string"
@@ -2482,10 +2322,7 @@
                   "properties": {
                     "mode": {
                       "type": "string",
-                      "enum": [
-                        "snapshot",
-                        "delta"
-                      ]
+                      "enum": ["snapshot", "delta"]
                     },
                     "businessDate": {
                       "type": "string"
@@ -2575,22 +2412,14 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": [
-                  "clientScanId",
-                  "source",
-                  "scannedAt"
-                ],
+                "required": ["clientScanId", "source", "scannedAt"],
                 "properties": {
                   "clientScanId": {
                     "type": "string"
                   },
                   "source": {
                     "type": "string",
-                    "enum": [
-                      "qr",
-                      "manual",
-                      "offline_queue"
-                    ]
+                    "enum": ["qr", "manual", "offline_queue"]
                   },
                   "token": {
                     "type": "string"
@@ -2648,19 +2477,11 @@
                     },
                     "authoritativeStatus": {
                       "type": "string",
-                      "enum": [
-                        "paid",
-                        "no_payment_recorded",
-                        "unknown"
-                      ]
+                      "enum": ["paid", "no_payment_recorded", "unknown"]
                     },
                     "paymentStatus": {
                       "type": "string",
-                      "enum": [
-                        "paid",
-                        "no_payment_recorded",
-                        "unknown"
-                      ]
+                      "enum": ["paid", "no_payment_recorded", "unknown"]
                     },
                     "shortCode": {
                       "type": "string"
@@ -2710,11 +2531,7 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": [
-                    "scans",
-                    "nextCursor",
-                    "hasMore"
-                  ],
+                  "required": ["scans", "nextCursor", "hasMore"],
                   "properties": {
                     "scans": {
                       "type": "array",
@@ -2746,12 +2563,7 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": [
-                  "clientDisputeId",
-                  "reason",
-                  "description",
-                  "occurredAt"
-                ],
+                "required": ["clientDisputeId", "reason", "description", "occurredAt"],
                 "properties": {
                   "clientDisputeId": {
                     "type": "string"
@@ -2779,10 +2591,7 @@
                   },
                   "evidence": {
                     "type": "object",
-                    "required": [
-                      "contentType",
-                      "contentBase64"
-                    ],
+                    "required": ["contentType", "contentBase64"],
                     "properties": {
                       "contentType": {
                         "type": "string"
@@ -2804,10 +2613,7 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": [
-                    "disputeId",
-                    "status"
-                  ],
+                  "required": ["disputeId", "status"],
                   "properties": {
                     "disputeId": {
                       "type": "string"
@@ -2866,11 +2672,7 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": [
-                    "disputes",
-                    "nextCursor",
-                    "hasMore"
-                  ],
+                  "required": ["disputes", "nextCursor", "hasMore"],
                   "properties": {
                     "disputes": {
                       "type": "array",
@@ -2913,9 +2715,7 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": [
-                    "dispute"
-                  ],
+                  "required": ["dispute"],
                   "properties": {
                     "dispute": {
                       "type": "object",
@@ -2938,18 +2738,11 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": [
-                    "status",
-                    "service",
-                    "region",
-                    "version"
-                  ],
+                  "required": ["status", "service", "region", "version"],
                   "properties": {
                     "status": {
                       "type": "string",
-                      "enum": [
-                        "ok"
-                      ]
+                      "enum": ["ok"]
                     },
                     "service": {
                       "type": "string"
@@ -2977,15 +2770,11 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": [
-                    "status"
-                  ],
+                  "required": ["status"],
                   "properties": {
                     "status": {
                       "type": "string",
-                      "enum": [
-                        "ready"
-                      ]
+                      "enum": ["ready"]
                     }
                   }
                 }
@@ -2998,15 +2787,11 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": [
-                    "status"
-                  ],
+                  "required": ["status"],
                   "properties": {
                     "status": {
                       "type": "string",
-                      "enum": [
-                        "not_ready"
-                      ]
+                      "enum": ["not_ready"]
                     }
                   }
                 }

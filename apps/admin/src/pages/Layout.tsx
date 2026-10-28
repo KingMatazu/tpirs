@@ -1,4 +1,4 @@
-import { ClipboardList, LogOut, MessageSquare, ScrollText, Settings, Smartphone, Wallet, type LucideIcon } from "lucide-react";
+import { Banknote, ClipboardList, LogOut, MessageSquare, ScrollText, Settings, Smartphone, Wallet, type LucideIcon } from "lucide-react";
 import type { ReactElement } from "react";
 import { currentPath, navigate, useRoute } from "../lib/router.js";
 import { TenantTheme } from "../components/Theme.js";
@@ -20,6 +20,7 @@ interface NavEntry {
 export const NAV_ENTRIES: readonly NavEntry[] = [
   { path: "/registry", label: "Registry", permission: "asset:read", icon: ClipboardList },
   { path: "/payments", label: "Payments", permission: "payment:read", icon: Wallet },
+  { path: "/collectors", label: "Collectors", permission: "cash:read", icon: Banknote },
   { path: "/channels", label: "Channels", permission: "tenant:read", icon: MessageSquare },
   { path: "/ussd", label: "USSD simulator", permission: "tenant:read", icon: Smartphone },
   { path: "/config", label: "Configuration", permission: "tenant:read", icon: Settings },

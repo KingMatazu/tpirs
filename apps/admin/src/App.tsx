@@ -7,6 +7,7 @@ import { ConfigViewerPage } from "./pages/ConfigViewerPage.js";
 import { ChannelsPage } from "./pages/ChannelsPage.js";
 import { UssdSimulatorPage } from "./pages/UssdSimulatorPage.js";
 import { AuditPage } from "./pages/AuditPage.js";
+import { CollectorsPage } from "./pages/CollectorsPage.js";
 import { PlaceholderPage } from "./pages/PlaceholderPage.js";
 
 const FALLBACK_ROUTE = "/registry";
@@ -37,6 +38,8 @@ function pageFor(route: string): ReactElement {
       return <PlaceholderPage title="Asset registry" step="7" />;
     case "/payments":
       return <PlaceholderPage title="Payments" step="8" />;
+    case "/collectors":
+      return <CollectorsPage />;
     case "/channels":
       return <ChannelsPage />;
     case "/ussd":

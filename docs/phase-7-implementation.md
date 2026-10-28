@@ -495,20 +495,47 @@ request, moves no money, and an unknown intake is 404; deposit instruction
 provisioned through the mock adapter. `packages/api-client/src/index.test.ts`
 adds the six money paths to the idempotency test.
 
-## Step 8: Admin surface (`apps/admin`)
+## Step 8: Admin surface (`apps/admin`, completed)
 
-- `CollectorsPage`: wallet list with derived balance, status, oldest open
-  intake age, and last deposit. Nav entry gated on `cash:read`, following
-  `NAV_ENTRIES`.
+- `CollectorsPage` (`apps/admin/src/pages/CollectorsPage.tsx`): wallet list with
+  derived balance, status, oldest open intake age, and last deposit, overdue
+  wallets first. Nav entry "Collectors" is gated on `cash:read` and follows
+  `NAV_ENTRIES`; `App.tsx` maps `/collectors`.
 - Wallet detail: freeze / unfreeze with a required reason, open intakes,
   deposits and their match state, and a "take cash" form (asset lookup, amount
   pre-filled from the fee, client reference generated in the browser).
-- Deposit match dialog: pick a suspense deposit, pick an open intake, confirm.
+- Deposit match: pick a suspense deposit, pick an open intake, confirm. It is an
+  inline form rather than a modal dialog because `components/ui.tsx` has no
+  dialog primitive yet; opening one would mean adding a dependency for a single
+  screen. The route and payload are the same either way.
+- **The list needed two new wallet fields to avoid N+1 client fetches.**
+  `GET /v1/cash/wallets` now returns `oldestOpenIntakeAt` and `lastDepositAt` per
+  wallet (`oldestOpenIntakeAt`/`lastDepositAt` on `CashWalletView`, backed by two
+  grouped lookups in the collector-cash repository) — the two columns the plan
+  asks for, computed in SQL instead of one detail request per row.
+- **Permissions shape the affordances, the server still enforces.** Each button
+  reads its own permission (`cash:intake`, `cash:freeze`, `cash:unfreeze`,
+  `cash:deposit:read`, `cash:deposit:match`), so a supervisor sees a disabled
+  "Unfreeze wallet" with "Only finance can unfreeze" instead of a button that
+  403s, and an intake-only role never fires the deposits query (which needs
+  `cash:deposit:read`).
+- **The amount pre-fill is a convenience, never the decision.** It takes the
+  newest fee rule effective on the current date (`prefillAmountMinor`), and the
+  server still refuses anything that is not exactly the day's fee
+  (`amount_mismatch`), so a stale rule surfaces as an error instead of taking
+  the wrong cash. A rule that is not effective yet pre-fills nothing.
+- **The client reference is minted in the browser and rotated after each
+  intake**, so a double-click dedupes to the same receipt while the next driver
+  gets a fresh key (ADR 0031).
+- Pure rules live in `apps/admin/src/lib/collectorsView.ts` (pre-fill selection,
+  overdue derivation, held-hours, match candidates, labels, reference minting)
+  so they are unit-testable without rendering.
 - Tests use the existing conventions: `test-support/tenant.ts` fixture, stubbed
-  transport through `stubRelativeRequests()` + `setRuntimeFetch(...)`, manual
-  `cleanup()` in `afterEach`, and the tenant fixture must carry the new cash
-  message keys in every seeded language or the config validator fails the
-  suite.
+  transport through `stubRelativeRequests()` + `vi.stubGlobal("fetch", ...)`,
+  manual `cleanup()` in `afterEach`. The page test drives the whole workflow
+  (list, no-permission state, take cash with its request body, freeze with a
+  required reason, finance-only unfreeze, deposit match) and the helper test
+  pins the pre-fill, overdue, held-hours, candidate and label rules.
 
 ## Step 9: Seed and tenant template
 

@@ -42,6 +42,10 @@ export interface CashWalletView {
   readonly balanceMinor: bigint;
   /** Sum of the collector's open intakes, minor units. */
   readonly openIntakeTotalMinor: bigint;
+  /** When the oldest still-open intake was recorded; null when nothing is open. */
+  readonly oldestOpenIntakeAt: Date | null;
+  /** When this collector's most recent deposit arrived; null before the first. */
+  readonly lastDepositAt: Date | null;
 }
 
 export interface CashWalletServiceDeps {
@@ -173,6 +177,14 @@ export class CashWalletService {
         wallet.collectorUserId,
       ),
       openIntakeTotalMinor: await repos.collectorCash.sumOpenIntakes(
+        wallet.tenantId,
+        wallet.collectorUserId,
+      ),
+      oldestOpenIntakeAt: await repos.collectorCash.oldestOpenIntakeAt(
+        wallet.tenantId,
+        wallet.collectorUserId,
+      ),
+      lastDepositAt: await repos.collectorCash.lastDepositAt(
         wallet.tenantId,
         wallet.collectorUserId,
       ),

@@ -200,6 +200,8 @@ const cashWallet = {
     "floatCeilingMinor",
     "balanceMinor",
     "openIntakeTotalMinor",
+    "oldestOpenIntakeAt",
+    "lastDepositAt",
   ],
   properties: {
     collectorUserId: { type: "string" },
@@ -211,6 +213,9 @@ const cashWallet = {
     /** Derived COLLECTOR_CASH position; bigint rows serialize as strings. */
     balanceMinor: { type: "string" },
     openIntakeTotalMinor: { type: "string" },
+    /** Oldest still-open intake, and the last deposit, for the collector list. */
+    oldestOpenIntakeAt: { type: "string", nullable: true },
+    lastDepositAt: { type: "string", nullable: true },
   },
 };
 

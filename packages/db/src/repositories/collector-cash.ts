@@ -187,6 +187,29 @@ export class CollectorCashRepository {
       .execute();
   }
 
+  /** When the collector's oldest still-open intake was recorded, if any. */
+  async oldestOpenIntakeAt(tenantId: string, collectorUserId: string): Promise<Date | null> {
+    const row = await this.db
+      .selectFrom("cashIntakes")
+      .select((eb) => eb.fn.min("recordedAt").as("oldest"))
+      .where("tenantId", "=", tenantId)
+      .where("collectorUserId", "=", collectorUserId)
+      .where("status", "=", "open")
+      .executeTakeFirst();
+    return row?.oldest ?? null;
+  }
+
+  /** When this collector's most recent deposit arrived, if any. */
+  async lastDepositAt(tenantId: string, collectorUserId: string): Promise<Date | null> {
+    const row = await this.db
+      .selectFrom("cashDeposits")
+      .select((eb) => eb.fn.max("createdAt").as("latest"))
+      .where("tenantId", "=", tenantId)
+      .where("collectorUserId", "=", collectorUserId)
+      .executeTakeFirst();
+    return row?.latest ?? null;
+  }
+
   /**
    * Active wallets that hold at least one open intake older than `cutoff`.
    * The deadline sweeper works from these; the frozen ones have already been

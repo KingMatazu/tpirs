@@ -67,3 +67,14 @@ export function describeError(error: unknown): { message: string; requestId?: st
   if (error instanceof Error) return { message: error.message };
   return { message: "Something went wrong" };
 }
+
+/**
+ * Fire-and-forget toast for event handlers.
+ *
+ * The store method is stable, but extracting it through a selector reads as an
+ * unbound method in the browser and trips `@typescript-eslint/unbound-method`;
+ * a plain function that reaches the current store is both accurate and typed.
+ */
+export function pushToast(input: ToastInput): void {
+  useToasts.getState().push(input);
+}
