@@ -91,7 +91,16 @@ export interface NormalizedPaymentEvent {
 
 export interface Settlement {
   readonly providerReference: string;
+  /** Gross amount that was charged; not the amount that reached the bank. */
   readonly amount: Money;
+  /**
+   * The gateway's cut, when the feed reports it (ADR 0035/0036). Absent means
+   * "the adapter does not know": core then treats the whole difference between
+   * `amount` and the bank amount as a fee only while it is inside the tenant's
+   * fee tolerance, and as an exception otherwise. An adapter must never
+   * compute a fee it was not told.
+   */
+  readonly fee?: Money;
   readonly settledAt: Date;
   readonly raw: unknown;
 }
