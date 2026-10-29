@@ -40,8 +40,12 @@ export function Field(
     <label className="block">
       <span className="mb-1 block text-sm font-medium text-slate-700">{props.label}</span>
       {props.children}
-      {props.hint !== undefined ? <span className="mt-1 block text-xs text-slate-500">{props.hint}</span> : null}
-      {props.error !== undefined ? <span className="mt-1 block text-xs text-red-600">{props.error}</span> : null}
+      {props.hint !== undefined ? (
+        <span className="mt-1 block text-xs text-slate-500">{props.hint}</span>
+      ) : null}
+      {props.error !== undefined ? (
+        <span className="mt-1 block text-xs text-red-600">{props.error}</span>
+      ) : null}
     </label>
   );
 }
@@ -93,11 +97,26 @@ export function Card(
   );
 }
 
-export function Badge(props: Readonly<{ children: ReactNode; tone?: "neutral" | "brand" }>): ReactElement {
+export type BadgeTone = "neutral" | "brand" | "positive" | "warning" | "danger";
+
+/**
+ * Tone → classes. `brand` is the tenant accent (signed off, selected); the
+ * semantic tones exist so a blocking exception reads red without any page
+ * hand-rolling colours.
+ */
+const BADGE_TONES: Readonly<Record<BadgeTone, string>> = {
+  neutral: "bg-slate-100 text-slate-700",
+  brand: "bg-[var(--tpirs-color-accent)] text-slate-900",
+  positive: "bg-emerald-100 text-emerald-800",
+  warning: "bg-amber-100 text-amber-800",
+  danger: "bg-red-100 text-red-800",
+};
+
+export function Badge(props: Readonly<{ children: ReactNode; tone?: BadgeTone }>): ReactElement {
   return (
     <span
       className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-        props.tone === "brand" ? "bg-[var(--tpirs-color-accent)] text-slate-900" : "bg-slate-100 text-slate-700"
+        BADGE_TONES[props.tone ?? "neutral"]
       }`}
     >
       {props.children}

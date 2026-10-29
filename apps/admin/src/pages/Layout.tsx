@@ -1,4 +1,16 @@
-import { Banknote, ClipboardList, LogOut, MessageSquare, ScrollText, Settings, Smartphone, Wallet, type LucideIcon } from "lucide-react";
+import {
+  Banknote,
+  ClipboardList,
+  FileBarChart,
+  LogOut,
+  MessageSquare,
+  Scale,
+  ScrollText,
+  Settings,
+  Smartphone,
+  Wallet,
+  type LucideIcon,
+} from "lucide-react";
 import type { ReactElement } from "react";
 import { currentPath, navigate, useRoute } from "../lib/router.js";
 import { TenantTheme } from "../components/Theme.js";
@@ -21,6 +33,13 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   { path: "/registry", label: "Registry", permission: "asset:read", icon: ClipboardList },
   { path: "/payments", label: "Payments", permission: "payment:read", icon: Wallet },
   { path: "/collectors", label: "Collectors", permission: "cash:read", icon: Banknote },
+  {
+    path: "/reconciliation",
+    label: "Reconciliation",
+    permission: "reconciliation:read",
+    icon: Scale,
+  },
+  { path: "/reports", label: "Reports", permission: "report:read", icon: FileBarChart },
   { path: "/channels", label: "Channels", permission: "tenant:read", icon: MessageSquare },
   { path: "/ussd", label: "USSD simulator", permission: "tenant:read", icon: Smartphone },
   { path: "/config", label: "Configuration", permission: "tenant:read", icon: Settings },
@@ -31,7 +50,9 @@ export function Layout(props: Readonly<{ readonly children: ReactElement }>): Re
   const route = useRoute();
   const user = useSession((state) => state.user);
   const logout = useSession((state) => () => state.logout());
-  const hasPermission = useSession((state) => (permission: string) => state.hasPermission(permission));
+  const hasPermission = useSession(
+    (state) => (permission: string) => state.hasPermission(permission),
+  );
   const { config } = useTenantConfig();
   const appName = config?.config.branding.appName ?? "Admin";
 
@@ -49,7 +70,10 @@ export function Layout(props: Readonly<{ readonly children: ReactElement }>): Re
       <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
           <div className="flex items-center gap-2">
-            <span className="inline-block h-5 w-5 rounded bg-[var(--tpirs-color-primary)]" aria-hidden={true} />
+            <span
+              className="inline-block h-5 w-5 rounded bg-[var(--tpirs-color-primary)]"
+              aria-hidden={true}
+            />
             <span className="font-semibold text-slate-900">{appName}</span>
           </div>
           {user !== undefined ? (
@@ -58,7 +82,11 @@ export function Layout(props: Readonly<{ readonly children: ReactElement }>): Re
                 {user.displayName}{" "}
                 <span className="font-mono text-xs text-slate-400">{user.roles.join(", ")}</span>
               </span>
-              <button type="button" className="cursor-pointer text-slate-600 underline" onClick={() => void signOut()}>
+              <button
+                type="button"
+                className="cursor-pointer text-slate-600 underline"
+                onClick={() => void signOut()}
+              >
                 <span className="inline-flex items-center gap-1">
                   <LogOut size={14} /> Sign out
                 </span>
@@ -77,9 +105,13 @@ export function Layout(props: Readonly<{ readonly children: ReactElement }>): Re
                 <li key={entry.path}>
                   <button
                     type="button"
-                    onClick={() => { navigate(entry.path); }}
+                    onClick={() => {
+                      navigate(entry.path);
+                    }}
                     className={`flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm ${
-                      active ? "bg-[var(--tpirs-color-primary)] font-medium text-white" : "text-slate-700 hover:bg-white"
+                      active
+                        ? "bg-[var(--tpirs-color-primary)] font-medium text-white"
+                        : "text-slate-700 hover:bg-white"
                     }`}
                   >
                     <entry.icon size={16} />
