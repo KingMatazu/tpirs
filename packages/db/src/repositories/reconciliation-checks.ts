@@ -148,18 +148,25 @@ export class ReconciliationCheckRepository {
     };
   }
 
-  /** Paid obligation amounts for one business day. */
-  async paidObligationTotalsForDate(
+  /**
+   * Amount allocated to one business day's obligation periods.
+   *
+   * This is what revenue should have recognised for the day. It is the paid
+   * amount, not the amount owed: under `pay_per_use` a short payment is a
+   * wallet credit that partially funds the period, and the revenue recognised
+   * is the cash received, not the fee. Counting only `status = 'paid'` periods
+   * would flag every underpayment as a revenue mismatch.
+   */
+  async obligationAllocationTotalsForDate(
     tenantId: string,
     businessDate: string,
   ): Promise<{ count: number; amountMinor: bigint }> {
     const result = await sql<{ count: string; total: string | null }>`
       select count(*)::text as count,
-             coalesce(sum(amount_minor), 0)::text as total
+             coalesce(sum(amount_paid_minor), 0)::text as total
       from obligation_periods
       where tenant_id = ${tenantId}
         and business_date = ${businessDate}
-        and status = 'paid'
     `.execute(this.db);
     const row = result.rows[0];
     if (row === undefined) return { count: 0, amountMinor: 0n };

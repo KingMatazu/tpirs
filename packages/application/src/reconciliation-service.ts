@@ -427,11 +427,13 @@ export async function computeChecks(
     });
   }
 
-  // 5. Revenue recognised equals the day's paid obligations ------------------------------
-  const paidObligations = await checks.paidObligationTotalsForDate(tenantId, businessDate);
+  // 5. Revenue recognised equals what was allocated to the day's periods ---------------
+  // The expected side is the paid amount, not the fee owed: a short payment is a
+  // wallet credit and recognises only the cash received.
+  const allocations = await checks.obligationAllocationTotalsForDate(tenantId, businessDate);
   const revenue = await checks.dayRevenueTotals(tenantId, businessDate);
   const revenueItem = buildChecklistItem("revenue_recognised", null, null, {
-    expectedMinor: paidObligations.amountMinor,
+    expectedMinor: allocations.amountMinor,
     actualMinor: revenue.creditMinor,
     toleranceMinor: tolerances.toleranceMinor,
   });
@@ -443,11 +445,11 @@ export async function computeChecks(
       severity: "blocking",
       subjectType: "tenant",
       subjectId: businessDate,
-      expectedMinor: paidObligations.amountMinor,
+      expectedMinor: allocations.amountMinor,
       actualMinor: revenue.creditMinor,
-      differenceMinor: revenue.creditMinor - paidObligations.amountMinor,
+      differenceMinor: revenue.creditMinor - allocations.amountMinor,
       detail: {
-        paidPeriods: paidObligations.count,
+        periods: allocations.count,
         revenueDebitsMinor: revenue.debitMinor.toString(),
       },
     });

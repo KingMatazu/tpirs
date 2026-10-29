@@ -368,6 +368,9 @@ describeIntegration("PaymentService (integration)", () => {
     const row = await paymentRow(fixture.tenantId, result.paymentId ?? "");
     expect(row.status).toBe("credited");
     expect(row.businessDate).toBeNull();
+    // The provider name (not the webhook event id) is what a statement row is
+    // matched against later.
+    expect(row.provider).toBe("mock");
     expect(await walletBalance(fixture.tenantId, fixture.assetId)).toBe(5_000n);
 
     const outbox = await service.listOutbox({ tenantId: fixture.tenantId, paymentId: row.id });

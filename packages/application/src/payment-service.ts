@@ -506,6 +506,7 @@ export function createPaymentService(deps: PaymentServiceDeps): PaymentService {
       const payment = await creditToWallet({
         tx,
         tenantId,
+        provider,
         config,
         repos,
         event,
@@ -528,6 +529,7 @@ export function createPaymentService(deps: PaymentServiceDeps): PaymentService {
       const payment = await creditToWallet({
         tx,
         tenantId,
+        provider,
         config,
         repos,
         event,
@@ -609,6 +611,7 @@ export function createPaymentService(deps: PaymentServiceDeps): PaymentService {
   interface CreditInput {
     readonly tx: Transaction<import("@tpirs/db").Database>;
     readonly tenantId: string;
+    readonly provider: string;
     readonly config: TenantConfig;
     readonly repos: ReturnType<typeof repositories>;
     readonly event: ReturnType<PaymentProvider["normalizeWebhook"]>;
@@ -623,7 +626,7 @@ export function createPaymentService(deps: PaymentServiceDeps): PaymentService {
 
   /** Records a payment that settles no day: the money lands in the asset wallet. */
   async function creditToWallet(input: CreditInput): Promise<PaymentRow> {
-    const { tenantId, config, repos, event, assetId } = input;
+    const { tenantId, provider, config, repos, event, assetId } = input;
     const amountMinor = BigInt(event.amount.amount);
     const amount = { amount: Number(amountMinor), currency: event.amount.currency };
 
@@ -640,7 +643,9 @@ export function createPaymentService(deps: PaymentServiceDeps): PaymentService {
     });
 
     const payment = await repos.payments.create(tenantId, {
-      provider: input.event.providerEventId === "" ? "" : event.providerEventId,
+      // The gateway name, not the event id: settlement matching looks a
+      // credited payment up by (provider, provider reference).
+      provider,
       providerEventId: event.providerEventId,
       providerReference: event.providerReference,
       status: "credited",
