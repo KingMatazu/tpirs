@@ -90,7 +90,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
 
   if (options.identity !== undefined && options.db !== undefined) {
     app.addHook("onRequest", authenticate({ identity: options.identity, db: options.db }));
-    app.addHook("onResponse", auditOnSuccess(options.db));
+    app.addHook("onSend", auditOnSuccess(options.db));
     registerAuthRoutes(app, { identity: options.identity, db: options.db });
     registerConfigRoutes(app, { identity: options.identity, db: options.db });
     registerAuditRoutes(app, { db: options.db });
