@@ -182,10 +182,70 @@ featureFlags:
   offlineMode: true
   anomalyAlerts: true
 
+# Nightly reconciliation and anomaly evaluation (Phase 8).
+#
+# schedule: cron in the tenant timezone. Validated structurally at load; the
+#   worker resolves the next occurrence with cron-parser (D48). Default: 02:00.
+# toleranceMinor: whole-day slack for ledger, clearing and float differences,
+#   in minor units. Default: 0 (exact).
+# feeToleranceMinor: how much of a payment the gateway may keep before the
+#   difference becomes an exception instead of a fee leg (D45). Default: 0.
+# suspenseAgeingDays: suspense older than this many days raises a warning.
+#   Default: 7.
+# notifyRole: role that sees reconciliation and anomaly alerts. Default: none
+#   (the key is required).
+# anomalyRules: every rule ships disabled until pilot baselines exist (D46).
+#   Percent rules need thresholdPercent; suspense_growth needs thresholdMinor;
+#   collector_deposit_lag reads thresholdMinor as a multiple of the deposit
+#   deadline (default 1). "asset" is not a rule subject by design.
+# settlementImport: where the bank/gateway statement comes from and how its
+#   columns map (D21). Omit until a statement export exists; reconciliation
+#   still runs, it just cannot settle gateway fees from a file.
 reconciliation:
   schedule: "0 2 * * *"
   toleranceMinor: 100
+  feeToleranceMinor: 1000
+  suspenseAgeingDays: 7
   notifyRole: "finance_admin"
+  anomalyRules:
+    - key: "collector_volume_drop"
+      enabled: false
+      windowDays: 14
+      thresholdPercent: 30
+      severity: "warning"
+    - key: "collector_deposit_lag"
+      enabled: false
+      windowDays: 7
+      thresholdMinor: 1
+      severity: "warning"
+    - key: "zone_compliance_drop"
+      enabled: false
+      windowDays: 14
+      thresholdPercent: 20
+      severity: "warning"
+    - key: "officer_scan_volume_change"
+      enabled: false
+      windowDays: 14
+      thresholdPercent: 50
+      severity: "info"
+    - key: "suspense_growth"
+      enabled: false
+      windowDays: 7
+      thresholdMinor: 500000
+      severity: "warning"
+  settlementImport:
+    provider: "mock"
+    defaultCurrency: "NGN"
+    columns:
+      reference: "reference"
+      amount: "amount"
+      fee: "fee"
+      currency: "currency"
+      settledAt: "settled_at"
+      description: "narration"
+    dateFormat: "YYYY-MM-DD HH:mm:ss"
+    amountInMinorUnits: true
+    decimalSeparator: "."
 
 compliance:
   retentionDays: 2555

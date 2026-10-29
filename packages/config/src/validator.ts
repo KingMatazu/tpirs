@@ -68,6 +68,27 @@ export class Validator {
     return value;
   }
 
+  /** A finite number, optionally fractional (percent thresholds, rates). */
+  number(
+    value: unknown,
+    key: string,
+    options: { min?: number; max?: number } = {},
+  ): number | undefined {
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+      this.issue("schema_error", `${this.#path(key)} must be a number`, key);
+      return undefined;
+    }
+    if (options.min !== undefined && value < options.min) {
+      this.issue("schema_error", `${this.#path(key)} must be >= ${options.min}`, key);
+      return undefined;
+    }
+    if (options.max !== undefined && value > options.max) {
+      this.issue("schema_error", `${this.#path(key)} must be <= ${options.max}`, key);
+      return undefined;
+    }
+    return value;
+  }
+
   enum<T extends string>(value: unknown, key: string, allowed: readonly T[]): T | undefined {
     if (typeof value !== "string" || !allowed.includes(value as T)) {
       this.issue("schema_error", `${this.#path(key)} must be one of: ${allowed.join(", ")}`, key);

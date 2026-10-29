@@ -1,11 +1,16 @@
 import type { UssdAction } from "@tpirs/domain";
+import { SETTLEMENT_DATE_PATTERNS } from "@tpirs/domain";
 import { ACTION_MESSAGE_KEYS, OPERATIONAL_MESSAGE_KEYS } from "./channel-contract.js";
+import { cronExpressionError } from "./cron.js";
 import { TenantConfigError, TenantConfigValidationError } from "./errors.js";
 import type {
   AllocationOrder,
   ArrearsPolicy,
   ObligationFrequency,
   ObligationModel,
+  TenantAnomalyRule,
+  TenantAnomalyRuleKey,
+  TenantAnomalySeverity,
   TenantAssetAttribute,
   TenantAssetType,
   TenantBranding,
@@ -24,10 +29,13 @@ import type {
   TenantPayments,
   TenantProviderBinding,
   TenantReconciliation,
+  TenantSettlementColumns,
+  TenantSettlementImport,
   TenantSmsSettings,
   TenantUssdSettings,
   UnderpaymentPolicy,
 } from "./schema.js";
+import { TENANT_ANOMALY_RULE_KEYS } from "./schema.js";
 import { Validator } from "./validator.js";
 
 const OBLIGATION_MODELS: readonly ObligationModel[] = ["pay_per_use", "scheduled"];
@@ -40,6 +48,15 @@ const DEFAULT_UNDERPAYMENT_POLICY: UnderpaymentPolicy = "wallet";
 const ATTRIBUTE_TYPES = ["string", "number", "date", "enum"] as const;
 const MENU_NODE_TYPES = ["menu", "input", "action"] as const;
 const USSD_ACTIONS: readonly UssdAction[] = ["status", "pay", "pay_from_balance", "cancel"];
+
+/** Rules that compare a rate against a trailing mean, and so need a percent. */
+const PERCENT_ANOMALY_RULES: readonly TenantAnomalyRuleKey[] = [
+  "collector_volume_drop",
+  "zone_compliance_drop",
+  "officer_scan_volume_change",
+];
+const ANOMALY_SEVERITIES: readonly TenantAnomalySeverity[] = ["warning", "info"];
+const DECIMAL_SEPARATORS = [".", ","] as const;
 
 /**
  * Conservative technical defaults. Operations limits are configuration, not
@@ -964,16 +981,218 @@ function validateFeatureFlags(v: Validator, value: unknown): TenantFeatureFlags 
   return { disputes, prepay, offlineMode, anomalyAlerts };
 }
 
+/**
+ * One anomaly rule. The threshold a rule needs depends on what it measures, so
+ * the error names the rule rather than a generic "invalid threshold".
+ */
+function validateAnomalyRule(v: Validator, value: unknown): TenantAnomalyRule | undefined {
+  const obj = v.object(value, "rule");
+  if (obj === undefined) return undefined;
+
+  const key = v.enum(obj.key, "key", TENANT_ANOMALY_RULE_KEYS);
+  const enabled = v.boolean(obj.enabled, "enabled");
+  const windowDays = v.integer(obj.windowDays, "windowDays", { min: 1, max: 365 });
+  const severity = v.enum(obj.severity, "severity", ANOMALY_SEVERITIES);
+  const thresholdPercent =
+    obj.thresholdPercent === undefined
+      ? undefined
+      : v.number(obj.thresholdPercent, "thresholdPercent", { min: 0 });
+  const thresholdMinor =
+    obj.thresholdMinor === undefined
+      ? undefined
+      : v.integer(obj.thresholdMinor, "thresholdMinor", { min: 0 });
+
+  if (
+    key === undefined ||
+    enabled === undefined ||
+    windowDays === undefined ||
+    severity === undefined
+  ) {
+    return undefined;
+  }
+
+  if (thresholdPercent !== undefined && thresholdPercent <= 0) {
+    v.issue("schema_error", "thresholdPercent must be greater than zero", "thresholdPercent");
+    return undefined;
+  }
+  // Thresholds are required only for an enabled rule: a disabled rule may be
+  // parked in config while a tenant waits for pilot baselines, and enabling it
+  // without a usable threshold still fails at the next load.
+  if (enabled && PERCENT_ANOMALY_RULES.includes(key) && thresholdPercent === undefined) {
+    v.issue(
+      "schema_error",
+      `anomaly rule "${key}" needs thresholdPercent because it compares a rate to its baseline`,
+      "thresholdPercent",
+    );
+    return undefined;
+  }
+  if (enabled && key === "suspense_growth" && thresholdMinor === undefined) {
+    v.issue(
+      "schema_error",
+      'anomaly rule "suspense_growth" needs thresholdMinor as its suspense ceiling',
+      "thresholdMinor",
+    );
+    return undefined;
+  }
+
+  return {
+    key,
+    enabled,
+    windowDays,
+    severity,
+    ...(thresholdPercent === undefined ? {} : { thresholdPercent }),
+    ...(thresholdMinor === undefined ? {} : { thresholdMinor }),
+  };
+}
+
+function validateSettlementColumns(
+  v: Validator,
+  value: unknown,
+): TenantSettlementColumns | undefined {
+  const obj = v.object(value, "columns");
+  if (obj === undefined) return undefined;
+  const reference = v.string(obj.reference, "reference");
+  const amount = v.string(obj.amount, "amount");
+  const settledAt = v.string(obj.settledAt, "settledAt");
+  const fee = obj.fee === undefined ? undefined : v.string(obj.fee, "fee");
+  const currency = obj.currency === undefined ? undefined : v.string(obj.currency, "currency");
+  const description =
+    obj.description === undefined ? undefined : v.string(obj.description, "description");
+  if (reference === undefined || amount === undefined || settledAt === undefined) {
+    return undefined;
+  }
+  return {
+    reference,
+    amount,
+    settledAt,
+    ...(fee === undefined ? {} : { fee }),
+    ...(currency === undefined ? {} : { currency }),
+    ...(description === undefined ? {} : { description }),
+  };
+}
+
+function validateSettlementImport(
+  v: Validator,
+  value: unknown,
+): TenantSettlementImport | undefined {
+  const obj = v.object(value, "settlementImport");
+  if (obj === undefined) return undefined;
+
+  const provider = v.string(obj.provider, "provider");
+  const columns = validateSettlementColumns(v.child("columns"), obj.columns);
+  const dateFormat = v.enum(obj.dateFormat, "dateFormat", SETTLEMENT_DATE_PATTERNS);
+  const amountInMinorUnits = v.boolean(obj.amountInMinorUnits, "amountInMinorUnits");
+  const decimalSeparator =
+    obj.decimalSeparator === undefined
+      ? undefined
+      : v.enum(obj.decimalSeparator, "decimalSeparator", DECIMAL_SEPARATORS);
+  const defaultCurrency =
+    obj.defaultCurrency === undefined
+      ? undefined
+      : v.string(obj.defaultCurrency, "defaultCurrency");
+
+  if (defaultCurrency !== undefined && !/^[A-Z]{3}$/.test(defaultCurrency)) {
+    v.issue(
+      "schema_error",
+      "settlementImport.defaultCurrency must be an ISO 4217 code",
+      "defaultCurrency",
+    );
+    return undefined;
+  }
+
+  if (
+    provider === undefined ||
+    columns === undefined ||
+    dateFormat === undefined ||
+    amountInMinorUnits === undefined
+  ) {
+    return undefined;
+  }
+
+  return {
+    provider,
+    columns,
+    dateFormat,
+    amountInMinorUnits,
+    ...(decimalSeparator === undefined ? {} : { decimalSeparator }),
+    ...(defaultCurrency === undefined ? {} : { defaultCurrency }),
+  };
+}
+
 function validateReconciliation(v: Validator, value: unknown): TenantReconciliation | undefined {
   const obj = v.object(value, "reconciliation");
   if (obj === undefined) return undefined;
+
   const schedule = v.string(obj.schedule, "schedule");
+  if (schedule !== undefined) {
+    const cronError = cronExpressionError(schedule);
+    if (cronError !== undefined) {
+      v.issue(
+        "schema_error",
+        `reconciliation.schedule is not a valid cron: ${cronError}`,
+        "schedule",
+      );
+      return undefined;
+    }
+  }
+
   const toleranceMinor = v.integer(obj.toleranceMinor, "toleranceMinor", { min: 0 });
+  // Defaults: no fee slack, a week of suspense ageing, and every rule off.
+  const feeToleranceMinor =
+    obj.feeToleranceMinor === undefined
+      ? 0
+      : v.integer(obj.feeToleranceMinor, "feeToleranceMinor", { min: 0 });
+  const suspenseAgeingDays =
+    obj.suspenseAgeingDays === undefined
+      ? 7
+      : v.integer(obj.suspenseAgeingDays, "suspenseAgeingDays", { min: 0 });
   const notifyRole = v.string(obj.notifyRole, "notifyRole");
-  if (schedule === undefined || toleranceMinor === undefined || notifyRole === undefined) {
+
+  const anomalyRules: TenantAnomalyRule[] = [];
+  if (obj.anomalyRules !== undefined) {
+    const items = v.array(obj.anomalyRules, "anomalyRules");
+    const seen = new Set<string>();
+    items?.forEach((item, index) => {
+      const path = `anomalyRules.${index}`;
+      const rule = validateAnomalyRule(v.child("anomalyRules"), item);
+      if (rule === undefined) return;
+      if (seen.has(rule.key)) {
+        v.issue(
+          "duplicate_key",
+          `reconciliation.${path}.key repeats "${rule.key}"; a rule may appear once`,
+          `${path}.key`,
+        );
+        return;
+      }
+      seen.add(rule.key);
+      anomalyRules.push(rule);
+    });
+  }
+
+  const settlementImport =
+    obj.settlementImport === undefined
+      ? undefined
+      : validateSettlementImport(v.child("settlementImport"), obj.settlementImport);
+
+  if (
+    schedule === undefined ||
+    toleranceMinor === undefined ||
+    feeToleranceMinor === undefined ||
+    suspenseAgeingDays === undefined ||
+    notifyRole === undefined
+  ) {
     return undefined;
   }
-  return { schedule, toleranceMinor, notifyRole };
+
+  return {
+    schedule,
+    toleranceMinor,
+    feeToleranceMinor,
+    suspenseAgeingDays,
+    notifyRole,
+    anomalyRules,
+    ...(settlementImport === undefined ? {} : { settlementImport }),
+  };
 }
 
 function validateCompliance(v: Validator, value: unknown): TenantCompliance | undefined {

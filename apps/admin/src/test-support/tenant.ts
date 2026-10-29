@@ -151,7 +151,48 @@ featureFlags:
 reconciliation:
   schedule: "0 2 * * *"
   toleranceMinor: 100
+  feeToleranceMinor: 1000
+  suspenseAgeingDays: 7
   notifyRole: "finance_admin"
+  anomalyRules:
+    - key: "collector_volume_drop"
+      enabled: false
+      windowDays: 14
+      thresholdPercent: 30
+      severity: "warning"
+    - key: "collector_deposit_lag"
+      enabled: false
+      windowDays: 7
+      thresholdMinor: 1
+      severity: "warning"
+    - key: "zone_compliance_drop"
+      enabled: false
+      windowDays: 14
+      thresholdPercent: 20
+      severity: "warning"
+    - key: "officer_scan_volume_change"
+      enabled: false
+      windowDays: 14
+      thresholdPercent: 50
+      severity: "info"
+    - key: "suspense_growth"
+      enabled: false
+      windowDays: 7
+      thresholdMinor: 500000
+      severity: "warning"
+  settlementImport:
+    provider: "mock"
+    defaultCurrency: "NGN"
+    columns:
+      reference: "reference"
+      amount: "amount"
+      fee: "fee"
+      currency: "currency"
+      settledAt: "settled_at"
+      description: "narration"
+    dateFormat: "YYYY-MM-DD HH:mm:ss"
+    amountInMinorUnits: true
+    decimalSeparator: "."
 compliance:
   retentionDays: 2555
   dataResidency: "ng"

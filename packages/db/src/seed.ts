@@ -43,6 +43,8 @@ function baseConfig(overrides: {
   tuktukFee: number;
   dataResidency: string;
   underpaymentPolicy: TenantConfig["payments"]["underpaymentPolicy"];
+  feeToleranceMinor: number;
+  suspenseAgeingDays: number;
 }): TenantConfig {
   const catalogs: Record<string, Record<string, string>> = {
     en: {
@@ -246,7 +248,51 @@ function baseConfig(overrides: {
     },
     payments: { underpaymentPolicy: overrides.underpaymentPolicy },
     featureFlags: { disputes: true, prepay: false, offlineMode: true, anomalyAlerts: true },
-    reconciliation: { schedule: "0 2 * * *", toleranceMinor: 100, notifyRole: "finance_admin" },
+    reconciliation: {
+      schedule: "0 2 * * *",
+      toleranceMinor: 100,
+      feeToleranceMinor: overrides.feeToleranceMinor,
+      suspenseAgeingDays: overrides.suspenseAgeingDays,
+      notifyRole: "finance_admin",
+      // Every rule ships disabled until the pilot supplies baselines (D46).
+      anomalyRules: [
+        {
+          key: "collector_volume_drop",
+          enabled: false,
+          windowDays: 14,
+          thresholdPercent: 30,
+          severity: "warning",
+        },
+        {
+          key: "collector_deposit_lag",
+          enabled: false,
+          windowDays: 7,
+          thresholdMinor: 1,
+          severity: "warning",
+        },
+        {
+          key: "zone_compliance_drop",
+          enabled: false,
+          windowDays: 14,
+          thresholdPercent: 20,
+          severity: "warning",
+        },
+        {
+          key: "officer_scan_volume_change",
+          enabled: false,
+          windowDays: 14,
+          thresholdPercent: 50,
+          severity: "info",
+        },
+        {
+          key: "suspense_growth",
+          enabled: false,
+          windowDays: 7,
+          thresholdMinor: overrides.bikeFee * 25,
+          severity: "warning",
+        },
+      ],
+    },
     compliance: {
       retentionDays: 2555,
       dataResidency: overrides.dataResidency,
@@ -277,6 +323,8 @@ const FAKE_TENANTS: readonly FakeTenant[] = [
       tuktukFee: 30000,
       dataResidency: "alpha",
       underpaymentPolicy: "wallet",
+      feeToleranceMinor: 1000,
+      suspenseAgeingDays: 7,
     }),
     zones: ["Central", "Harbour"],
     users: [
@@ -331,6 +379,8 @@ const FAKE_TENANTS: readonly FakeTenant[] = [
       tuktukFee: 800,
       dataResidency: "beta",
       underpaymentPolicy: "suspense",
+      feeToleranceMinor: 0,
+      suspenseAgeingDays: 3,
     }),
     zones: ["North", "South"],
     users: [

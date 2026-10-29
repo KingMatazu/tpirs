@@ -4,6 +4,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadTenantConfigFromString } from "./loader.js";
 import { validateTenantConfig } from "./validate.js";
+import { enabledAnomalyRules } from "./reconciliation.js";
 import { TenantConfigValidationError } from "./errors.js";
 import type { TenantConfig } from "./schema.js";
 
@@ -147,7 +148,33 @@ featureFlags:
 reconciliation:
   schedule: "0 2 * * *"
   toleranceMinor: 100
+  feeToleranceMinor: 250
+  suspenseAgeingDays: 5
   notifyRole: "finance_admin"
+  anomalyRules:
+    - key: "collector_volume_drop"
+      enabled: true
+      windowDays: 14
+      thresholdPercent: 30
+      severity: "warning"
+    - key: "suspense_growth"
+      enabled: false
+      windowDays: 7
+      thresholdMinor: 500000
+      severity: "warning"
+  settlementImport:
+    provider: "paystack"
+    defaultCurrency: "NGN"
+    columns:
+      reference: "reference"
+      amount: "amount"
+      fee: "fee"
+      currency: "currency"
+      settledAt: "settled_at"
+      description: "narration"
+    dateFormat: "YYYY-MM-DD HH:mm:ss"
+    amountInMinorUnits: true
+    decimalSeparator: "."
 compliance:
   retentionDays: 2555
   dataResidency: "ng"
@@ -168,6 +195,11 @@ describe("loadTenantConfigFromString", () => {
     expect(config.channels.messages?.en?.["ussd.main.prompt"]).toContain("Example Levy");
     expect(config.channels.ussd?.maxSteps).toBe(8);
     expect(config.channels.sms?.maxSendsPerDay).toBe(1000);
+    expect(config.reconciliation.feeToleranceMinor).toBe(250);
+    expect(config.reconciliation.suspenseAgeingDays).toBe(5);
+    expect(config.reconciliation.anomalyRules).toHaveLength(2);
+    expect(config.reconciliation.settlementImport?.columns.reference).toBe("reference");
+    expect(config.reconciliation.settlementImport?.dateFormat).toBe("YYYY-MM-DD HH:mm:ss");
   });
 
   it("rejects invalid YAML", () => {
@@ -694,6 +726,132 @@ describe("validateTenantConfig", () => {
   });
 });
 
+describe("reconciliation configuration", () => {
+  function rawConfig(): Record<string, unknown> {
+    return structuredClone(loadTenantConfigFromString(validYaml)) as unknown as Record<
+      string,
+      unknown
+    >;
+  }
+
+  function reconOf(raw: Record<string, unknown>): Record<string, unknown> {
+    return raw.reconciliation as Record<string, unknown>;
+  }
+
+  function rulesOf(raw: Record<string, unknown>): Record<string, unknown>[] {
+    return reconOf(raw).anomalyRules as Record<string, unknown>[];
+  }
+
+  function ruleAt(
+    rules: readonly Record<string, unknown>[],
+    index: number,
+  ): Record<string, unknown> {
+    const rule = rules[index];
+    if (rule === undefined) throw new Error(`no anomaly rule at index ${index}`);
+    return rule;
+  }
+
+  it("defaults fee tolerance, suspense ageing and anomaly rules when omitted", () => {
+    const raw = rawConfig();
+    const recon = reconOf(raw);
+    delete recon.feeToleranceMinor;
+    delete recon.suspenseAgeingDays;
+    delete recon.anomalyRules;
+    const config = validateTenantConfig(raw);
+    expect(config.reconciliation.feeToleranceMinor).toBe(0);
+    expect(config.reconciliation.suspenseAgeingDays).toBe(7);
+    expect(config.reconciliation.anomalyRules).toEqual([]);
+  });
+
+  it("rejects a cron expression the worker could never schedule", () => {
+    const raw = rawConfig();
+    reconOf(raw).schedule = "0 25 * * *";
+    expect(() => validateTenantConfig(raw)).toThrow(/schedule is not a valid cron/);
+    expect(() => validateTenantConfig(raw)).toThrow(/hour field/);
+
+    const words = rawConfig();
+    reconOf(words).schedule = "every day";
+    expect(() => validateTenantConfig(words)).toThrow(/expected 5 fields/);
+  });
+
+  it("accepts stepped, ranged and listed cron fields", () => {
+    const raw = rawConfig();
+    reconOf(raw).schedule = "*/15 2-4 * * 1,3";
+    expect(validateTenantConfig(raw).reconciliation.schedule).toBe("*/15 2-4 * * 1,3");
+  });
+
+  it("rejects an unknown anomaly rule key", () => {
+    const raw = rawConfig();
+    ruleAt(rulesOf(raw), 0).key = "asset_goes_silent";
+    expect(() => validateTenantConfig(raw)).toThrow(/key must be one of/);
+  });
+
+  it("rejects a duplicate anomaly rule", () => {
+    const raw = rawConfig();
+    const rules = rulesOf(raw);
+    ruleAt(rules, 1).key = ruleAt(rules, 0).key;
+    expect(() => validateTenantConfig(raw)).toThrow(/repeats/);
+  });
+
+  it("requires a threshold on an enabled rule that measures a rate", () => {
+    const raw = rawConfig();
+    delete ruleAt(rulesOf(raw), 0).thresholdPercent;
+    expect(() => validateTenantConfig(raw)).toThrow(/needs thresholdPercent/);
+  });
+
+  it("parks a disabled rule without its threshold until it is enabled", () => {
+    const raw = rawConfig();
+    delete ruleAt(rulesOf(raw), 1).thresholdMinor;
+    const config = validateTenantConfig(raw);
+    expect(config.reconciliation.anomalyRules[1]?.enabled).toBe(false);
+
+    const enabled = rawConfig();
+    const enabledRules = rulesOf(enabled);
+    delete ruleAt(enabledRules, 1).thresholdMinor;
+    ruleAt(enabledRules, 1).enabled = true;
+    expect(() => validateTenantConfig(enabled)).toThrow(/needs thresholdMinor/);
+  });
+
+  it("rejects a window shorter than a day and a blocking severity", () => {
+    const shortWindow = rawConfig();
+    ruleAt(rulesOf(shortWindow), 0).windowDays = 0;
+    expect(() => validateTenantConfig(shortWindow)).toThrow(/windowDays must be >= 1/);
+
+    const blocking = rawConfig();
+    ruleAt(rulesOf(blocking), 0).severity = "blocking";
+    expect(() => validateTenantConfig(blocking)).toThrow(/severity must be one of: warning, info/);
+  });
+
+  it("rejects a statement mapping missing a required column", () => {
+    const raw = rawConfig();
+    const settlement = reconOf(raw).settlementImport as Record<string, unknown>;
+    delete (settlement.columns as Record<string, unknown>).reference;
+    expect(() => validateTenantConfig(raw)).toThrow(/reference must be a non-empty string/);
+  });
+
+  it("rejects an unsupported statement date format or currency", () => {
+    const badDate = rawConfig();
+    (reconOf(badDate).settlementImport as Record<string, unknown>).dateFormat = "ISO-8601";
+    expect(() => validateTenantConfig(badDate)).toThrow(/dateFormat must be one of/);
+
+    const badCurrency = rawConfig();
+    (reconOf(badCurrency).settlementImport as Record<string, unknown>).defaultCurrency = "naira";
+    expect(() => validateTenantConfig(badCurrency)).toThrow(/ISO 4217/);
+  });
+
+  it("exposes only enabled rules in the domain shape", () => {
+    const config = loadTenantConfigFromString(validYaml);
+    const rules = enabledAnomalyRules(config);
+    expect(rules).toHaveLength(1);
+    expect(rules[0]).toEqual({
+      key: "collector_volume_drop",
+      severity: "warning",
+      windowDays: 14,
+      thresholdPercent: 30,
+    });
+  });
+});
+
 describe("tenants/_template", () => {
   it("validates against the current schema", () => {
     const here = dirname(fileURLToPath(import.meta.url));
@@ -701,5 +859,23 @@ describe("tenants/_template", () => {
     const config = loadTenantConfigFromString(readFileSync(path, "utf8"));
     expect(config.identity.slug).toBe("template-state");
     expect(config.payments.underpaymentPolicy).toBe("wallet");
+  });
+
+  it("documents the Phase 8 reconciliation keys with safe defaults", () => {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const path = resolve(here, "../../../tenants/_template/tenant.config.yaml");
+    const config = loadTenantConfigFromString(readFileSync(path, "utf8"));
+
+    expect(config.reconciliation.feeToleranceMinor).toBe(1000);
+    expect(config.reconciliation.suspenseAgeingDays).toBe(7);
+    // Every anomaly rule ships disabled until a pilot supplies baselines (D46).
+    expect(config.reconciliation.anomalyRules).toHaveLength(5);
+    expect(config.reconciliation.anomalyRules.every((rule) => !rule.enabled)).toBe(true);
+    expect(enabledAnomalyRules(config)).toEqual([]);
+
+    const statement = config.reconciliation.settlementImport;
+    expect(statement?.provider).toBe("mock");
+    expect(statement?.columns.settledAt).toBe("settled_at");
+    expect(statement?.amountInMinorUnits).toBe(true);
   });
 });

@@ -4,7 +4,7 @@
  * All fields are data-only and validated at startup (see validateTenantConfig).
  */
 
-import type { UssdMenuNode, UssdMenuOption } from "@tpirs/domain";
+import type { SettlementDatePattern, UssdMenuNode, UssdMenuOption } from "@tpirs/domain";
 
 export interface TenantIdentity {
   readonly name: string;
@@ -180,10 +180,96 @@ export interface TenantFeatureFlags {
   readonly anomalyAlerts: boolean;
 }
 
+/**
+ * The anomaly rules a tenant may enable (D46, ADR 0039).
+ *
+ * The vocabulary deliberately has no `asset` member: under `pay_per_use` a
+ * vehicle that does not work owes nothing, so a quiet asset is never an event.
+ * Every rule ships disabled in the template until pilot baselines exist.
+ */
+export type TenantAnomalyRuleKey =
+  | "collector_volume_drop"
+  | "collector_deposit_lag"
+  | "zone_compliance_drop"
+  | "officer_scan_volume_change"
+  | "suspense_growth";
+
+export const TENANT_ANOMALY_RULE_KEYS: readonly TenantAnomalyRuleKey[] = [
+  "collector_volume_drop",
+  "collector_deposit_lag",
+  "zone_compliance_drop",
+  "officer_scan_volume_change",
+  "suspense_growth",
+];
+
+/** Anomalies are advisories, never blocking: blocking belongs to reconciliation. */
+export type TenantAnomalySeverity = "warning" | "info";
+
+export interface TenantAnomalyRule {
+  readonly key: TenantAnomalyRuleKey;
+  readonly enabled: boolean;
+  /** Length of the trailing baseline window, in business days. */
+  readonly windowDays: number;
+  /** Deviation required to fire, as a percentage of the trailing mean. */
+  readonly thresholdPercent?: number;
+  /**
+   * Rule-specific whole-number knob, minor units. For `suspense_growth` it is
+   * the suspense ceiling; for `collector_deposit_lag` it is the multiple of the
+   * deposit deadline an intake may pass before it counts (default 1).
+   */
+  readonly thresholdMinor?: number;
+  readonly severity: TenantAnomalySeverity;
+}
+
+/**
+ * Where a bank/gateway statement comes from and how its columns map.
+ *
+ * The port owns no column names (D21/ADR 0035), so a tenant declares its own.
+ * Omit the section until a statement export exists; reconciliation still runs
+ * against gateway events, it just cannot settle fees from a bank file.
+ */
+export interface TenantSettlementColumns {
+  /** Column holding the gateway's reference for the payment. */
+  readonly reference: string;
+  /** Column holding the gross amount charged to the driver. */
+  readonly amount: string;
+  /** Column holding the gateway fee, when the statement breaks it out. */
+  readonly fee?: string;
+  /** Column holding the ISO currency; omitted means `defaultCurrency`. */
+  readonly currency?: string;
+  /** Column holding the settlement date (and optionally the time). */
+  readonly settledAt: string;
+  /** Column retained verbatim as evidence, e.g. the narration. */
+  readonly description?: string;
+}
+
+export interface TenantSettlementImport {
+  /** Provider key the rows are matched against, e.g. the gateway adapter name. */
+  readonly provider: string;
+  readonly columns: TenantSettlementColumns;
+  /** Pattern the settled-at column uses; values are read as UTC. */
+  readonly dateFormat: SettlementDatePattern;
+  /** The amount column holds minor units (`50000`) rather than `500.00`. */
+  readonly amountInMinorUnits: boolean;
+  /** Character separating the fraction in an amount column. Defaults to ".". */
+  readonly decimalSeparator?: "." | ",";
+  /** Currency used when the mapping declares no currency column. */
+  readonly defaultCurrency?: string;
+}
+
 export interface TenantReconciliation {
+  /** Cron in the tenant timezone; validated structurally at load (D48). */
   readonly schedule: string;
+  /** Whole-day tolerance for ledger, clearing and float differences. */
   readonly toleranceMinor: number;
+  /** How much of a payment the gateway may keep before it is an exception. */
+  readonly feeToleranceMinor: number;
+  /** Suspense older than this many days is a warning. */
+  readonly suspenseAgeingDays: number;
   readonly notifyRole: string;
+  /** Rules the nightly evaluation may run; disabled ones are ignored. */
+  readonly anomalyRules: readonly TenantAnomalyRule[];
+  readonly settlementImport?: TenantSettlementImport;
 }
 
 export interface TenantCompliance {
