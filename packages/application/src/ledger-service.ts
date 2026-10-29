@@ -5,10 +5,21 @@ import { money } from "@tpirs/domain";
 import type { LedgerPosting } from "@tpirs/domain";
 import type { Kysely, Transaction } from "kysely";
 
+export type LedgerErrorCode =
+  | "ledger_operation"
+  | "reversal_not_found"
+  | "reversal_not_pending"
+  | "self_approval"
+  | "system_admin_forbidden"
+  | "finance_approval_required";
+
 export class LedgerOperationError extends Error {
-  constructor(message: string) {
+  readonly code: LedgerErrorCode;
+
+  constructor(message: string, code: LedgerErrorCode = "ledger_operation") {
     super(message);
     this.name = "LedgerOperationError";
+    this.code = code;
   }
 }
 
@@ -105,13 +116,47 @@ export class LedgerService {
     },
   ): Promise<ReversalRequestRow> {
     if (params.isSystemAdmin) {
-      throw new LedgerOperationError("system admin cannot touch ledger data");
+      throw new LedgerOperationError(
+        "system admin cannot touch ledger data",
+        "system_admin_forbidden",
+      );
     }
     return this.repos.reversals.create(tenantId, {
       originalTransactionId: params.originalTransactionId,
       reason: params.reason,
       requestedByUserId: params.requestedByUserId,
     });
+  }
+
+  /**
+   * Rejects a pending reversal. Nothing moves: the request is closed with the
+   * actor and reason, and the original transaction stays exactly as it was.
+   */
+  async rejectReversal(
+    tenantId: string,
+    params: {
+      reversalRequestId: string;
+      rejectedByUserId: string;
+      isSystemAdmin?: boolean;
+    },
+  ): Promise<ReversalRequestRow> {
+    if (params.isSystemAdmin) {
+      throw new LedgerOperationError(
+        "system admin cannot touch ledger data",
+        "system_admin_forbidden",
+      );
+    }
+    const request = await this.repos.reversals.findById(tenantId, params.reversalRequestId);
+    if (request === undefined) {
+      throw new LedgerOperationError("reversal request not found", "reversal_not_found");
+    }
+    if (request.status !== "pending") {
+      throw new LedgerOperationError("reversal request is not pending", "reversal_not_pending");
+    }
+    if (request.requestedByUserId === params.rejectedByUserId) {
+      throw new LedgerOperationError("cannot reject own reversal request", "self_approval");
+    }
+    return this.repos.reversals.reject(tenantId, params.reversalRequestId, params.rejectedByUserId);
   }
 
   /**
@@ -132,19 +177,23 @@ export class LedgerService {
     },
   ): Promise<LedgerPostResult> {
     if (params.isSystemAdmin) {
-      throw new LedgerOperationError("system admin cannot touch ledger data");
+      throw new LedgerOperationError(
+        "system admin cannot touch ledger data",
+        "system_admin_forbidden",
+      );
     }
     if (!params.hasFinanceApproval) {
-      throw new LedgerOperationError("finance approval required");
+      throw new LedgerOperationError("finance approval required", "finance_approval_required");
     }
 
     const request = await this.repos.reversals.findById(tenantId, params.reversalRequestId);
-    if (!request) throw new LedgerOperationError("reversal request not found");
+    if (!request)
+      throw new LedgerOperationError("reversal request not found", "reversal_not_found");
     if (request.status !== "pending") {
-      throw new LedgerOperationError("reversal request is not pending");
+      throw new LedgerOperationError("reversal request is not pending", "reversal_not_pending");
     }
     if (request.requestedByUserId === params.approverUserId) {
-      throw new LedgerOperationError("cannot approve own reversal request");
+      throw new LedgerOperationError("cannot approve own reversal request", "self_approval");
     }
 
     const original = await this.repos.ledger.findTransactionWithEntries(

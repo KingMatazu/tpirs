@@ -433,7 +433,13 @@ export function registerVerificationAndSyncRoutes(
           ...(status === undefined ? {} : { status }),
         }),
       );
-      return reply.send(result);
+      // The repository returns `rows`; the contract names the collection
+      // `disputes`, and the response serializer would otherwise strip it.
+      return reply.send({
+        disputes: result.rows,
+        nextCursor: result.nextCursor,
+        hasMore: result.hasMore,
+      });
     },
   );
 

@@ -136,8 +136,10 @@ export function registerAssetRoutes(app: FastifyInstance, context: AssetRoutesCo
     const status = statusRaw !== undefined && isAssetStatus(statusRaw) ? statusRaw : undefined;
     const zoneId = asString(query.zoneId);
     const ownerId = asString(query.ownerId);
+    const text = asString(query.query);
     const assets = await services.asset.search({
       tenantId: principal.tenantId,
+      ...(text === undefined ? {} : { query: text }),
       ...(assetTypeKey === undefined ? {} : { assetTypeKey }),
       ...(status === undefined ? {} : { status }),
       ...(zoneId === undefined ? {} : { zoneId }),
@@ -234,13 +236,17 @@ export function registerAssetRoutes(app: FastifyInstance, context: AssetRoutesCo
   app.post("/v1/assets/:id/suspend", { schema: suspendAssetSchema }, async (request, reply) => {
     const principal = requirePermission(request, "asset:manage");
     const { id } = request.params as { id: string };
+    const reason = asString((request.body as Record<string, unknown>).reason);
+    if (reason === undefined || reason.trim() === "") {
+      return badRequest(request, reply, "reason is required");
+    }
     try {
       const asset = await services.asset.setStatus(principal.tenantId, id, "suspended");
       request.audit = {
         action: "asset.suspend",
         entityType: "asset",
         entityId: id,
-        after: serializeAsset(asset),
+        after: { ...serializeAsset(asset), reason: reason.trim() },
       };
       return await reply.send({ asset: serializeAsset(asset) });
     } catch (error) {

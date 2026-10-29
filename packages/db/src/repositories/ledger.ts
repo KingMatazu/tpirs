@@ -497,6 +497,22 @@ export class ReversalRepository {
       .executeTakeFirst();
   }
 
+  /** Newest first; the dashboard filters to pending by default. */
+  async list(
+    tenantId: string,
+    filter: {
+      readonly status?: "pending" | "approved" | "rejected";
+      readonly limit?: number;
+    } = {},
+  ): Promise<ReversalRequestRow[]> {
+    let query = this.db.selectFrom("reversalRequests").selectAll().where("tenantId", "=", tenantId);
+    if (filter.status !== undefined) query = query.where("status", "=", filter.status);
+    return query
+      .orderBy("createdAt", "desc")
+      .limit(filter.limit ?? 100)
+      .execute();
+  }
+
   async approve(
     tenantId: string,
     id: string,

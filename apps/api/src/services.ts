@@ -17,6 +17,7 @@ import type {
   PaymentService,
   RateLimiter,
   ReconciliationService,
+  ReversalService,
   ReportService,
   ScanService,
   UssdService,
@@ -42,6 +43,7 @@ import {
   AnomalyService as AnomalyServiceImpl,
   ExceptionService as ExceptionServiceImpl,
   ReconciliationService as ReconciliationServiceImpl,
+  ReversalService as ReversalServiceImpl,
   ReportService as ReportServiceImpl,
 } from "@tpirs/application";
 import { createConfigAssetSchemaRegistry } from "@tpirs/asset-schema-registry-config";
@@ -138,6 +140,8 @@ export interface Services {
   readonly anomalies: AnomalyService;
   /** Finance reports and their exports. */
   readonly reports: ReportService;
+  /** Reversal requests and their dual approval. */
+  readonly reversals: ReversalService;
   /**
    * Statement intake, present only when the deployment supplies a reader.
    * The tenant's config decides the provider, columns and tolerance.
@@ -237,6 +241,7 @@ export async function buildServices(deps: ServiceDeps): Promise<Services> {
     ...(deps.telemetry === undefined ? {} : { telemetry: deps.telemetry }),
   });
   const reports = new ReportServiceImpl({ db: deps.db, exporters: deps.exporters ?? {} });
+  const reversals = new ReversalServiceImpl({ db: deps.db });
   const settlementImport =
     deps.settlementReader === undefined
       ? undefined
@@ -261,6 +266,7 @@ export async function buildServices(deps: ServiceDeps): Promise<Services> {
     exceptions,
     anomalies,
     reports,
+    reversals,
     ...(settlementImport === undefined ? {} : { settlementImport }),
   };
 }

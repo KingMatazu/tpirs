@@ -33,6 +33,8 @@ export interface AssetSearchFilter {
   readonly status?: string;
   readonly zoneId?: string;
   readonly ownerId?: string;
+  /** Free text over the short code and the asset's plate/identifier attributes. */
+  readonly query?: string;
   readonly limit?: number;
   readonly offset?: number;
 }
@@ -165,6 +167,15 @@ export class AssetRepository {
     }
     if (filter.ownerId !== undefined) {
       query = query.where("ownerId", "=", filter.ownerId);
+    }
+    if (filter.query !== undefined && filter.query.trim() !== "") {
+      const needle = `%${filter.query.trim()}%`;
+      query = query.where((eb) =>
+        eb.or([
+          eb("shortCode", "ilike", needle),
+          sql<boolean>`coalesce(attributes->>'plate_number', '') ilike ${needle}`,
+        ]),
+      );
     }
     const rows = await query
       .orderBy("createdAt", "desc")

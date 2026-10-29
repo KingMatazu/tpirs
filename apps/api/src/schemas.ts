@@ -439,6 +439,37 @@ const reportColumn = {
   },
 };
 
+const reversalRequest = {
+  $id: "ReversalRequest",
+  type: "object",
+  required: [
+    "id",
+    "originalTransactionId",
+    "reason",
+    "status",
+    "requestedByUserId",
+    "approvedByUserId",
+    "rejectedByUserId",
+    "approvedAt",
+    "rejectedAt",
+    "reversingTransactionId",
+    "createdAt",
+  ],
+  properties: {
+    id: { type: "string" },
+    originalTransactionId: { type: "string" },
+    reason: { type: "string" },
+    status: { type: "string", enum: ["pending", "approved", "rejected"] },
+    requestedByUserId: { type: "string" },
+    approvedByUserId: { type: "string", nullable: true },
+    rejectedByUserId: { type: "string", nullable: true },
+    approvedAt: { type: "string", nullable: true },
+    rejectedAt: { type: "string", nullable: true },
+    reversingTransactionId: { type: "string", nullable: true },
+    createdAt: { type: "string" },
+  },
+};
+
 /** Component schemas registered once; routes reference them via $ref. */
 export const sharedSchemas: readonly Record<string, unknown>[] = [
   staffUser,
@@ -456,6 +487,7 @@ export const sharedSchemas: readonly Record<string, unknown>[] = [
   reconciliationException,
   anomalyEvent,
   reportColumn,
+  reversalRequest,
 ];
 
 export const errorResponseSchema = { $ref: "ErrorEnvelope#" };
@@ -598,6 +630,7 @@ export const searchAssetsSchema: FastifySchema = {
     properties: {
       limit: { type: "string" },
       offset: { type: "string" },
+      query: { type: "string" },
       assetTypeKey: { type: "string" },
       status: { type: "string" },
       zoneId: { type: "string" },
@@ -644,6 +677,11 @@ export const stickerSchema: FastifySchema = { params: idParams };
 
 export const suspendAssetSchema: FastifySchema = {
   params: idParams,
+  body: {
+    type: "object",
+    required: ["reason"],
+    properties: { reason: { type: "string" } },
+  },
   response: {
     200: { type: "object", required: ["asset"], properties: { asset: { $ref: "Asset#" } } },
   },
@@ -1529,5 +1567,73 @@ export const exportReportSchema: FastifySchema = {
     400: errorResponseSchema,
     403: errorResponseSchema,
     404: errorResponseSchema,
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Reversals (dual approval)
+// ---------------------------------------------------------------------------
+
+const reversalParams = {
+  type: "object",
+  required: ["id"],
+  properties: { id: { type: "string" } },
+} as const;
+
+export const listReversalsSchema: FastifySchema = {
+  querystring: {
+    type: "object",
+    properties: { status: { type: "string" }, limit: { type: "string" } },
+  },
+  response: {
+    200: {
+      type: "object",
+      required: ["reversals"],
+      properties: {
+        reversals: { type: "array", items: { $ref: "ReversalRequest#" } },
+      },
+    },
+    403: errorResponseSchema,
+  },
+};
+
+export const approveReversalSchema: FastifySchema = {
+  params: reversalParams,
+  body: {
+    type: "object",
+    properties: { note: { type: "string" } },
+  },
+  response: {
+    200: {
+      type: "object",
+      required: ["reversal", "transactionId"],
+      properties: {
+        reversal: { $ref: "ReversalRequest#" },
+        transactionId: { type: "string" },
+      },
+    },
+    403: errorResponseSchema,
+    404: errorResponseSchema,
+    409: errorResponseSchema,
+  },
+};
+
+export const rejectReversalSchema: FastifySchema = {
+  params: reversalParams,
+  body: {
+    type: "object",
+    required: ["reason"],
+    properties: { reason: { type: "string" } },
+  },
+  response: {
+    200: {
+      type: "object",
+      required: ["reversal"],
+      properties: { reversal: { $ref: "ReversalRequest#" } },
+    },
+    400: errorResponseSchema,
+    403: errorResponseSchema,
+    404: errorResponseSchema,
+    409: errorResponseSchema,
   },
 };

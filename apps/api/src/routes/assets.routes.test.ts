@@ -383,10 +383,19 @@ describeIntegration("api asset registry e2e (integration)", () => {
   });
 
   it("reflects suspension through verify", async () => {
+    const noReason = await app.inject({
+      method: "POST",
+      url: `/v1/assets/${assetId}/suspend`,
+      headers: { authorization: `Bearer ${managerToken}` },
+      payload: {},
+    });
+    expect(noReason.statusCode).toBe(400);
+
     const suspend = await app.inject({
       method: "POST",
       url: `/v1/assets/${assetId}/suspend`,
       headers: { authorization: `Bearer ${managerToken}` },
+      payload: { reason: "sticker reported stolen" },
     });
     expect(suspend.statusCode).toBe(200);
     expect((suspend.json() as { asset: { status: string } }).asset.status).toBe("suspended");
