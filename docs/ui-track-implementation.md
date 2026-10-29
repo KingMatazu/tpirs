@@ -1,8 +1,10 @@
 # UI track: the web admin dashboard
 
-This document is the working plan for the web UI of `AGENTS.md`. It runs
+This document is the working plan for the web UI of `AGENTS.md`. It ran
 **alongside phases 5–8** so that Phase 9 (the official admin-dashboard phase)
-becomes assembly and polish rather than a big-bang build. It covers
+would be assembly rather than a big-bang build. Phase 9 completes the remaining
+screens and the shell acceptance; its working plan is
+[`phase-9-implementation.md`](./phase-9-implementation.md). This document covers
 `apps/admin` only; the officer field app and its offline store are deferred
 entirely (D29).
 
@@ -135,16 +137,16 @@ never duplicates the policy.
 
 ## Step 9: Phase 9 assembly (the brief's official dashboard phase)
 
-- Roles-aware navigation rendered from permissions-as-data (driver
-  self-service, collector, officer, zone supervisor, finance admin, system
-  admin, auditor). System admins do not see ledger screens.
-- i18n language switch driven by `locale.enabledLanguages`
-  (`packages/i18n` patterns extend to UI copy).
+Tracked in [`phase-9-implementation.md`](./phase-9-implementation.md):
+
+- Roles-aware navigation rendered from permissions-as-data; system admins do
+  not see ledger screens.
+- i18n language switch driven by `locale.enabledLanguages`, using the
+  `@tpirs/i18n` translator pattern for dashboard copy.
 - Reversals workflow with dual approval: requester and approver must be
-  distinct sessions, enforced server-side, reflected in the UI as a
+  distinct users, enforced server-side, reflected in the UI as a
   second-approval action on the queue.
-- Officer-track screens (scan log, disputes) join here only if the deferred
-  field app work resumes.
+- Registry, payments/suspense and a disputes inbox complete the screen list.
 - Final acceptance of the whole track: switching tenants re-themes and
   re-labels the dashboard with no code changes.
 
@@ -165,24 +167,42 @@ never duplicates the policy.
 - OpenAPI emission is part of CI so the contract and the server cannot
   drift.
 
-## Status (written 2026-10-23)
+## Status (updated 2026-10-29)
 
-- Steps 0–1 groundwork plus Steps 4, 5, and 6 are written in one pass:
-  `packages/ui-tokens` (tokens + Intl helpers, tests), `apps/admin` (scaffold,
-  login shell with the D26 cookie/refresh session store, error-envelope toasts
-  with request IDs, cursor pagination primitive, layout nav shell), the config
-  viewer, the channels viewer + in-browser USSD simulator (pure engine
-  `advanceUssdSession` + `createTranslator`, no backend calls), the audit
-  backend (`packages/db` repository `list`, `GET /v1/audit` route + OpenAPI
-  schema), and the audit screen. ADRs 0025–0027 record the decisions.
-- Renaming: the `.env`-driven dev-session flow, TOTP field, and Playwright
-  e2e from later steps are still open; Playwright was deliberately not wired
-  into turbo yet (jsdom tests only) until the main flows exist.
+| Step | Scope                                                               | Status                                            |
+| ---- | ------------------------------------------------------------------- | ------------------------------------------------- |
+| 0    | OpenAPI emission, `api-client`, `ui-tokens`, admin scaffold         | completed (Playwright e2e not wired)              |
+| 1    | Auth shell, D26 session, toasts, pagination, nav shell              | completed (TOTP input still open; local TOTP off) |
+| 2    | Registry screens                                                    | pending (Phase 9)                                 |
+| 3    | Payments and suspense screens                                       | pending (Phase 9)                                 |
+| 4    | Config viewer (read-only)                                           | completed                                         |
+| 5    | Channels viewer and USSD simulator                                  | completed                                         |
+| 6    | Audit backend (`GET /v1/audit`) and audit screen                    | completed                                         |
+| 7    | Collectors (cash wallet, deposits, freeze/unfreeze)                 | completed                                         |
+| 8    | Reconciliation, reports and anomaly feed                            | completed with Phase 8                            |
+| 9    | Phase 9 assembly: registry/payments/disputes/reversals, i18n switch | in progress (Phase 9)                             |
+
+Delivered in the track: `packages/ui-tokens` (tokens + Intl helpers, tests),
+`apps/admin` (scaffold, login with the D26 cookie/refresh session store,
+error-envelope toasts with request IDs, cursor pagination, permission-aware
+nav), the config viewer, channels + in-browser USSD simulator (pure
+`advanceUssdSession` + `createTranslator`), the audit route/repository/screen,
+collectors, reconciliation and reports. ADRs 0025–0027 record the decisions.
+
+Phase 9 added the registry, payments/suspense, disputes inbox and reversals
+screens, a catalogue-driven language switch and the tenant-aware shell
+acceptance test. Still open from this track: the TOTP input on the login form
+(the session store already accepts a code; local development runs with
+`REQUIRE_STAFF_TOTP=false`), Playwright e2e (jsdom page tests and the API
+integration suite cover the flows), page-level translation of the pre-Phase-9
+screens (the shell and the Phase 9 screens are catalogue-driven), and dispute
+resolution (needs a recorded policy).
 
 ## Deferred items
 
-- Officer field PWA, IndexedDB offline store (D29), scan log and disputes
-  admin screens, native Android app.
+- Officer field PWA, IndexedDB offline store (D29), scan log and native
+  Android app. The disputes inbox is read-only in Phase 9; resolution needs a
+  recorded policy first.
 - OpenAPI documentation playground UI (Swagger UI / Elements) — cosmetic,
   add once the document exists.
 - OpenAPI-driven admin screens for config editing (Phase 9 scope, with
