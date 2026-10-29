@@ -39,6 +39,7 @@
     "@tpirs/job-queue-mock": "workspace:*",
     "@tpirs/object-storage-mock": "workspace:*",
     "@tpirs/payment-provider-mock": "workspace:*",
+    "@tpirs/settlement-import-csv": "workspace:*",
     "@tpirs/settlement-import-mock": "workspace:*",
     "@tpirs/sms-provider-mock": "workspace:*",
     "@types/qrcode": "^1.5.6",

@@ -216,7 +216,7 @@ export function assetAt(tenant: CashTenant, index: number): CashAsset {
 export async function provisionInstruction(
   db: AnyDb,
   service: CollectorCashService,
-  tenant: CashTenant,
+  tenant: { readonly tenantId: string; readonly collectorUserId: string },
 ): Promise<string> {
   await service.provisionDepositInstruction({
     tenantId: tenant.tenantId,

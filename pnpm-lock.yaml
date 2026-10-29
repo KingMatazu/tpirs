@@ -964,6 +964,9 @@ importers:
       '@tpirs/payment-provider-mock':
         specifier: workspace:*
         version: link:../adapters/payment-provider/mock
+      '@tpirs/settlement-import-csv':
+        specifier: workspace:*
+        version: link:../adapters/settlement-import/csv
       '@tpirs/settlement-import-mock':
         specifier: workspace:*
         version: link:../adapters/settlement-import/mock
