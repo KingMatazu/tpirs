@@ -11,6 +11,10 @@ import { CollectorsPage } from "./pages/CollectorsPage.js";
 import { ReconciliationPage } from "./pages/ReconciliationPage.js";
 import { ReportsPage } from "./pages/ReportsPage.js";
 import { PlaceholderPage } from "./pages/PlaceholderPage.js";
+import { RegistryPage } from "./pages/RegistryPage.js";
+import { PaymentsPage } from "./pages/PaymentsPage.js";
+import { DisputesPage } from "./pages/DisputesPage.js";
+import { ReversalsPage } from "./pages/ReversalsPage.js";
 
 const FALLBACK_ROUTE = "/registry";
 
@@ -37,9 +41,13 @@ export function App(): ReactElement {
 function pageFor(route: string): ReactElement {
   switch (route) {
     case "/registry":
-      return <PlaceholderPage title="Asset registry" step="7" />;
+      return <RegistryPage />;
     case "/payments":
-      return <PlaceholderPage title="Payments" step="8" />;
+      return <PaymentsPage />;
+    case "/disputes":
+      return <DisputesPage />;
+    case "/reversals":
+      return <ReversalsPage />;
     case "/collectors":
       return <CollectorsPage />;
     case "/reconciliation":
