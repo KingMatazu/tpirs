@@ -159,6 +159,14 @@ async function tenantWithReconciliationConfig(
   return tenant.id;
 }
 
+/** Only this test's tenant, so a shared database cannot schedule another suite's. */
+function onlyTenant(db: AnyDb, tenantId: string) {
+  return async () => {
+    const row = await withSystem(db, async (tx) => repositories(tx).tenants.findById(tenantId));
+    return row === undefined ? [] : [{ id: row.id, config: row.config }];
+  };
+}
+
 describeIntegration("worker (integration)", () => {
   let db: AnyDb;
   let sms: MockSmsProvider;
@@ -176,14 +184,23 @@ describeIntegration("worker (integration)", () => {
     await db.destroy();
   });
 
+  // The suite runs every package in parallel, so the polling loop can be slow;
+  // the assertion is eventual delivery, not latency.
   it("sweeps a pending receipt and delivers it through the gateway", async () => {
     const tenantId = await tenantWithPendingReceipt(db);
     sms = createMockSmsProvider();
-    worker = createWorker({ db, sms, telemetry, sweepIntervalMs: 60_000 });
+    worker = createWorker({
+      db,
+      sms,
+      telemetry,
+      sweepIntervalMs: 60_000,
+      // The receipt test has nothing to reconcile; keep the scheduler quiet.
+      reconciliationTenants: async () => [],
+    });
 
     // `start` runs one sweep immediately, then a slow timer keeps the test quiet.
     await worker.start();
-    const delivered = await waitFor(() => sms.sent.some((m) => m.to === "+2348099999999"), 5_000);
+    const delivered = await waitFor(() => sms.sent.some((m) => m.to === "+2348099999999"), 60_000);
     expect(delivered).toBe(true);
     const mine = sms.sent.find((m) => m.to === "+2348099999999");
     expect(mine?.text).toBe("Your levy payment is recorded");
@@ -196,7 +213,7 @@ describeIntegration("worker (integration)", () => {
     });
     // Delivered, so it is no longer claimable as pending work.
     expect(status).toBe(0);
-  });
+  }, 120_000);
 
   it("schedules the closed business day, runs it and records the attempt", async () => {
     const tenantId = await tenantWithReconciliationConfig(db);
@@ -208,6 +225,7 @@ describeIntegration("worker (integration)", () => {
       sweepIntervalMs: 60_000,
       cashSweepIntervalMs: 60_000,
       reconciliationIntervalMs: 60_000,
+      reconciliationTenants: onlyTenant(db, tenantId),
       // 02:00:05 on 16 June: the schedule for the 15th has just passed.
       now: () => new Date("2026-06-16T02:00:05Z"),
     });

@@ -1,7 +1,7 @@
 import { readdir } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { Migrator, NO_MIGRATIONS } from "kysely";
+import { Migrator, NO_MIGRATIONS, sql } from "kysely";
 import type { Migration, MigrationProvider } from "kysely";
 import type { AnyDb } from "./connection.js";
 
@@ -48,10 +48,50 @@ function toError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error));
 }
 
+/**
+ * A stable advisory-lock key for "tpirs migrations".
+ *
+ * Every DB-backed test file (and every API/worker instance at boot) calls
+ * `migrateUp`; without a lock they race on the same DDL and one of them fails
+ * with a duplicate relation. The lock is transaction-scoped and held for the
+ * whole migration: concurrent callers wait, then find nothing to do. The
+ * migrator runs on the pool, not on the lock's connection, so its own
+ * per-migration transactions are unaffected.
+ */
+const MIGRATION_LOCK_KEY = 4_246_112_001;
+
+/**
+ * Whether every migration on disk is already recorded as applied.
+ *
+ * CI migrates once before the suite (`scripts/ci/integration.sh`), so this
+ * short-circuits the common case to one cheap query and keeps every DB-backed
+ * test file from queueing on the migration lock. A missing table or a partial
+ * set returns false, and the locked path runs.
+ */
+async function schemaIsCurrent(db: AnyDb, migrationsDir: string): Promise<boolean> {
+  try {
+    // Names come from the directory, not from importing every migration: the
+    // check runs in every DB-backed test's beforeAll, and importing a dozen
+    // TypeScript modules there is what pushed the hook past its timeout.
+    const expected = (await readdir(migrationsDir))
+      .filter((file) => file.endsWith(".ts") && !file.endsWith(".d.ts"))
+      .map((file) => file.slice(0, -3));
+    const applied = await sql<{ name: string }>`select name from kysely_migration`.execute(db);
+    const names = new Set(applied.rows.map((row) => row.name));
+    return expected.every((name) => names.has(name));
+  } catch {
+    return false;
+  }
+}
+
 export async function migrateUp(db: AnyDb, migrationsDir: string): Promise<void> {
-  const migrator = createMigrator(db, migrationsDir);
-  const { error } = await migrator.migrateToLatest();
-  if (error) throw toError(error);
+  if (await schemaIsCurrent(db, migrationsDir)) return;
+  await db.transaction().execute(async (trx) => {
+    await sql`select pg_advisory_xact_lock(${MIGRATION_LOCK_KEY})`.execute(trx);
+    const migrator = createMigrator(db, migrationsDir);
+    const { error } = await migrator.migrateToLatest();
+    if (error) throw toError(error);
+  });
 }
 
 export async function migrateDown(db: AnyDb, migrationsDir: string): Promise<void> {

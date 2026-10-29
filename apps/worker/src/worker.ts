@@ -13,6 +13,7 @@ import {
   RECONCILIATION_RUN_QUEUE,
   SMS_DELIVERY_QUEUE,
 } from "@tpirs/application";
+import type { ScheduledTenant } from "@tpirs/application";
 import { createChannelProviderFactory } from "@tpirs/channel-providers";
 import type { ChannelProviderFactory } from "@tpirs/channel-providers";
 import { validateTenantConfig } from "@tpirs/config";
@@ -48,6 +49,12 @@ export interface WorkerDeps {
    * the job, so a slow cadence is enough.
    */
   readonly reconciliationIntervalMs?: number;
+  /**
+   * The tenants the schedule check may consider. Defaults to every tenant; a
+   * test (or a single-tenant deployment) can narrow it so a shared database
+   * cannot schedule another suite's tenants.
+   */
+  readonly reconciliationTenants?: () => Promise<readonly ScheduledTenant[]>;
   /** The clock deadlines are measured against; injected by tests. */
   readonly now?: () => Date;
 }
@@ -168,6 +175,7 @@ export function createWorker(deps: WorkerDeps): Worker {
     db,
     queue,
     telemetry,
+    ...(deps.reconciliationTenants === undefined ? {} : { tenants: deps.reconciliationTenants }),
     ...(deps.now === undefined ? {} : { now: deps.now }),
   });
 

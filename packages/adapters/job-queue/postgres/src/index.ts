@@ -68,7 +68,11 @@ export function createPostgresJobQueue(options: PostgresJobQueueOptions): Postgr
     enqueueOptions: EnqueueOptions = {},
   ): Promise<string> {
     const maxAttempts = enqueueOptions.maxAttempts ?? 3;
-    const runAt = enqueueOptions.runAt ?? now();
+    // Due immediately unless the caller schedules it. `now()` is the database
+    // clock, not the process clock: the claim compares against `now()` too, and
+    // a few milliseconds of skew between the two made a just-enqueued job
+    // invisible to the very next tick.
+    const runAt = enqueueOptions.runAt ?? null;
     const dedupeKey = enqueueOptions.dedupeKey ?? null;
 
     // A live dedupe key resolves to the job it already made. `ON CONFLICT` on
@@ -85,7 +89,10 @@ export function createPostgresJobQueue(options: PostgresJobQueueOptions): Postgr
 
     const inserted = await sql<{ id: string }>`
       insert into jobs (queue, payload, dedupe_key, max_attempts, run_at)
-      values (${queue}, ${JSON.stringify(payload)}::jsonb, ${dedupeKey}, ${maxAttempts}, ${runAt})
+      values (
+        ${queue}, ${JSON.stringify(payload)}::jsonb, ${dedupeKey}, ${maxAttempts},
+        coalesce(${runAt}::timestamptz, now())
+      )
       on conflict do nothing
       returning id
     `.execute(db);
