@@ -6,3 +6,6 @@ pnpm-lock.yaml
 docker-data/
 infra/staging-data/
 *.tsbuildinfo
+# Generated from the running server (D28); keep generator output byte-stable.
+packages/api-client/openapi.json
+packages/api-client/src/schema.gen.ts

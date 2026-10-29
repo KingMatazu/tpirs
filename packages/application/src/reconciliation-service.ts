@@ -211,6 +211,12 @@ export class ReconciliationService {
     );
   }
 
+  async findById(tenantId: string, runId: string): Promise<ReconciliationRunRow | undefined> {
+    return withTenant(this.deps.db, tenantId, async (tx) =>
+      repositories(tx).reconciliation.findById(tenantId, runId),
+    );
+  }
+
   async exceptions(
     tenantId: string,
     filter: { readonly status?: "open" | "resolved" | "waived" } = {},

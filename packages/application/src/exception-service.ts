@@ -4,6 +4,19 @@ import { repositories, withTenant } from "@tpirs/db";
 import type { AnyDb } from "@tpirs/db";
 import { requireReconPermission } from "./recon-actor.js";
 
+/** Why an exception transition was refused; routes map these to HTTP. */
+export type ExceptionErrorCode = "note_required" | "exception_not_found";
+
+export class ExceptionError extends Error {
+  readonly code: ExceptionErrorCode;
+
+  constructor(code: ExceptionErrorCode, message: string) {
+    super(message);
+    this.name = "ExceptionError";
+    this.code = code;
+  }
+}
+
 /**
  * Working the exception queue (D43).
  *
@@ -42,7 +55,10 @@ export class ExceptionService {
     requireReconPermission(actor, tenantId, "reconciliation:run");
     const trimmed = note.trim();
     if (trimmed === "") {
-      throw new Error(`an exception must not be ${status} without a note`);
+      throw new ExceptionError(
+        "note_required",
+        `an exception must not be ${status} without a note`,
+      );
     }
     return withTenant(this.deps.db, tenantId, async (tx) => {
       const repos = repositories(tx);
@@ -52,7 +68,9 @@ export class ExceptionService {
         resolvedByUserId: actor.userId,
         resolvedAt: this.now(),
       });
-      if (updated === undefined) throw new Error("exception not found or not open");
+      if (updated === undefined) {
+        throw new ExceptionError("exception_not_found", "exception not found or not open");
+      }
       await repos.audit.record({
         tenantId,
         actorUserId: actor.userId,

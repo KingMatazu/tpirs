@@ -273,6 +273,172 @@ const cashDeposit = {
   },
 };
 
+const reconciliationChecklistItem = {
+  $id: "ReconciliationChecklistItem",
+  type: "object",
+  required: [
+    "check",
+    "severity",
+    "subjectType",
+    "subjectId",
+    "expectedMinor",
+    "actualMinor",
+    "expectedCount",
+    "actualCount",
+    "differenceMinor",
+    "differenceCount",
+    "withinTolerance",
+  ],
+  properties: {
+    check: { type: "string" },
+    severity: { type: "string", enum: ["blocking", "warning", "info"] },
+    subjectType: { type: "string", nullable: true },
+    subjectId: { type: "string", nullable: true },
+    // Money is persisted as minor-unit strings; counts stay integers.
+    expectedMinor: { type: "string", nullable: true },
+    actualMinor: { type: "string", nullable: true },
+    expectedCount: { type: "integer", nullable: true },
+    actualCount: { type: "integer", nullable: true },
+    differenceMinor: { type: "string", nullable: true },
+    differenceCount: { type: "integer", nullable: true },
+    withinTolerance: { type: "boolean", nullable: true },
+  },
+};
+
+const reconciliationRun = {
+  $id: "ReconciliationRun",
+  type: "object",
+  required: [
+    "id",
+    "businessDate",
+    "runSeq",
+    "status",
+    "toleranceMinor",
+    "feeToleranceMinor",
+    "checklist",
+    "exceptionCount",
+    "failureReason",
+    "startedAt",
+    "completedAt",
+    "signedOffByUserId",
+    "signedOffAt",
+    "signOffNote",
+  ],
+  properties: {
+    id: { type: "string" },
+    businessDate: { type: "string" },
+    runSeq: { type: "integer" },
+    status: { type: "string", enum: ["running", "completed", "failed", "signed_off"] },
+    toleranceMinor: { type: "string" },
+    feeToleranceMinor: { type: "string" },
+    checklist: { type: "array", items: { $ref: "ReconciliationChecklistItem#" } },
+    exceptionCount: { type: "integer" },
+    failureReason: { type: "string", nullable: true },
+    startedAt: { type: "string" },
+    completedAt: { type: "string", nullable: true },
+    signedOffByUserId: { type: "string", nullable: true },
+    signedOffAt: { type: "string", nullable: true },
+    signOffNote: { type: "string", nullable: true },
+  },
+};
+
+const reconciliationException = {
+  $id: "ReconciliationException",
+  type: "object",
+  required: [
+    "id",
+    "runId",
+    "kind",
+    "severity",
+    "status",
+    "subjectType",
+    "subjectId",
+    "businessDate",
+    "expectedMinor",
+    "actualMinor",
+    "differenceMinor",
+    "currency",
+    "detail",
+    "resolutionNote",
+    "resolvedByUserId",
+    "resolvedAt",
+    "firstSeenRunId",
+    "lastSeenRunId",
+    "createdAt",
+  ],
+  properties: {
+    id: { type: "string" },
+    runId: { type: "string" },
+    kind: { type: "string" },
+    severity: { type: "string", enum: ["blocking", "warning", "info"] },
+    status: { type: "string", enum: ["open", "resolved", "waived"] },
+    subjectType: { type: "string" },
+    subjectId: { type: "string" },
+    businessDate: { type: "string" },
+    expectedMinor: { type: "string", nullable: true },
+    actualMinor: { type: "string", nullable: true },
+    differenceMinor: { type: "string", nullable: true },
+    currency: { type: "string", nullable: true },
+    detail: { type: "object", additionalProperties: true },
+    resolutionNote: { type: "string", nullable: true },
+    resolvedByUserId: { type: "string", nullable: true },
+    resolvedAt: { type: "string", nullable: true },
+    firstSeenRunId: { type: "string" },
+    lastSeenRunId: { type: "string" },
+    createdAt: { type: "string" },
+  },
+};
+
+const anomalyEvent = {
+  $id: "AnomalyEvent",
+  type: "object",
+  required: [
+    "id",
+    "ruleKey",
+    "subjectType",
+    "subjectId",
+    "windowStart",
+    "windowEnd",
+    "observed",
+    "baseline",
+    "threshold",
+    "severity",
+    "status",
+    "detail",
+    "acknowledgedByUserId",
+    "acknowledgedAt",
+    "createdAt",
+  ],
+  properties: {
+    id: { type: "string" },
+    ruleKey: { type: "string" },
+    subjectType: { type: "string" },
+    subjectId: { type: "string" },
+    windowStart: { type: "string" },
+    windowEnd: { type: "string" },
+    observed: { type: "string" },
+    baseline: { type: "string" },
+    threshold: { type: "string" },
+    severity: { type: "string", enum: ["warning", "info"] },
+    status: { type: "string", enum: ["open", "acknowledged"] },
+    detail: { type: "object", additionalProperties: true },
+    acknowledgedByUserId: { type: "string", nullable: true },
+    acknowledgedAt: { type: "string", nullable: true },
+    createdAt: { type: "string" },
+  },
+};
+
+const reportColumn = {
+  $id: "ReportColumn",
+  type: "object",
+  required: ["key", "header", "kind"],
+  properties: {
+    key: { type: "string" },
+    header: { type: "string" },
+    kind: { type: "string", enum: ["money", "count", "text"] },
+  },
+};
+
 /** Component schemas registered once; routes reference them via $ref. */
 export const sharedSchemas: readonly Record<string, unknown>[] = [
   staffUser,
@@ -285,6 +451,11 @@ export const sharedSchemas: readonly Record<string, unknown>[] = [
   cashWallet,
   cashIntake,
   cashDeposit,
+  reconciliationChecklistItem,
+  reconciliationRun,
+  reconciliationException,
+  anomalyEvent,
+  reportColumn,
 ];
 
 export const errorResponseSchema = { $ref: "ErrorEnvelope#" };
@@ -1105,5 +1276,258 @@ export const provisionDepositInstructionSchema: FastifySchema = {
     400: errorResponseSchema,
     403: errorResponseSchema,
     409: errorResponseSchema,
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Reconciliation, settlement import, reports and anomalies (Phase 8)
+// ---------------------------------------------------------------------------
+
+const reconciliationRunParams = {
+  type: "object",
+  required: ["id"],
+  properties: { id: { type: "string" } },
+} as const;
+
+const reconciliationExceptionParams = {
+  type: "object",
+  required: ["id"],
+  properties: { id: { type: "string" } },
+} as const;
+
+const anomalyParams = {
+  type: "object",
+  required: ["id"],
+  properties: { id: { type: "string" } },
+} as const;
+
+export const importSettlementSchema: FastifySchema = {
+  body: {
+    type: "object",
+    required: ["filename", "content"],
+    properties: {
+      /** Original file name, kept as evidence on the import row. */
+      filename: { type: "string" },
+      /** Statement text. The tenant's mapping decides how it is read. */
+      content: { type: "string" },
+    },
+  },
+  response: {
+    200: {
+      type: "object",
+      required: [
+        "outcome",
+        "importId",
+        "fileHash",
+        "rowCount",
+        "rejectedCount",
+        "postedCount",
+        "unmatchedCount",
+        "skipped",
+      ],
+      properties: {
+        outcome: { type: "string", enum: ["imported", "duplicate"] },
+        importId: { type: "string" },
+        fileHash: { type: "string" },
+        rowCount: { type: "integer" },
+        rejectedCount: { type: "integer" },
+        postedCount: { type: "integer" },
+        unmatchedCount: { type: "integer" },
+        skipped: {
+          type: "array",
+          items: {
+            type: "object",
+            required: ["rowNumber", "providerReference", "reason"],
+            properties: {
+              rowNumber: { type: "integer" },
+              providerReference: { type: "string" },
+              reason: { type: "string" },
+            },
+          },
+        },
+      },
+    },
+    400: errorResponseSchema,
+    403: errorResponseSchema,
+    404: errorResponseSchema,
+    409: errorResponseSchema,
+  },
+};
+
+export const listReconciliationRunsSchema: FastifySchema = {
+  querystring: {
+    type: "object",
+    properties: {
+      from: { type: "string" },
+      to: { type: "string" },
+      status: { type: "string" },
+      limit: { type: "string" },
+    },
+  },
+  response: {
+    200: {
+      type: "object",
+      required: ["runs"],
+      properties: { runs: { type: "array", items: { $ref: "ReconciliationRun#" } } },
+    },
+  },
+};
+
+export const getReconciliationRunSchema: FastifySchema = {
+  params: reconciliationRunParams,
+  response: {
+    200: {
+      type: "object",
+      required: ["run"],
+      properties: { run: { $ref: "ReconciliationRun#" } },
+    },
+    403: errorResponseSchema,
+    404: errorResponseSchema,
+  },
+};
+
+export const signOffReconciliationRunSchema: FastifySchema = {
+  params: reconciliationRunParams,
+  body: {
+    type: "object",
+    required: ["note"],
+    properties: { note: { type: "string" } },
+  },
+  response: {
+    200: {
+      type: "object",
+      required: ["run"],
+      properties: { run: { $ref: "ReconciliationRun#" } },
+    },
+    400: errorResponseSchema,
+    403: errorResponseSchema,
+    404: errorResponseSchema,
+    409: errorResponseSchema,
+  },
+};
+
+export const listReconciliationExceptionsSchema: FastifySchema = {
+  querystring: {
+    type: "object",
+    properties: {
+      status: { type: "string" },
+      severity: { type: "string" },
+      runId: { type: "string" },
+      limit: { type: "string" },
+    },
+  },
+  response: {
+    200: {
+      type: "object",
+      required: ["exceptions"],
+      properties: {
+        exceptions: { type: "array", items: { $ref: "ReconciliationException#" } },
+      },
+    },
+  },
+};
+
+export const resolveReconciliationExceptionSchema: FastifySchema = {
+  params: reconciliationExceptionParams,
+  body: {
+    type: "object",
+    required: ["note"],
+    properties: { note: { type: "string" } },
+  },
+  response: {
+    200: {
+      type: "object",
+      required: ["exception"],
+      properties: { exception: { $ref: "ReconciliationException#" } },
+    },
+    400: errorResponseSchema,
+    403: errorResponseSchema,
+    404: errorResponseSchema,
+    409: errorResponseSchema,
+  },
+};
+
+export const listAnomaliesSchema: FastifySchema = {
+  querystring: {
+    type: "object",
+    properties: {
+      status: { type: "string" },
+      ruleKey: { type: "string" },
+      limit: { type: "string" },
+    },
+  },
+  response: {
+    200: {
+      type: "object",
+      required: ["anomalies"],
+      properties: { anomalies: { type: "array", items: { $ref: "AnomalyEvent#" } } },
+    },
+  },
+};
+
+export const acknowledgeAnomalySchema: FastifySchema = {
+  params: anomalyParams,
+  response: {
+    200: {
+      type: "object",
+      required: ["anomaly"],
+      properties: { anomaly: { $ref: "AnomalyEvent#" } },
+    },
+    403: errorResponseSchema,
+    404: errorResponseSchema,
+  },
+};
+
+export const getReportSchema: FastifySchema = {
+  querystring: {
+    type: "object",
+    required: ["from", "to"],
+    properties: { from: { type: "string" }, to: { type: "string" } },
+  },
+  response: {
+    200: {
+      type: "object",
+      required: ["report"],
+      properties: {
+        report: {
+          type: "object",
+          required: ["reportKey", "from", "to", "generatedAt", "columns", "rows", "totals"],
+          properties: {
+            reportKey: { type: "string" },
+            from: { type: "string" },
+            to: { type: "string" },
+            generatedAt: { type: "string" },
+            columns: { type: "array", items: { $ref: "ReportColumn#" } },
+            rows: {
+              type: "array",
+              items: { type: "object", additionalProperties: true },
+            },
+            totals: { type: "object", additionalProperties: { type: "string" } },
+          },
+        },
+      },
+    },
+    400: errorResponseSchema,
+    403: errorResponseSchema,
+    404: errorResponseSchema,
+  },
+};
+
+export const exportReportSchema: FastifySchema = {
+  querystring: {
+    type: "object",
+    required: ["from", "to", "format"],
+    properties: {
+      from: { type: "string" },
+      to: { type: "string" },
+      format: { type: "string", enum: ["csv", "pdf", "xlsx"] },
+    },
+  },
+  // The body is the rendered file with its own content type; a JSON response
+  // schema would strip it, so only the error shapes are declared here.
+  response: {
+    400: errorResponseSchema,
+    403: errorResponseSchema,
+    404: errorResponseSchema,
   },
 };

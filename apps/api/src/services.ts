@@ -5,15 +5,19 @@ import type { ChannelProviderFactory } from "@tpirs/channel-providers";
 import { createQrTokenSigner } from "@tpirs/crypto";
 import type { AnyDb } from "@tpirs/db";
 import type {
+  AnomalyService,
   AssetService,
   CollectorCashService,
   DisputeService,
+  ExceptionService,
   InboundSmsService,
   OtpService,
   OwnerService,
   PaidSetSyncService,
   PaymentService,
   RateLimiter,
+  ReconciliationService,
+  ReportService,
   ScanService,
   UssdService,
   VerificationService,
@@ -31,19 +35,27 @@ import {
   createPaymentService,
   createRateLimiter,
   createScanService,
+  createSettlementImportService,
   createSmsCostGuard,
   createUssdService,
   createVerificationService,
+  AnomalyService as AnomalyServiceImpl,
+  ExceptionService as ExceptionServiceImpl,
+  ReconciliationService as ReconciliationServiceImpl,
+  ReportService as ReportServiceImpl,
 } from "@tpirs/application";
 import { createConfigAssetSchemaRegistry } from "@tpirs/asset-schema-registry-config";
 import { createConfigFeeEngine } from "@tpirs/fee-engine-config";
 import type {
   Cache,
   Clock,
+  ExportFormat,
+  ExportService,
   LockService,
   ObjectStorage,
   PaymentProvider,
   SecretsProvider,
+  SettlementImport,
   SmsProvider,
   Telemetry,
 } from "@tpirs/ports";
@@ -86,6 +98,14 @@ export interface ServiceDeps {
    */
   readonly channelProviders?: ChannelProviderFactory;
   readonly telemetry?: Telemetry;
+  /**
+   * The statement reader the deployment supplies (e.g. the CSV adapter). The
+   * tenant's config decides the provider, columns and tolerance; a tenant with
+   * no statement mapping never reaches it.
+   */
+  readonly settlementReader?: SettlementImport;
+  /** Report renderers by format. A missing format is refused by the report service. */
+  readonly exporters?: Partial<Record<ExportFormat, ExportService>>;
 }
 
 export interface Services {
@@ -110,6 +130,19 @@ export interface Services {
   readonly paidSetSync: PaidSetSyncService;
   /** Collector cash: intake, wallets, deposits and their matching. */
   readonly collectorCash: CollectorCashService;
+  /** Reconciliation runs, their checklist and sign-off. */
+  readonly reconciliation: ReconciliationService;
+  /** Working the exception queue. */
+  readonly exceptions: ExceptionService;
+  /** Persisted anomaly events. */
+  readonly anomalies: AnomalyService;
+  /** Finance reports and their exports. */
+  readonly reports: ReportService;
+  /**
+   * Statement intake, present only when the deployment supplies a reader.
+   * The tenant's config decides the provider, columns and tolerance.
+   */
+  readonly settlementImport?: ReturnType<typeof createSettlementImportService>;
 }
 
 /**
@@ -197,6 +230,18 @@ export async function buildServices(deps: ServiceDeps): Promise<Services> {
     now: () => deps.clock.now(),
   });
 
+  const reconciliation = new ReconciliationServiceImpl({ db: deps.db });
+  const exceptions = new ExceptionServiceImpl({ db: deps.db });
+  const anomalies = new AnomalyServiceImpl({
+    db: deps.db,
+    ...(deps.telemetry === undefined ? {} : { telemetry: deps.telemetry }),
+  });
+  const reports = new ReportServiceImpl({ db: deps.db, exporters: deps.exporters ?? {} });
+  const settlementImport =
+    deps.settlementReader === undefined
+      ? undefined
+      : createSettlementImportService({ db: deps.db, settlementImport: deps.settlementReader });
+
   return {
     asset,
     owner,
@@ -212,5 +257,10 @@ export async function buildServices(deps: ServiceDeps): Promise<Services> {
     channelProviders,
     paidSetSync,
     collectorCash,
+    reconciliation,
+    exceptions,
+    anomalies,
+    reports,
+    ...(settlementImport === undefined ? {} : { settlementImport }),
   };
 }

@@ -28,7 +28,7 @@
   },
   "lint-staged": {
     "*.{ts,mjs}": [
-      "node node_modules/eslint/bin/eslint.js --fix --max-warnings 0",
+      "node node_modules/eslint/bin/eslint.js --fix --max-warnings 0 --no-warn-ignored",
       "node node_modules/prettier/bin/prettier.cjs --write"
     ],
     "*.{json,md,yaml,yml}": [

@@ -19,6 +19,7 @@ import { registerPaymentRoutes } from "./routes/payments.js";
 import { registerCashRoutes } from "./routes/cash.js";
 import { registerChannelRoutes } from "./routes/channels.js";
 import { registerAuditRoutes } from "./routes/audit.js";
+import { registerReconciliationRoutes } from "./routes/reconciliation.js";
 
 export interface HealthResponse {
   readonly status: "ok";
@@ -96,6 +97,12 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     if (options.services !== undefined) {
       registerPaymentRoutes(app, { services: options.services });
       registerCashRoutes(app, { services: options.services });
+      if (options.loadConfig !== undefined) {
+        registerReconciliationRoutes(app, {
+          services: options.services,
+          loadConfig: options.loadConfig,
+        });
+      }
     }
   }
 

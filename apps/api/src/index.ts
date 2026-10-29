@@ -11,6 +11,10 @@ import { createMockLockService } from "@tpirs/lock-service-mock";
 import { createMockSmsProvider } from "@tpirs/sms-provider-mock";
 import { createDb } from "@tpirs/db";
 import { createDbIdentityProvider } from "@tpirs/identity-provider-db";
+import { createCsvExportService } from "@tpirs/export-service-csv";
+import { createPdfExportService } from "@tpirs/export-service-pdf";
+import { createXlsxExportService } from "@tpirs/export-service-xlsx";
+import { createCsvSettlementImport } from "@tpirs/settlement-import-csv";
 
 const QR_KEY_REF = "qr-token-signing-key";
 
@@ -57,6 +61,14 @@ async function main(): Promise<void> {
         locks: createMockLockService(),
         clock: createMockClock(),
         qrKeyRef: QR_KEY_REF,
+        // Phase 8: a deployment supplies the statement reader and the report
+        // renderers; tenants decide their columns, schedule and rules in config.
+        settlementReader: createCsvSettlementImport(),
+        exporters: {
+          csv: createCsvExportService(),
+          pdf: createPdfExportService(),
+          xlsx: createXlsxExportService(),
+        },
       });
       loadConfigFn = makeTenantConfigLoader(db);
       telemetry.log("info", "registry services ready");

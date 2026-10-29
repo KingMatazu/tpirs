@@ -9,9 +9,13 @@ import {
   createOwnerSchema,
   getAssetSchema,
   getOwnerSchema,
+  getReportSchema,
+  listAnomaliesSchema,
+  listAuditSchema,
   listOutboxSchema,
   listPaymentsSchema,
-  listAuditSchema,
+  listReconciliationExceptionsSchema,
+  listReconciliationRunsSchema,
   resolveSuspenseSchema,
   searchAssetsSchema,
   verifyTokenSchema,
@@ -56,6 +60,87 @@ const sampleOwner = {
   displayName: "Ada Obi",
   phone: "+2348000000001",
   phoneVerifiedAt: null,
+};
+
+const sampleChecklistItem = {
+  check: "clearing_balance",
+  severity: "blocking",
+  subjectType: null,
+  subjectId: null,
+  expectedMinor: "0",
+  actualMinor: "0",
+  expectedCount: null,
+  actualCount: null,
+  differenceMinor: "0",
+  differenceCount: null,
+  withinTolerance: true,
+};
+
+const sampleRun = {
+  id: "run_1",
+  businessDate: "2026-06-15",
+  runSeq: 1,
+  status: "completed",
+  toleranceMinor: "0",
+  feeToleranceMinor: "1000",
+  checklist: [sampleChecklistItem],
+  exceptionCount: 0,
+  failureReason: null,
+  startedAt: "2026-06-16T02:00:00.000Z",
+  completedAt: "2026-06-16T02:00:05.000Z",
+  signedOffByUserId: null,
+  signedOffAt: null,
+  signOffNote: null,
+};
+
+const sampleException = {
+  id: "exc_1",
+  runId: "run_1",
+  kind: "settlement_rows_matched",
+  severity: "blocking",
+  status: "open",
+  subjectType: "settlement_row",
+  subjectId: "row_1",
+  businessDate: "2026-06-15",
+  expectedMinor: "0",
+  actualMinor: "20000",
+  differenceMinor: "20000",
+  currency: "NGN",
+  detail: { providerReference: "ref-1" },
+  resolutionNote: null,
+  resolvedByUserId: null,
+  resolvedAt: null,
+  firstSeenRunId: "run_1",
+  lastSeenRunId: "run_1",
+  createdAt: "2026-06-16T02:00:05.000Z",
+};
+
+const sampleAnomaly = {
+  id: "an_1",
+  ruleKey: "suspense_growth",
+  subjectType: "tenant",
+  subjectId: "t1",
+  windowStart: "2026-06-09",
+  windowEnd: "2026-06-16",
+  observed: "7777.0000",
+  baseline: "0.0000",
+  threshold: "5000.0000",
+  severity: "warning",
+  status: "open",
+  detail: { observations: 0 },
+  acknowledgedByUserId: null,
+  acknowledgedAt: null,
+  createdAt: "2026-06-16T02:00:05.000Z",
+};
+
+const sampleReport = {
+  reportKey: "daily_collections",
+  from: "2026-06-15",
+  to: "2026-06-15",
+  generatedAt: "2026-06-16T02:00:05.000Z",
+  columns: [{ key: "revenueMinor", header: "revenueMinor", kind: "money" }],
+  rows: [{ businessDate: "2026-06-15", revenueMinor: "20000", paymentsCount: 1 }],
+  totals: { revenueMinor: "20000" },
 };
 
 function buildSampleApp(): FastifyInstance {
@@ -136,6 +221,20 @@ describe("declared response schemas serialize complete payloads", () => {
         },
       ],
       nextCursor: null,
+    }));
+    app.get("/v1/reconciliation/runs", { schema: listReconciliationRunsSchema }, async () => ({
+      runs: [sampleRun],
+    }));
+    app.get(
+      "/v1/reconciliation/exceptions",
+      { schema: listReconciliationExceptionsSchema },
+      async () => ({ exceptions: [sampleException] }),
+    );
+    app.get("/v1/anomalies", { schema: listAnomaliesSchema }, async () => ({
+      anomalies: [sampleAnomaly],
+    }));
+    app.get("/v1/reports/:key", { schema: getReportSchema }, async () => ({
+      report: sampleReport,
     }));
 
     await app.ready();
@@ -259,5 +358,33 @@ describe("declared response schemas serialize complete payloads", () => {
       ip: "127.0.0.1",
       createdAt: "2026-10-23T10:00:00.000Z",
     });
+  });
+
+  it("serializes reconciliation runs with their checklist intact", async () => {
+    const response = await app.inject({ method: "GET", url: "/v1/reconciliation/runs" });
+    expect(response.statusCode).toBe(200);
+    expect((response.json() as { runs: unknown[] }).runs[0]).toEqual(sampleRun);
+  });
+
+  it("serializes exceptions and anomalies without stripping detail", async () => {
+    const exceptions = await app.inject({
+      method: "GET",
+      url: "/v1/reconciliation/exceptions",
+    });
+    expect(exceptions.statusCode).toBe(200);
+    expect((exceptions.json() as { exceptions: unknown[] }).exceptions[0]).toEqual(sampleException);
+
+    const anomalies = await app.inject({ method: "GET", url: "/v1/anomalies" });
+    expect(anomalies.statusCode).toBe(200);
+    expect((anomalies.json() as { anomalies: unknown[] }).anomalies[0]).toEqual(sampleAnomaly);
+  });
+
+  it("serializes report rows and totals", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: "/v1/reports/daily_collections?from=2026-06-15&to=2026-06-15",
+    });
+    expect(response.statusCode).toBe(200);
+    expect((response.json() as { report: unknown }).report).toEqual(sampleReport);
   });
 });

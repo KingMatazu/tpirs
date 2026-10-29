@@ -184,6 +184,15 @@ importers:
       '@tpirs/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@tpirs/export-service-csv':
+        specifier: workspace:*
+        version: link:../../packages/adapters/export-service/csv
+      '@tpirs/export-service-pdf':
+        specifier: workspace:*
+        version: link:../../packages/adapters/export-service/pdf
+      '@tpirs/export-service-xlsx':
+        specifier: workspace:*
+        version: link:../../packages/adapters/export-service/xlsx
       '@tpirs/fee-engine-config':
         specifier: workspace:*
         version: link:../../packages/adapters/fee-engine/config
@@ -196,6 +205,9 @@ importers:
       '@tpirs/ports':
         specifier: workspace:*
         version: link:../../packages/ports
+      '@tpirs/settlement-import-csv':
+        specifier: workspace:*
+        version: link:../../packages/adapters/settlement-import/csv
       '@tpirs/sms-provider-mock':
         specifier: workspace:*
         version: link:../../packages/adapters/sms-provider/mock

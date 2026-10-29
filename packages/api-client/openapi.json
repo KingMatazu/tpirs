@@ -9,7 +9,12 @@
     "schemas": {
       "def-0": {
         "type": "object",
-        "required": ["userId", "tenantId", "displayName", "roles"],
+        "required": [
+          "userId",
+          "tenantId",
+          "displayName",
+          "roles"
+        ],
         "properties": {
           "userId": {
             "type": "string"
@@ -50,7 +55,11 @@
           },
           "status": {
             "type": "string",
-            "enum": ["active", "suspended", "retired"]
+            "enum": [
+              "active",
+              "suspended",
+              "retired"
+            ]
           },
           "zoneId": {
             "type": "string",
@@ -75,7 +84,12 @@
       },
       "def-2": {
         "type": "object",
-        "required": ["id", "displayName", "phone", "phoneVerifiedAt"],
+        "required": [
+          "id",
+          "displayName",
+          "phone",
+          "phoneVerifiedAt"
+        ],
         "properties": {
           "id": {
             "type": "string"
@@ -115,7 +129,12 @@
           },
           "status": {
             "type": "string",
-            "enum": ["applied", "credited", "suspense", "rejected"]
+            "enum": [
+              "applied",
+              "credited",
+              "suspense",
+              "rejected"
+            ]
           },
           "amountMinor": {
             "type": "string"
@@ -158,7 +177,14 @@
       },
       "def-4": {
         "type": "object",
-        "required": ["id", "kind", "recipient", "body", "status", "createdAt"],
+        "required": [
+          "id",
+          "kind",
+          "recipient",
+          "body",
+          "status",
+          "createdAt"
+        ],
         "properties": {
           "id": {
             "type": "string"
@@ -239,11 +265,17 @@
       },
       "def-6": {
         "type": "object",
-        "required": ["error"],
+        "required": [
+          "error"
+        ],
         "properties": {
           "error": {
             "type": "object",
-            "required": ["code", "message", "requestId"],
+            "required": [
+              "code",
+              "message",
+              "requestId"
+            ],
             "properties": {
               "code": {
                 "type": "string"
@@ -279,7 +311,10 @@
           },
           "status": {
             "type": "string",
-            "enum": ["active", "frozen"]
+            "enum": [
+              "active",
+              "frozen"
+            ]
           },
           "frozenAt": {
             "type": "string",
@@ -353,7 +388,11 @@
           },
           "status": {
             "type": "string",
-            "enum": ["open", "matched", "reversed"]
+            "enum": [
+              "open",
+              "matched",
+              "reversed"
+            ]
           },
           "receiptNumber": {
             "type": "string"
@@ -398,13 +437,367 @@
           },
           "status": {
             "type": "string",
-            "enum": ["matched", "partial", "suspense"]
+            "enum": [
+              "matched",
+              "partial",
+              "suspense"
+            ]
           },
           "createdAt": {
             "type": "string"
           }
         },
         "title": "CashDeposit"
+      },
+      "def-10": {
+        "type": "object",
+        "required": [
+          "check",
+          "severity",
+          "subjectType",
+          "subjectId",
+          "expectedMinor",
+          "actualMinor",
+          "expectedCount",
+          "actualCount",
+          "differenceMinor",
+          "differenceCount",
+          "withinTolerance"
+        ],
+        "properties": {
+          "check": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "blocking",
+              "warning",
+              "info"
+            ]
+          },
+          "subjectType": {
+            "type": "string",
+            "nullable": true
+          },
+          "subjectId": {
+            "type": "string",
+            "nullable": true
+          },
+          "expectedMinor": {
+            "type": "string",
+            "nullable": true
+          },
+          "actualMinor": {
+            "type": "string",
+            "nullable": true
+          },
+          "expectedCount": {
+            "type": "integer",
+            "nullable": true
+          },
+          "actualCount": {
+            "type": "integer",
+            "nullable": true
+          },
+          "differenceMinor": {
+            "type": "string",
+            "nullable": true
+          },
+          "differenceCount": {
+            "type": "integer",
+            "nullable": true
+          },
+          "withinTolerance": {
+            "type": "boolean",
+            "nullable": true
+          }
+        },
+        "title": "ReconciliationChecklistItem"
+      },
+      "def-11": {
+        "type": "object",
+        "required": [
+          "id",
+          "businessDate",
+          "runSeq",
+          "status",
+          "toleranceMinor",
+          "feeToleranceMinor",
+          "checklist",
+          "exceptionCount",
+          "failureReason",
+          "startedAt",
+          "completedAt",
+          "signedOffByUserId",
+          "signedOffAt",
+          "signOffNote"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "businessDate": {
+            "type": "string"
+          },
+          "runSeq": {
+            "type": "integer"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "running",
+              "completed",
+              "failed",
+              "signed_off"
+            ]
+          },
+          "toleranceMinor": {
+            "type": "string"
+          },
+          "feeToleranceMinor": {
+            "type": "string"
+          },
+          "checklist": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/def-10"
+            }
+          },
+          "exceptionCount": {
+            "type": "integer"
+          },
+          "failureReason": {
+            "type": "string",
+            "nullable": true
+          },
+          "startedAt": {
+            "type": "string"
+          },
+          "completedAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "signedOffByUserId": {
+            "type": "string",
+            "nullable": true
+          },
+          "signedOffAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "signOffNote": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "title": "ReconciliationRun"
+      },
+      "def-12": {
+        "type": "object",
+        "required": [
+          "id",
+          "runId",
+          "kind",
+          "severity",
+          "status",
+          "subjectType",
+          "subjectId",
+          "businessDate",
+          "expectedMinor",
+          "actualMinor",
+          "differenceMinor",
+          "currency",
+          "detail",
+          "resolutionNote",
+          "resolvedByUserId",
+          "resolvedAt",
+          "firstSeenRunId",
+          "lastSeenRunId",
+          "createdAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "runId": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "blocking",
+              "warning",
+              "info"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "resolved",
+              "waived"
+            ]
+          },
+          "subjectType": {
+            "type": "string"
+          },
+          "subjectId": {
+            "type": "string"
+          },
+          "businessDate": {
+            "type": "string"
+          },
+          "expectedMinor": {
+            "type": "string",
+            "nullable": true
+          },
+          "actualMinor": {
+            "type": "string",
+            "nullable": true
+          },
+          "differenceMinor": {
+            "type": "string",
+            "nullable": true
+          },
+          "currency": {
+            "type": "string",
+            "nullable": true
+          },
+          "detail": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "resolutionNote": {
+            "type": "string",
+            "nullable": true
+          },
+          "resolvedByUserId": {
+            "type": "string",
+            "nullable": true
+          },
+          "resolvedAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "firstSeenRunId": {
+            "type": "string"
+          },
+          "lastSeenRunId": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          }
+        },
+        "title": "ReconciliationException"
+      },
+      "def-13": {
+        "type": "object",
+        "required": [
+          "id",
+          "ruleKey",
+          "subjectType",
+          "subjectId",
+          "windowStart",
+          "windowEnd",
+          "observed",
+          "baseline",
+          "threshold",
+          "severity",
+          "status",
+          "detail",
+          "acknowledgedByUserId",
+          "acknowledgedAt",
+          "createdAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "ruleKey": {
+            "type": "string"
+          },
+          "subjectType": {
+            "type": "string"
+          },
+          "subjectId": {
+            "type": "string"
+          },
+          "windowStart": {
+            "type": "string"
+          },
+          "windowEnd": {
+            "type": "string"
+          },
+          "observed": {
+            "type": "string"
+          },
+          "baseline": {
+            "type": "string"
+          },
+          "threshold": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "warning",
+              "info"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "acknowledged"
+            ]
+          },
+          "detail": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "acknowledgedByUserId": {
+            "type": "string",
+            "nullable": true
+          },
+          "acknowledgedAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string"
+          }
+        },
+        "title": "AnomalyEvent"
+      },
+      "def-14": {
+        "type": "object",
+        "required": [
+          "key",
+          "header",
+          "kind"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "header": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "money",
+              "count",
+              "text"
+            ]
+          }
+        },
+        "title": "ReportColumn"
       }
     }
   },
@@ -417,7 +810,11 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["tenantSlug", "username", "password"],
+                "required": [
+                  "tenantSlug",
+                  "username",
+                  "password"
+                ],
                 "properties": {
                   "tenantSlug": {
                     "type": "string"
@@ -433,7 +830,10 @@
                   },
                   "device": {
                     "type": "object",
-                    "required": ["deviceId", "platform"],
+                    "required": [
+                      "deviceId",
+                      "platform"
+                    ],
                     "properties": {
                       "deviceId": {
                         "type": "string"
@@ -455,7 +855,13 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["token", "expiresAt", "user", "refreshToken", "refreshExpiresAt"],
+                  "required": [
+                    "token",
+                    "expiresAt",
+                    "user",
+                    "refreshToken",
+                    "refreshExpiresAt"
+                  ],
                   "properties": {
                     "token": {
                       "type": "string"
@@ -489,7 +895,13 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["token", "expiresAt", "user", "refreshToken", "refreshExpiresAt"],
+                  "required": [
+                    "token",
+                    "expiresAt",
+                    "user",
+                    "refreshToken",
+                    "refreshExpiresAt"
+                  ],
                   "properties": {
                     "token": {
                       "type": "string"
@@ -532,7 +944,13 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["userId", "tenantId", "displayName", "roles", "permissions"],
+                  "required": [
+                    "userId",
+                    "tenantId",
+                    "displayName",
+                    "roles",
+                    "permissions"
+                  ],
                   "properties": {
                     "userId": {
                       "type": "string"
@@ -656,7 +1074,10 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["entries", "nextCursor"],
+                  "required": [
+                    "entries",
+                    "nextCursor"
+                  ],
                   "properties": {
                     "entries": {
                       "type": "array",
@@ -703,7 +1124,9 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["payments"],
+                  "required": [
+                    "payments"
+                  ],
                   "properties": {
                     "payments": {
                       "type": "array",
@@ -738,7 +1161,9 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["payments"],
+                  "required": [
+                    "payments"
+                  ],
                   "properties": {
                     "payments": {
                       "type": "array",
@@ -773,7 +1198,9 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["messages"],
+                  "required": [
+                    "messages"
+                  ],
                   "properties": {
                     "messages": {
                       "type": "array",
@@ -797,7 +1224,9 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["assetId"],
+                "required": [
+                  "assetId"
+                ],
                 "properties": {
                   "assetId": {
                     "type": "string"
@@ -824,7 +1253,9 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["payment"],
+                  "required": [
+                    "payment"
+                  ],
                   "properties": {
                     "payment": {
                       "$ref": "#/components/schemas/def-3"
@@ -845,7 +1276,11 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["collectorUserId", "clientReference", "amountMinor"],
+                "required": [
+                  "collectorUserId",
+                  "clientReference",
+                  "amountMinor"
+                ],
                 "properties": {
                   "collectorUserId": {
                     "type": "string"
@@ -983,7 +1418,9 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["wallets"],
+                  "required": [
+                    "wallets"
+                  ],
                   "properties": {
                     "wallets": {
                       "type": "array",
@@ -1034,7 +1471,10 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["wallet", "intakes"],
+                  "required": [
+                    "wallet",
+                    "intakes"
+                  ],
                   "properties": {
                     "wallet": {
                       "$ref": "#/components/schemas/def-7"
@@ -1085,7 +1525,9 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["reason"],
+                "required": [
+                  "reason"
+                ],
                 "properties": {
                   "reason": {
                     "type": "string"
@@ -1112,7 +1554,9 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["wallet"],
+                  "required": [
+                    "wallet"
+                  ],
                   "properties": {
                     "wallet": {
                       "$ref": "#/components/schemas/def-7"
@@ -1163,7 +1607,9 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["reason"],
+                "required": [
+                  "reason"
+                ],
                 "properties": {
                   "reason": {
                     "type": "string"
@@ -1190,7 +1636,9 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["wallet"],
+                  "required": [
+                    "wallet"
+                  ],
                   "properties": {
                     "wallet": {
                       "$ref": "#/components/schemas/def-7"
@@ -1276,7 +1724,11 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["deposits", "nextCursor", "hasMore"],
+                  "required": [
+                    "deposits",
+                    "nextCursor",
+                    "hasMore"
+                  ],
                   "properties": {
                     "deposits": {
                       "type": "array",
@@ -1307,7 +1759,9 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["intakeId"],
+                "required": [
+                  "intakeId"
+                ],
                 "properties": {
                   "intakeId": {
                     "type": "string"
@@ -1351,7 +1805,11 @@
                     },
                     "outcome": {
                       "type": "string",
-                      "enum": ["matched", "partial", "suspense"]
+                      "enum": [
+                        "matched",
+                        "partial",
+                        "suspense"
+                      ]
                     },
                     "collectorUserId": {
                       "type": "string",
@@ -1422,7 +1880,9 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["reason"],
+                "required": [
+                  "reason"
+                ],
                 "properties": {
                   "reason": {
                     "type": "string"
@@ -1449,7 +1909,11 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["intakeId", "reversalRequestId", "status"],
+                  "required": [
+                    "intakeId",
+                    "reversalRequestId",
+                    "status"
+                  ],
                   "properties": {
                     "intakeId": {
                       "type": "string"
@@ -1542,7 +2006,9 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["instruction"],
+                  "required": [
+                    "instruction"
+                  ],
                   "properties": {
                     "instruction": {
                       "type": "object",
@@ -1613,6 +2079,899 @@
         }
       }
     },
+    "/v1/settlements/import": {
+      "post": {
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "filename",
+                  "content"
+                ],
+                "properties": {
+                  "filename": {
+                    "type": "string"
+                  },
+                  "content": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "outcome",
+                    "importId",
+                    "fileHash",
+                    "rowCount",
+                    "rejectedCount",
+                    "postedCount",
+                    "unmatchedCount",
+                    "skipped"
+                  ],
+                  "properties": {
+                    "outcome": {
+                      "type": "string",
+                      "enum": [
+                        "imported",
+                        "duplicate"
+                      ]
+                    },
+                    "importId": {
+                      "type": "string"
+                    },
+                    "fileHash": {
+                      "type": "string"
+                    },
+                    "rowCount": {
+                      "type": "integer"
+                    },
+                    "rejectedCount": {
+                      "type": "integer"
+                    },
+                    "postedCount": {
+                      "type": "integer"
+                    },
+                    "unmatchedCount": {
+                      "type": "integer"
+                    },
+                    "skipped": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "rowNumber",
+                          "providerReference",
+                          "reason"
+                        ],
+                        "properties": {
+                          "rowNumber": {
+                            "type": "integer"
+                          },
+                          "providerReference": {
+                            "type": "string"
+                          },
+                          "reason": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/def-6"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/def-6"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/def-6"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/def-6"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/reconciliation/runs": {
+      "get": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "from",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "to",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "status",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "limit",
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "runs"
+                  ],
+                  "properties": {
+                    "runs": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/def-11"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/reconciliation/runs/{id}": {
+      "get": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "run"
+                  ],
+                  "properties": {
+                    "run": {
+                      "$ref": "#/components/schemas/def-11"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/def-6"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/def-6"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/reconciliation/runs/{id}/sign-off": {
+      "post": {
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "note"
+                ],
+                "properties": {
+                  "note": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "run"
+                  ],
+                  "properties": {
+                    "run": {
+                      "$ref": "#/components/schemas/def-11"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/def-6"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/def-6"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/def-6"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/def-6"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/reconciliation/exceptions": {
+      "get": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "status",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "severity",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "runId",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "limit",
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "exceptions"
+                  ],
+                  "properties": {
+                    "exceptions": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/def-12"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/reconciliation/exceptions/{id}/resolve": {
+      "post": {
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "note"
+                ],
+                "properties": {
+                  "note": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "exception"
+                  ],
+                  "properties": {
+                    "exception": {
+                      "$ref": "#/components/schemas/def-12"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/def-6"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/def-6"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/def-6"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/def-6"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/reconciliation/exceptions/{id}/waive": {
+      "post": {
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "note"
+                ],
+                "properties": {
+                  "note": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "exception"
+                  ],
+                  "properties": {
+                    "exception": {
+                      "$ref": "#/components/schemas/def-12"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/def-6"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/def-6"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/def-6"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/def-6"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/anomalies": {
+      "get": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "status",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "ruleKey",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "limit",
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "anomalies"
+                  ],
+                  "properties": {
+                    "anomalies": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/def-13"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/anomalies/{id}/acknowledge": {
+      "post": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "anomaly"
+                  ],
+                  "properties": {
+                    "anomaly": {
+                      "$ref": "#/components/schemas/def-13"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/def-6"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/def-6"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/reports/{key}": {
+      "get": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "from",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "to",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "key",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "report"
+                  ],
+                  "properties": {
+                    "report": {
+                      "type": "object",
+                      "required": [
+                        "reportKey",
+                        "from",
+                        "to",
+                        "generatedAt",
+                        "columns",
+                        "rows",
+                        "totals"
+                      ],
+                      "properties": {
+                        "reportKey": {
+                          "type": "string"
+                        },
+                        "from": {
+                          "type": "string"
+                        },
+                        "to": {
+                          "type": "string"
+                        },
+                        "generatedAt": {
+                          "type": "string"
+                        },
+                        "columns": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/def-14"
+                          }
+                        },
+                        "rows": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": true
+                          }
+                        },
+                        "totals": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/def-6"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/def-6"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/def-6"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/reports/{key}/export": {
+      "get": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "from",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "to",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "csv",
+                "pdf",
+                "xlsx"
+              ]
+            },
+            "in": "query",
+            "name": "format",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "key",
+            "required": true
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/def-6"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/def-6"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/def-6"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/assets": {
       "post": {
         "requestBody": {
@@ -1621,7 +2980,10 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["assetTypeKey", "attributes"],
+                "required": [
+                  "assetTypeKey",
+                  "attributes"
+                ],
                 "properties": {
                   "assetTypeKey": {
                     "type": "string"
@@ -1638,7 +3000,10 @@
                   },
                   "owner": {
                     "type": "object",
-                    "required": ["displayName", "phone"],
+                    "required": [
+                      "displayName",
+                      "phone"
+                    ],
                     "properties": {
                       "displayName": {
                         "type": "string"
@@ -1660,7 +3025,9 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["asset"],
+                  "required": [
+                    "asset"
+                  ],
                   "properties": {
                     "asset": {
                       "$ref": "#/components/schemas/def-1"
@@ -1730,7 +3097,9 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["assets"],
+                  "required": [
+                    "assets"
+                  ],
                   "properties": {
                     "assets": {
                       "type": "array",
@@ -1765,7 +3134,10 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["asset", "photos"],
+                  "required": [
+                    "asset",
+                    "photos"
+                  ],
                   "properties": {
                     "asset": {
                       "$ref": "#/components/schemas/def-1"
@@ -1774,7 +3146,10 @@
                       "type": "array",
                       "items": {
                         "type": "object",
-                        "required": ["id", "url"],
+                        "required": [
+                          "id",
+                          "url"
+                        ],
                         "properties": {
                           "id": {
                             "type": "string"
@@ -1802,7 +3177,9 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["attributes"],
+                "required": [
+                  "attributes"
+                ],
                 "properties": {
                   "attributes": {
                     "type": "object",
@@ -1830,7 +3207,9 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["asset"],
+                  "required": [
+                    "asset"
+                  ],
                   "properties": {
                     "asset": {
                       "$ref": "#/components/schemas/def-1"
@@ -1851,7 +3230,10 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["contentType", "content"],
+                "required": [
+                  "contentType",
+                  "content"
+                ],
                 "properties": {
                   "contentType": {
                     "type": "string"
@@ -1881,7 +3263,9 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["ok"],
+                  "required": [
+                    "ok"
+                  ],
                   "properties": {
                     "ok": {
                       "type": "boolean"
@@ -1959,7 +3343,9 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["asset"],
+                  "required": [
+                    "asset"
+                  ],
                   "properties": {
                     "asset": {
                       "$ref": "#/components/schemas/def-1"
@@ -1980,7 +3366,10 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["displayName", "phone"],
+                "required": [
+                  "displayName",
+                  "phone"
+                ],
                 "properties": {
                   "displayName": {
                     "type": "string"
@@ -2000,7 +3389,9 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["owner"],
+                  "required": [
+                    "owner"
+                  ],
                   "properties": {
                     "owner": {
                       "$ref": "#/components/schemas/def-2"
@@ -2032,7 +3423,9 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["owner"],
+                  "required": [
+                    "owner"
+                  ],
                   "properties": {
                     "owner": {
                       "$ref": "#/components/schemas/def-2"
@@ -2072,7 +3465,9 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["sent"],
+                  "required": [
+                    "sent"
+                  ],
                   "properties": {
                     "sent": {
                       "type": "boolean"
@@ -2093,7 +3488,10 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["ownerId", "code"],
+                "required": [
+                  "ownerId",
+                  "code"
+                ],
                 "properties": {
                   "ownerId": {
                     "type": "string"
@@ -2113,7 +3511,9 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["owner"],
+                  "required": [
+                    "owner"
+                  ],
                   "properties": {
                     "owner": {
                       "$ref": "#/components/schemas/def-2"
@@ -2176,7 +3576,10 @@
                       "type": "array",
                       "items": {
                         "type": "object",
-                        "required": ["id", "url"],
+                        "required": [
+                          "id",
+                          "url"
+                        ],
                         "properties": {
                           "id": {
                             "type": "string"
@@ -2192,7 +3595,11 @@
                     },
                     "paymentStatus": {
                       "type": "string",
-                      "enum": ["paid", "no_payment_recorded", "unknown"]
+                      "enum": [
+                        "paid",
+                        "no_payment_recorded",
+                        "unknown"
+                      ]
                     },
                     "businessDate": {
                       "type": "string"
@@ -2234,7 +3641,9 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["results"],
+                  "required": [
+                    "results"
+                  ],
                   "properties": {
                     "results": {
                       "type": "array",
@@ -2268,7 +3677,11 @@
                           },
                           "paymentStatus": {
                             "type": "string",
-                            "enum": ["paid", "no_payment_recorded", "unknown"]
+                            "enum": [
+                              "paid",
+                              "no_payment_recorded",
+                              "unknown"
+                            ]
                           },
                           "businessDate": {
                             "type": "string"
@@ -2322,7 +3735,10 @@
                   "properties": {
                     "mode": {
                       "type": "string",
-                      "enum": ["snapshot", "delta"]
+                      "enum": [
+                        "snapshot",
+                        "delta"
+                      ]
                     },
                     "businessDate": {
                       "type": "string"
@@ -2412,14 +3828,22 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["clientScanId", "source", "scannedAt"],
+                "required": [
+                  "clientScanId",
+                  "source",
+                  "scannedAt"
+                ],
                 "properties": {
                   "clientScanId": {
                     "type": "string"
                   },
                   "source": {
                     "type": "string",
-                    "enum": ["qr", "manual", "offline_queue"]
+                    "enum": [
+                      "qr",
+                      "manual",
+                      "offline_queue"
+                    ]
                   },
                   "token": {
                     "type": "string"
@@ -2477,11 +3901,19 @@
                     },
                     "authoritativeStatus": {
                       "type": "string",
-                      "enum": ["paid", "no_payment_recorded", "unknown"]
+                      "enum": [
+                        "paid",
+                        "no_payment_recorded",
+                        "unknown"
+                      ]
                     },
                     "paymentStatus": {
                       "type": "string",
-                      "enum": ["paid", "no_payment_recorded", "unknown"]
+                      "enum": [
+                        "paid",
+                        "no_payment_recorded",
+                        "unknown"
+                      ]
                     },
                     "shortCode": {
                       "type": "string"
@@ -2531,7 +3963,11 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["scans", "nextCursor", "hasMore"],
+                  "required": [
+                    "scans",
+                    "nextCursor",
+                    "hasMore"
+                  ],
                   "properties": {
                     "scans": {
                       "type": "array",
@@ -2563,7 +3999,12 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["clientDisputeId", "reason", "description", "occurredAt"],
+                "required": [
+                  "clientDisputeId",
+                  "reason",
+                  "description",
+                  "occurredAt"
+                ],
                 "properties": {
                   "clientDisputeId": {
                     "type": "string"
@@ -2591,7 +4032,10 @@
                   },
                   "evidence": {
                     "type": "object",
-                    "required": ["contentType", "contentBase64"],
+                    "required": [
+                      "contentType",
+                      "contentBase64"
+                    ],
                     "properties": {
                       "contentType": {
                         "type": "string"
@@ -2613,7 +4057,10 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["disputeId", "status"],
+                  "required": [
+                    "disputeId",
+                    "status"
+                  ],
                   "properties": {
                     "disputeId": {
                       "type": "string"
@@ -2672,7 +4119,11 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["disputes", "nextCursor", "hasMore"],
+                  "required": [
+                    "disputes",
+                    "nextCursor",
+                    "hasMore"
+                  ],
                   "properties": {
                     "disputes": {
                       "type": "array",
@@ -2715,7 +4166,9 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["dispute"],
+                  "required": [
+                    "dispute"
+                  ],
                   "properties": {
                     "dispute": {
                       "type": "object",
@@ -2738,11 +4191,18 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["status", "service", "region", "version"],
+                  "required": [
+                    "status",
+                    "service",
+                    "region",
+                    "version"
+                  ],
                   "properties": {
                     "status": {
                       "type": "string",
-                      "enum": ["ok"]
+                      "enum": [
+                        "ok"
+                      ]
                     },
                     "service": {
                       "type": "string"
@@ -2770,11 +4230,15 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["status"],
+                  "required": [
+                    "status"
+                  ],
                   "properties": {
                     "status": {
                       "type": "string",
-                      "enum": ["ready"]
+                      "enum": [
+                        "ready"
+                      ]
                     }
                   }
                 }
@@ -2787,11 +4251,15 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["status"],
+                  "required": [
+                    "status"
+                  ],
                   "properties": {
                     "status": {
                       "type": "string",
-                      "enum": ["not_ready"]
+                      "enum": [
+                        "not_ready"
+                      ]
                     }
                   }
                 }
