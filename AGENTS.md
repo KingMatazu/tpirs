@@ -58,7 +58,7 @@
 
 **Git:** small, phase-scoped commits in conventional style (`chore: phase 0 foundations` matches history). commitlint is configured but not hooked — `lint-staged` is the only commit-time gate.
 
-**Current repo state:** Phases 0–7 are implemented and committed — verification with the `paid`/`no_payment_recorded`/`unknown` split, the paid-set delta feed, scan and dispute ingest (`packages/application/src/{scan,dispute}-service.ts`), the offline officer PWA (`apps/field`), and the collector cash wallet (`packages/application/src/{collector-cash,cash-wallet}-service.ts`, `apps/admin/src/pages/CollectorsPage.tsx`, runbook in `docs/runbooks/collector-cash.md`). Phase 8 (reconciliation, reporting, anomaly detection) is next; do not re-scaffold a delivered phase. `README.md` documents the current layout.
+**Current repo state:** Phases 0–8 are implemented and committed — verification with the `paid`/`no_payment_recorded`/`unknown` split, the paid-set delta feed, scan and dispute ingest (`packages/application/src/{scan,dispute}-service.ts`), the offline officer PWA (`apps/field`), the collector cash wallet (`packages/application/src/{collector-cash,cash-wallet}-service.ts`, `apps/admin/src/pages/CollectorsPage.tsx`), and Phase 8's reconciliation, reporting and anomaly detection (`packages/domain/src/{reconciliation,anomaly}.ts`, `packages/application/src/{reconciliation,settlement-import,exception,anomaly,report}-service.ts`, the worker schedule, `apps/api/src/routes/reconciliation.ts`, `apps/admin/src/pages/{ReconciliationPage,ReportsPage}.tsx`, runbooks in `docs/runbooks/reconciliation.md` and `reports.md`). Phase 9 (admin dashboard completion) is next; do not re-scaffold a delivered phase. `README.md` documents the current layout.
 
 - **Paystack is the chosen payment gateway** for the first deployment. The adapter package passes the shared conformance/fixture suites; live sandbox wiring and the Phase 4 sandbox checks in `docs/decisions-needed.md` are still open. Remita stays as an alternative adapter.
 - **API-first arrives incrementally.** The repo now uses generated API-client wiring and contract validation alongside the Fastify routes; new endpoints and enum changes are treated as contract changes, not ad hoc server-only changes.
@@ -224,7 +224,7 @@ Present layout. Everything below exists except `docs/onboarding` and `tenants/<s
 
 ## 9. Build phases
 
-Each phase lists tasks and **acceptance checks**. Phases 0–7 are delivered — their checks already pass and the work is in the tree. Start new work at Phase 8 (reconciliation, reporting, anomaly detection); do not re-scaffold a delivered phase.
+Each phase lists tasks and **acceptance checks**. Phases 0–8 are delivered — their checks already pass and the work is in the tree. Start new work at Phase 9 (admin dashboard completion); do not re-scaffold a delivered phase.
 
 ### Phase 0: Foundations
 

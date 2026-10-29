@@ -27,29 +27,25 @@ up as problems.**
 
 ---
 
-## 2. What happens today (before Phase 8)
+## 2. What used to happen (before Phase 8)
 
-Right now the platform does the first half of the story and then stops.
+Before Phase 8 the platform did the first half of the story and then stopped.
 
-- When the gateway confirms a driver's payment, we record: "the gateway owes us
-  ₦500". That is correct — the driver has paid in full.
-- But nothing ever records the gateway paying us, and nothing records the fee.
+- When the gateway confirmed a driver's payment, we recorded: "the gateway owes
+  us ₦500". That is correct — the driver has paid in full.
+- But nothing recorded the gateway paying us, and nothing recorded the fee.
 
-So the pile labelled "money the gateway still owes us" only ever grows. It
-never shrinks, even though money has genuinely arrived in the bank. Nobody has
-done anything wrong; the second half of the process simply does not exist yet.
+So the pile labelled "money the gateway still owes us" only ever grew. It never
+shrank, even though money had genuinely arrived in the bank. Nobody had done
+anything wrong; the second half of the process did not exist yet.
 
-For the first deployment this stayed invisible because the fee is small and the
-platform was not deepening its bank reconciliation. Phase 8 is where that
-changes, because Phase 8 is where we start comparing our books to the bank.
-
-**In v1, therefore, the fee leg does not exist yet: there is no fee expense
-account, no fee posting, and no way for the books to reach zero against a real
-statement.** That is exactly the gap Phase 8 closes.
+**In v1, therefore, the fee leg did not exist: there was no fee expense account,
+no fee posting, and no way for the books to reach zero against a real
+statement.** Phase 8 closed that gap.
 
 ---
 
-## 3. What Phase 8 will do (step by step, in everyday terms)
+## 3. What Phase 8 does (step by step, in everyday terms)
 
 A finance person uploads the bank statement for the day, or the platform fetches
 it from the gateway. For each line on that statement, the platform does three
@@ -114,8 +110,8 @@ the software found a way to make the totals match.
 
 ## 4. What "reconciled" means to a non-accountant
 
-At the end of the nightly run, Phase 8 asks a handful of plain questions, and
-the checklist answers them:
+At the end of the nightly run, the platform asks a handful of plain questions,
+and the checklist answers them:
 
 - Did every line on the bank statement find its payment? (If not: which lines?)
 - Did every payment for the day end up accounted for at the gateway and at the

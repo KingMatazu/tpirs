@@ -5,9 +5,8 @@ nightly reconciliation runs, the settlement import that feeds them, the
 exceptions queue and its tolerances, the finance reports and their exports, the
 configurable anomaly rules, and the auditor's read-only view.
 
-Phase 7 is delivered and committed. Steps 0-6 of this plan are delivered and
-committed; Step 7 (API, contract and permissions) is next. Phase 8 builds on
-three things that already exist: the ledger's derived balances (ADR 0010/0031),
+Phase 7 is delivered and committed, and so is this plan: all eleven steps are
+delivered and committed. Phase 8 builds on three things that already exist: the ledger's derived balances (ADR 0010/0031),
 the scan register written by the field app (`scans.authoritative_status`), and
 the collector cash identity `intake − posted deposits = derived float` proven by
 the Phase 7 day-close test. It adds no new money mechanics except the settlement
@@ -349,7 +348,7 @@ vehicle is not an event; the test suite asserts that explicitly.
   retried on the next tick.
 - Commit: `feat(worker): nightly reconciliation and anomaly evaluation`.
 
-## Step 7: API, contract and permissions
+## Step 7: API, contract and permissions (completed)
 
 - Routes:
   - `POST /v1/settlements/import` (`reconciliation:run`)
@@ -367,7 +366,7 @@ vehicle is not an event; the test suite asserts that explicitly.
   is 400; an over-cap export is 400 `range_too_large`.
 - Commit: `feat(api): reconciliation, settlement import and report routes`.
 
-## Step 8: Minimal admin surface
+## Step 8: Minimal admin surface (completed)
 
 - `ReconciliationPage`: run list with status and checklist, exception queue with
   severity filters, resolve/waive (reason required), sign-off (reason required).
@@ -381,7 +380,7 @@ vehicle is not an event; the test suite asserts that explicitly.
   layout and adds the remaining dashboard screens.
 - Commit: `feat(admin): reconciliation and reports screens`.
 
-## Step 9: Acceptance — a simulated month
+## Step 9: Acceptance — a simulated month (completed)
 
 - Shared fixture `packages/application/src/test-support/month.ts`: a tenant with
   one zone tree, 20+ assets, and 30 business days of deterministic activity —
@@ -401,7 +400,7 @@ vehicle is not an event; the test suite asserts that explicitly.
   nothing, and that no idle asset raises an anomaly.
 - Commit: `test(reconciliation): simulated month reconciles and is signed off`.
 
-## Step 10: Documentation
+## Step 10: Documentation (completed)
 
 - `docs/runbooks/reconciliation.md`: importing a statement, mapping columns,
   posting and fee policy, reading the checklist, working the exception queue,
@@ -413,7 +412,7 @@ vehicle is not an event; the test suite asserts that explicitly.
   Phase 9 next).
 - Commit: `docs(reconciliation): runbooks and phase 8 delivery notes`.
 
-## Step 11: Gates
+## Step 11: Gates (completed)
 
 In order: `pnpm format` → `pnpm lint` → `pnpm typecheck` → `pnpm test`, then
 `sh scripts/ci/integration.sh` and `sh scripts/ci/migration-check.sh` (both need

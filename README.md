@@ -5,10 +5,12 @@ per-use levy system for bikes and tuk-tuks; the same codebase is resold to other
 states by writing configuration, not code.
 
 See `AGENTS.md` for the full build brief (design principles, ports and adapters,
-phases, and the quality bar). This README covers how to run the repo. Phases 0–7
-are implemented; Phase 7 adds the collector cash wallet — intakes, dedicated
-deposit instructions, deposit matching, the deadline sweeper and freeze/unfreeze
-(see `docs/runbooks/collector-cash.md`).
+phases, and the quality bar). This README covers how to run the repo. Phases 0–8
+are implemented. Phase 8 adds reconciliation, reporting and anomaly detection:
+statement import with the fee leg, append-only nightly runs and sign-off, the
+exception queue, six finance reports with CSV/PDF/XLSX exports, configurable
+anomaly rules, the worker schedule, the API routes and the admin screens (see
+`docs/runbooks/reconciliation.md` and `docs/runbooks/reports.md`).
 
 ## Layout
 
