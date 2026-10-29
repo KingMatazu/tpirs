@@ -12,6 +12,10 @@ exception queue, six finance reports with CSV/PDF/XLSX exports, configurable
 anomaly rules, the worker schedule, the API routes and the admin screens (see
 `docs/runbooks/reconciliation.md` and `docs/runbooks/reports.md`).
 
+**Run it locally:** [`docs/runbooks/local-development.md`](docs/runbooks/local-development.md)
+has the complete guide — Docker services, dev servers, seeded logins, everyday
+commands, tests against the Docker database, and troubleshooting.
+
 ## Layout
 
 ```
@@ -50,6 +54,10 @@ pnpm install
 pnpm setup        # copies .env, starts containers, migrates, seeds
 pnpm dev          # run all dev servers via turbo
 ```
+
+Then open <http://localhost:5173> and sign in with tenant `alpha-state`,
+username `alpha.admin`, password `alpha-admin-password` (all seeded accounts are
+listed in the local-development runbook).
 
 ## Common tasks
 
