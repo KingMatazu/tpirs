@@ -5,13 +5,14 @@ nightly reconciliation runs, the settlement import that feeds them, the
 exceptions queue and its tolerances, the finance reports and their exports, the
 configurable anomaly rules, and the auditor's read-only view.
 
-Phase 7 is delivered and committed. Phase 8 builds on three things that already
-exist: the ledger's derived balances (ADR 0010/0031), the scan register written
-by the field app (`scans.authoritative_status`), and the collector cash
-identity `intake − posted deposits = derived float` proven by the Phase 7
-day-close test. It adds no new money mechanics except the settlement posting
-described below, and it deliberately reuses the Phase 7 cash checks rather than
-inventing a second definition of "the float is wrong".
+Phase 7 is delivered and committed. Steps 0-6 of this plan are delivered and
+committed; Step 7 (API, contract and permissions) is next. Phase 8 builds on
+three things that already exist: the ledger's derived balances (ADR 0010/0031),
+the scan register written by the field app (`scans.authoritative_status`), and
+the collector cash identity `intake − posted deposits = derived float` proven by
+the Phase 7 day-close test. It adds no new money mechanics except the settlement
+posting described below, and it deliberately reuses the Phase 7 cash checks
+rather than inventing a second definition of "the float is wrong".
 
 ## Scope decisions carried into this phase
 
@@ -227,7 +228,7 @@ noisy alert queue is worse than none.
 No rule reads a single asset's payment history. The absence of payments for a
 vehicle is not an event; the test suite asserts that explicitly.
 
-## Step 0: Plan, decisions and ADRs
+## Step 0: Plan, decisions and ADRs (completed)
 
 - Record D41–D48 in `docs/decisions-needed.md` with the answers below. **Done**;
   D49 (where fees appear in reports) is recorded as open for the pilot.
@@ -249,7 +250,7 @@ vehicle is not an event; the test suite asserts that explicitly.
 | D47      | Exports are synchronous with a 100k-row / one-month cap; CSV, PDF, XLSX (ADR 0034)                                                            |
 | D48      | The worker computes the next run from the config cron expression with `cron-parser` (ADR 0040)                                                |
 
-## Step 1: Ports, contracts and export adapters
+## Step 1: Ports, contracts and export adapters (completed)
 
 - `packages/ports/src/settlement-import.ts`: declared capabilities (accepted
   formats, required columns), a `parse` entry point returning normalized rows
@@ -270,7 +271,7 @@ vehicle is not an event; the test suite asserts that explicitly.
   payment adapters and their fixture suites must still pass unchanged.
 - Commit: `feat(adapters): settlement import and export adapters`.
 
-## Step 2: Schema and migration 0014
+## Step 2: Schema and migration 0014 (completed)
 
 - The five tables above, the `gateway_fees` account type plus the `expense`
   account class it needs, and the standard account. RLS policies, tenant
@@ -293,7 +294,7 @@ vehicle is not an event; the test suite asserts that explicitly.
   carry-forward, anomaly window dedupe. **Done.**
 - Commit: `feat(db): reconciliation, settlement and anomaly tables`.
 
-## Step 3: Domain rules
+## Step 3: Domain rules (completed)
 
 - `packages/domain/src/reconciliation.ts`: tolerance comparison
   (inclusive boundary), difference classification, severity, checklist
@@ -304,7 +305,7 @@ vehicle is not an event; the test suite asserts that explicitly.
   equals payment; idle asset never produces an anomaly.
 - Commit: `feat(domain): reconciliation and anomaly rules`.
 
-## Step 4: Application services
+## Step 4: Application services (completed)
 
 - `SettlementImportService`: hash, dedupe, normalize, match, post matched rows
   with the fee leg, mark unmatched rows `unmatched`, write the import summary.
@@ -321,7 +322,7 @@ vehicle is not an event; the test suite asserts that explicitly.
   signed-off run refuses mutation; auditor cannot resolve.
 - Commit: `feat(application): reconciliation and reporting services`.
 
-## Step 5: Config
+## Step 5: Config (completed)
 
 - `reconciliation`: add `feeToleranceMinor`, `suspenseAgeingDays`, and
   `anomalyRules[]` (`key`, `enabled`, `windowDays`, `thresholdPercent`,
@@ -333,7 +334,7 @@ vehicle is not an event; the test suite asserts that explicitly.
   admin test fixture; every new key documented next to its default.
 - Commit: `feat(config): reconciliation tolerances, anomaly rules and statement mapping`.
 
-## Step 6: Worker scheduling
+## Step 6: Worker scheduling (completed)
 
 - Add `cron-parser` behind a small `nextOccurrence(schedule, after, timeZone)`
   helper so the library is replaceable in one file.
