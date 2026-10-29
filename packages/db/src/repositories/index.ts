@@ -15,6 +15,8 @@ import {
   SettlementImportRepository,
   SettlementRepository,
 } from "./reconciliation.js";
+import { ReconciliationCheckRepository } from "./reconciliation-checks.js";
+import { ReportRepository } from "./reports.js";
 import { ScanRepository } from "./scan.js";
 import {
   AccountRepository,
@@ -46,6 +48,8 @@ export * from "./ledger.js";
 export * from "./owner.js";
 export * from "./payments.js";
 export * from "./reconciliation.js";
+export * from "./reconciliation-checks.js";
+export * from "./reports.js";
 export * from "./role.js";
 export * from "./scan.js";
 export * from "./session.js";
@@ -81,8 +85,10 @@ export function repositories(db: Transaction<Database>): {
   settlementImports: SettlementImportRepository;
   settlements: SettlementRepository;
   reconciliation: ReconciliationRepository;
+  checks: ReconciliationCheckRepository;
   exceptions: ReconciliationExceptionRepository;
   anomalies: AnomalyEventRepository;
+  reports: ReportRepository;
 } {
   return {
     tenants: new TenantRepository(db),
@@ -113,5 +119,7 @@ export function repositories(db: Transaction<Database>): {
     reconciliation: new ReconciliationRepository(db),
     exceptions: new ReconciliationExceptionRepository(db),
     anomalies: new AnomalyEventRepository(db),
+    checks: new ReconciliationCheckRepository(db),
+    reports: new ReportRepository(db),
   };
 }

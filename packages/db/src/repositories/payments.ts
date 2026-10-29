@@ -219,6 +219,29 @@ export class PaymentRepository {
       .executeTakeFirst();
   }
 
+  /**
+   * Every payment carrying a provider reference, newest first.
+   *
+   * Settlement matching needs to know whether *exactly one* payment matches a
+   * statement reference: a duplicate reference is never silently attached to
+   * one of several candidates.
+   */
+  async listByProviderReference(
+    tenantId: string,
+    provider: string,
+    providerReference: string,
+  ): Promise<PaymentRow[]> {
+    return this.db
+      .selectFrom("payments")
+      .selectAll()
+      .where("tenantId", "=", tenantId)
+      .where("provider", "=", provider)
+      .where("providerReference", "=", providerReference)
+      .orderBy("createdAt", "desc")
+      .orderBy("id", "desc")
+      .execute();
+  }
+
   /** Finance views: newest first, optionally narrowed to one state. */
   async listRecent(
     tenantId: string,
