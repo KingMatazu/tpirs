@@ -6,8 +6,11 @@ import {
   CHANNEL_DELIVERY_QUEUE,
   createCashDeadlineSweeper,
   createCashWalletService,
+  createReconciliationJobRunner,
+  createReconciliationScheduler,
   createSmsDeliveryService,
   createSmsOutboxSweeper,
+  RECONCILIATION_RUN_QUEUE,
   SMS_DELIVERY_QUEUE,
 } from "@tpirs/application";
 import { createChannelProviderFactory } from "@tpirs/channel-providers";
@@ -39,6 +42,12 @@ export interface WorkerDeps {
    * cheap per run but not something to do every few seconds.
    */
   readonly cashSweepIntervalMs?: number;
+  /**
+   * How often the reconciliation schedule is checked (D48). A tick is one
+   * query per tenant plus one for the day's latest run, and the queue dedupes
+   * the job, so a slow cadence is enough.
+   */
+  readonly reconciliationIntervalMs?: number;
   /** The clock deadlines are measured against; injected by tests. */
   readonly now?: () => Date;
 }
@@ -142,6 +151,26 @@ export function createWorker(deps: WorkerDeps): Worker {
   const sweeper = createSmsOutboxSweeper({ db, queue, telemetry });
   const channelSweeper = createChannelOutboxSweeper({ db, queue, telemetry });
 
+  // One job is one tenant-day: reconcile, then evaluate the tenant's enabled
+  // anomaly rules. The service records a failed attempt before the error is
+  // rethrown, so the queue retries and the schedule check sees an open day.
+  const runReconciliationJob = createReconciliationJobRunner({
+    db,
+    loadConfig: configFor,
+    telemetry,
+    ...(deps.now === undefined ? {} : { now: deps.now }),
+  });
+  queue.registerHandler(RECONCILIATION_RUN_QUEUE, async (payload) => {
+    await runReconciliationJob(payload);
+  });
+
+  const reconciliationScheduler = createReconciliationScheduler({
+    db,
+    queue,
+    telemetry,
+    ...(deps.now === undefined ? {} : { now: deps.now }),
+  });
+
   // The deadline sweeper needs wallet transitions only, not the fee engine that
   // intake pricing needs, so it takes the wallet service directly. It runs on
   // its own timer: a sweep is one query per cash-enabled tenant, and running it
@@ -155,8 +184,10 @@ export function createWorker(deps: WorkerDeps): Worker {
 
   const sweepIntervalMs = deps.sweepIntervalMs ?? 5_000;
   const cashSweepIntervalMs = deps.cashSweepIntervalMs ?? 60_000;
+  const reconciliationIntervalMs = deps.reconciliationIntervalMs ?? 60_000;
   let sweepTimer: ReturnType<typeof setInterval> | undefined;
   let cashTimer: ReturnType<typeof setInterval> | undefined;
+  let reconciliationTimer: ReturnType<typeof setInterval> | undefined;
 
   async function sweepAll(): Promise<void> {
     await sweeper.sweep();
@@ -167,6 +198,13 @@ export function createWorker(deps: WorkerDeps): Worker {
     const summary = await cashSweeper.sweep();
     if (summary.flagged > 0 || summary.frozen > 0) {
       telemetry.log("info", "cash deadline sweep", { ...summary });
+    }
+  }
+
+  async function checkReconciliationSchedule(): Promise<void> {
+    const summary = await reconciliationScheduler.tick();
+    if (summary.enqueued > 0) {
+      telemetry.log("info", "reconciliation schedule", { ...summary });
     }
   }
 
@@ -182,10 +220,16 @@ export function createWorker(deps: WorkerDeps): Worker {
         telemetry.captureError(error, { stage: "cash-deadline-sweep" });
       });
     }, cashSweepIntervalMs);
+    reconciliationTimer = setInterval(() => {
+      void checkReconciliationSchedule().catch((error: unknown) => {
+        telemetry.captureError(error, { stage: "reconciliation-schedule" });
+      });
+    }, reconciliationIntervalMs);
     await sweepAll();
     await sweepCash();
+    await checkReconciliationSchedule();
     telemetry.log("info", "worker started", {
-      queues: `${SMS_DELIVERY_QUEUE},${CHANNEL_DELIVERY_QUEUE}`,
+      queues: `${SMS_DELIVERY_QUEUE},${CHANNEL_DELIVERY_QUEUE},${RECONCILIATION_RUN_QUEUE}`,
     });
   }
 
@@ -197,6 +241,10 @@ export function createWorker(deps: WorkerDeps): Worker {
     if (cashTimer !== undefined) {
       clearInterval(cashTimer);
       cashTimer = undefined;
+    }
+    if (reconciliationTimer !== undefined) {
+      clearInterval(reconciliationTimer);
+      reconciliationTimer = undefined;
     }
     await queue.stop();
   }

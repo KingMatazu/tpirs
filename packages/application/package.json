@@ -27,20 +27,21 @@
     "@tpirs/domain": "workspace:*",
     "@tpirs/i18n": "workspace:*",
     "@tpirs/ports": "workspace:*",
+    "cron-parser": "^5.10.2",
     "qrcode": "^1.5.4"
   },
   "devDependencies": {
     "@tpirs/asset-schema-registry-config": "workspace:*",
     "@tpirs/cache-mock": "workspace:*",
     "@tpirs/clock-mock": "workspace:*",
+    "@tpirs/export-service-mock": "workspace:*",
     "@tpirs/fee-engine-config": "workspace:*",
     "@tpirs/job-queue-mock": "workspace:*",
     "@tpirs/object-storage-mock": "workspace:*",
     "@tpirs/payment-provider-mock": "workspace:*",
+    "@tpirs/settlement-import-mock": "workspace:*",
     "@tpirs/sms-provider-mock": "workspace:*",
     "@types/qrcode": "^1.5.6",
-    "vitest": "^3.2.4",
-    "@tpirs/settlement-import-mock": "workspace:*",
-    "@tpirs/export-service-mock": "workspace:*"
+    "vitest": "^3.2.4"
   }
 }

@@ -249,6 +249,7 @@ function baseConfig(overrides: {
     payments: { underpaymentPolicy: overrides.underpaymentPolicy },
     featureFlags: { disputes: true, prepay: false, offlineMode: true, anomalyAlerts: true },
     reconciliation: {
+      enabled: true,
       schedule: "0 2 * * *",
       toleranceMinor: 100,
       feeToleranceMinor: overrides.feeToleranceMinor,

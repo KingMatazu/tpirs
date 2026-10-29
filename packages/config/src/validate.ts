@@ -1123,6 +1123,7 @@ function validateReconciliation(v: Validator, value: unknown): TenantReconciliat
   const obj = v.object(value, "reconciliation");
   if (obj === undefined) return undefined;
 
+  const enabled = obj.enabled === undefined ? true : v.boolean(obj.enabled, "enabled");
   const schedule = v.string(obj.schedule, "schedule");
   if (schedule !== undefined) {
     const cronError = cronExpressionError(schedule);
@@ -1175,6 +1176,7 @@ function validateReconciliation(v: Validator, value: unknown): TenantReconciliat
       : validateSettlementImport(v.child("settlementImport"), obj.settlementImport);
 
   if (
+    enabled === undefined ||
     schedule === undefined ||
     toleranceMinor === undefined ||
     feeToleranceMinor === undefined ||
@@ -1185,6 +1187,7 @@ function validateReconciliation(v: Validator, value: unknown): TenantReconciliat
   }
 
   return {
+    enabled,
     schedule,
     toleranceMinor,
     feeToleranceMinor,

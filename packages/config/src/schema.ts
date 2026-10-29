@@ -258,6 +258,12 @@ export interface TenantSettlementImport {
 }
 
 export interface TenantReconciliation {
+  /**
+   * Whether the worker runs the nightly reconciliation at all. A tenant can
+   * pause it during onboarding or a data migration without deleting the cron.
+   * Defaults to true.
+   */
+  readonly enabled: boolean;
   /** Cron in the tenant timezone; validated structurally at load (D48). */
   readonly schedule: string;
   /** Whole-day tolerance for ledger, clearing and float differences. */

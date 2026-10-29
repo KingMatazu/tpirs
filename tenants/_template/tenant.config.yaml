@@ -184,6 +184,7 @@ featureFlags:
 
 # Nightly reconciliation and anomaly evaluation (Phase 8).
 #
+# enabled: whether the worker runs the nightly reconciliation. Default: true.
 # schedule: cron in the tenant timezone. Validated structurally at load; the
 #   worker resolves the next occurrence with cron-parser (D48). Default: 02:00.
 # toleranceMinor: whole-day slack for ledger, clearing and float differences,
@@ -202,6 +203,7 @@ featureFlags:
 #   columns map (D21). Omit until a statement export exists; reconciliation
 #   still runs, it just cannot settle gateway fees from a file.
 reconciliation:
+  enabled: true
   schedule: "0 2 * * *"
   toleranceMinor: 100
   feeToleranceMinor: 1000

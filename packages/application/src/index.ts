@@ -29,3 +29,6 @@ export * from "./settlement-import-service.js";
 export * from "./exception-service.js";
 export * from "./anomaly-service.js";
 export * from "./report-service.js";
+export * from "./next-occurrence.js";
+export * from "./reconciliation-scheduler.js";
+export * from "./reconciliation-job.js";

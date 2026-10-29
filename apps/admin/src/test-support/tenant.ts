@@ -149,6 +149,7 @@ featureFlags:
   offlineMode: true
   anomalyAlerts: true
 reconciliation:
+  enabled: true
   schedule: "0 2 * * *"
   toleranceMinor: 100
   feeToleranceMinor: 1000

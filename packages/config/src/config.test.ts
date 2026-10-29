@@ -146,6 +146,7 @@ featureFlags:
   offlineMode: true
   anomalyAlerts: true
 reconciliation:
+  enabled: true
   schedule: "0 2 * * *"
   toleranceMinor: 100
   feeToleranceMinor: 250
@@ -751,6 +752,16 @@ describe("reconciliation configuration", () => {
     return rule;
   }
 
+  it("accepts a tenant pausing reconciliation and rejects a non-boolean switch", () => {
+    const paused = rawConfig();
+    reconOf(paused).enabled = false;
+    expect(validateTenantConfig(paused).reconciliation.enabled).toBe(false);
+
+    const broken = rawConfig();
+    reconOf(broken).enabled = "yes";
+    expect(() => validateTenantConfig(broken)).toThrow(/enabled must be a boolean/);
+  });
+
   it("defaults fee tolerance, suspense ageing and anomaly rules when omitted", () => {
     const raw = rawConfig();
     const recon = reconOf(raw);
@@ -758,6 +769,7 @@ describe("reconciliation configuration", () => {
     delete recon.suspenseAgeingDays;
     delete recon.anomalyRules;
     const config = validateTenantConfig(raw);
+    expect(config.reconciliation.enabled).toBe(true);
     expect(config.reconciliation.feeToleranceMinor).toBe(0);
     expect(config.reconciliation.suspenseAgeingDays).toBe(7);
     expect(config.reconciliation.anomalyRules).toEqual([]);
@@ -866,6 +878,7 @@ describe("tenants/_template", () => {
     const path = resolve(here, "../../../tenants/_template/tenant.config.yaml");
     const config = loadTenantConfigFromString(readFileSync(path, "utf8"));
 
+    expect(config.reconciliation.enabled).toBe(true);
     expect(config.reconciliation.feeToleranceMinor).toBe(1000);
     expect(config.reconciliation.suspenseAgeingDays).toBe(7);
     // Every anomaly rule ships disabled until a pilot supplies baselines (D46).
