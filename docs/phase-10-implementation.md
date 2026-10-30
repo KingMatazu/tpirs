@@ -208,7 +208,7 @@ Recorded in ADR 0041 (D50): Node + `undici`, no new dependency, budgets as code.
   whose advisory disappeared are reported for deletion.
 - Commit: `ci: fail the build on high and critical advisories`.
 
-## Step 5: Route × role access matrix (pending)
+## Step 5: Route × role access matrix (completed)
 
 - `apps/api/src/routes/access-matrix.test.ts`, driven by a table that pairs each
   registered route with the permission it requires, cross-checked against
@@ -223,6 +223,18 @@ Recorded in ADR 0041 (D50): Node + `undici`, no new dependency, budgets as code.
   - a collector cannot read another collector's wallet.
 - Negative cases in the same file: forged QR (flipped HMAC byte), expired and
   revoked session, device-binding mismatch, permission claim tampering.
+- Delivered as `apps/api/src/routes/access-matrix.test.ts`: a source scan over
+  `src/routes` classifies every registered route as public (with a written
+  reason), authenticated without a permission (`/v1/auth/me`), or permissioned,
+  and asserts the permission the handler actually calls. Loop-registered routes
+  (wallet freeze/unfreeze, exception resolve) are asserted separately because
+  their path is a variable. Role defaults are checked too: `system_admin` has no
+  ledger or money permission, `auditor` holds only `:read`/`:export`, the officer
+  holds no money-moving permission, and every matrix permission belongs to a
+  role. Verified the guard bites: adding an unguarded route fails the suite.
+- Note: the request-level negative cases (forged QR, replayed webhook, expired
+  session) already exist in the per-route suites and the payment/ledger service
+  tests; this file is the completeness guard, not a duplicate.
 - Commit: `test(api): prove the route and role access matrix`.
 
 ## Step 6: RLS coverage guard and cross-tenant sweep (pending)
