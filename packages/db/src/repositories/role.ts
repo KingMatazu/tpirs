@@ -37,12 +37,15 @@ export class RoleRepository {
     return { ...role, permissions: [...input.permissions] };
   }
 
-  async findByKey(key: string): Promise<RoleRecord | undefined> {
-    const role = await this.db
-      .selectFrom("roles")
-      .select(["id", "key", "name"])
-      .where("key", "=", key)
-      .executeTakeFirst();
+  /**
+   * `tenantId` is optional because a tenant-scoped handle already filters by
+   * RLS; it is required for callers running under the system scope (the seed),
+   * where roles are global across tenants and key alone is ambiguous.
+   */
+  async findByKey(key: string, tenantId?: string): Promise<RoleRecord | undefined> {
+    let query = this.db.selectFrom("roles").select(["id", "key", "name"]).where("key", "=", key);
+    if (tenantId !== undefined) query = query.where("tenantId", "=", tenantId);
+    const role = await query.executeTakeFirst();
     if (role === undefined) return undefined;
     const permissions = await this.db
       .selectFrom("rolePermissions")

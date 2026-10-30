@@ -443,7 +443,8 @@ export const seed: SeedFn = async (db) => {
 
       const roleIds = new Map<string, string>();
       for (const role of SYSTEM_ROLES) {
-        const existingRole = await repos.roles.findByKey(role.key);
+        // System scope: key alone would match another tenant's role row.
+        const existingRole = await repos.roles.findByKey(role.key, tenant.id);
         const created =
           existingRole ??
           (await repos.roles.create({

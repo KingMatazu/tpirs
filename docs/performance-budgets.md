@@ -59,6 +59,25 @@ pilot server are not comparable:
 | ---------- | --------- | -------------------------------------- |
 | _none yet_ | _pending_ | filled by the first full run in Step 3 |
 
+### Baseline from the first run (2026-10-30)
+
+Measured with `scripts/load/run.sh` on the machine profile above, with the abuse
+limiter disabled for the run (the budgets measure the route, not the throttle):
+
+| Scenario                | Offered | Achieved | p50    | p95    | p99    | Verdict                 |
+| ----------------------- | ------- | -------- | ------ | ------ | ------ | ----------------------- |
+| `GET /v1/verify/:token` | 20 rps  | 20 rps   | 20 ms  | 33 ms  | 142 ms | within budget           |
+| `GET /v1/verify/:token` | 200 rps | ~124 rps | 387 ms | 554 ms | 623 ms | **saturated** — not met |
+| `GET /v1/payments`      | 20 rps  | 20 rps   | 25 ms  | 42 ms  | 61 ms  | within budget           |
+| `GET /v1/sync/paid`     | 10 rps  | 10 rps   | 30 ms  | 47 ms  | 57 ms  | within budget           |
+
+Reading of the saturated row: at 20 rps a verify costs ~20 ms, so the route is
+not slow — the host cannot hold 200 rps of it (single API process, Postgres in a
+container on the same CPU, no connection-pool tuning). The 150 ms p95 target is
+therefore a **pilot-hardware** target, not something this laptop can certify.
+Step 13 re-runs the full-rate scenario on the target and either confirms the
+budget or records a re-baseline with its machine profile.
+
 ## Re-baselining
 
 1. Run the full-rate scenario from `scripts/load/run.sh` on the target hardware.

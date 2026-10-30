@@ -7,6 +7,7 @@ import { createOtelTelemetry } from "@tpirs/adapters-otel-telemetry";
 import { createPrometheusTelemetry } from "@tpirs/adapters-prometheus-telemetry";
 import { createEnvSecretsProvider } from "@tpirs/adapters-env-secrets";
 import { createMockCache } from "@tpirs/cache-mock";
+import type { Cache } from "@tpirs/ports";
 import { createMockClock } from "@tpirs/clock-mock";
 import { createMockLockService } from "@tpirs/lock-service-mock";
 import { createMockSmsProvider } from "@tpirs/sms-provider-mock";
@@ -18,6 +19,20 @@ import { createXlsxExportService } from "@tpirs/export-service-xlsx";
 import { createCsvSettlementImport } from "@tpirs/settlement-import-csv";
 
 const QR_KEY_REF = "qr-token-signing-key";
+
+/**
+ * A cache that never counts, so the abuse limiter always allows. Used only by
+ * load runs (`LOAD_TEST_DISABLE_RATE_LIMITS=true`) and only outside production:
+ * a budget must measure the route, not the throttle that protects it. There is
+ * no production path to this function.
+ */
+function createNoLimitCache(): Cache {
+  return {
+    get: () => Promise.resolve(0),
+    set: () => Promise.resolve(),
+    delete: () => Promise.resolve(),
+  };
+}
 
 function loadConfig(): AppConfig {
   return {
@@ -57,6 +72,13 @@ async function main(): Promise<void> {
     telemetry.log("info", "identity provider ready", { requireTotp });
   }
 
+  const disableRateLimits =
+    config.nodeEnv !== "production" && process.env.LOAD_TEST_DISABLE_RATE_LIMITS === "true";
+  const noLimitCache = disableRateLimits ? createNoLimitCache() : undefined;
+  if (disableRateLimits) {
+    telemetry.log("warn", "rate limits disabled for a load run", { nodeEnv: config.nodeEnv });
+  }
+
   let services: Services | undefined;
   let loadConfigFn: ReturnType<typeof makeTenantConfigLoader> | undefined;
   if (db !== undefined) {
@@ -67,7 +89,7 @@ async function main(): Promise<void> {
         objectStorage,
         secrets,
         sms: createMockSmsProvider(),
-        cache: createMockCache(),
+        cache: noLimitCache ?? createMockCache(),
         locks: createMockLockService(),
         clock: createMockClock(),
         qrKeyRef: QR_KEY_REF,

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { todayInTimeZone } from "@tpirs/domain";
 import type { TenantConfig } from "@tpirs/config";
 import type { repositories } from "./repositories/index.js";
@@ -93,7 +94,10 @@ export async function seedCollectorCashDay(params: {
       ownerId: owner.id,
       assetTypeKey: assetType.key,
       attributes: { plate_number: demo.plateNumber },
-      qrPayload: assetType.qrFormat.replace("{id}", demo.shortCode),
+      // A QR payload must be 16-64 URL-safe characters (ADR 0007); the sticker's
+      // display format ("QR-{id}") is not one. Derived from the short code so a
+      // re-seed keeps the same sticker.
+      qrPayload: createHash("sha256").update(`seed:${demo.shortCode}`).digest("hex").slice(0, 32),
       qrToken: `seed-${demo.shortCode.toLowerCase()}`,
       shortCode: demo.shortCode,
       createdByUserId: null,

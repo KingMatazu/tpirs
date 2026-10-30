@@ -167,7 +167,7 @@ alternatives live in `docs/decisions-needed.md` and `docs/adr/`.
   replica, warm cache, no network shaping).
 - Commit: `docs(performance): set initial budgets`.
 
-## Step 3: Load-test harness (pending)
+## Step 3: Load-test harness (completed)
 
 - `scripts/load/` with:
   - `seed.mjs` — provisions a scratch tenant, users, assets and paid-set rows
@@ -185,6 +185,22 @@ alternatives live in `docs/decisions-needed.md` and `docs/adr/`.
 - Webhook load must sign payloads with the tenant's endpoint secret and include
   a deliberate replay percentage (10%) to prove idempotency under load.
 - Tests: the harness itself gets a smoke test at low rate in CI (Step 11).
+- Delivered as `scripts/load/` — `lib.mjs` (fixed-rate driver with bounded
+  concurrency, percentiles, budget comparison), `scenarios.mjs` (`health`,
+  `verify`, `payments`, `sync`), `run.mjs` (CLI, JSON report, non-zero exit on a
+  breach), `seed.mjs` (mints a valid QR token for a seeded asset) and `run.sh`
+  (scratch Postgres on `:55435`, migrate, seed, build, start the API, run, tear
+  down).
+- The abuse limiter is disabled for a load run (`LOAD_TEST_DISABLE_RATE_LIMITS`,
+  honoured only outside production) because a budget must measure the route, not
+  the throttle that protects it. The API logs a warning when it is on.
+- The **webhook scenario is not delivered here**: it needs a provisioned endpoint
+  token (stored only as a hash) and a provider-signed body, so it lands with the
+  CI wiring in Step 11 rather than pretending an unsigned POST proves anything
+  about intake. Recorded as the one gap in this step.
+- Baseline recorded in [`performance-budgets.md`](./performance-budgets.md):
+  verify/payments/sync are within budget at their nominal rates; verify saturates
+  near 124 rps on a laptop, so its 200 rps target is a pilot-hardware target.
 - Commit: `test(load): add the load harness and scenarios`.
 
 Recorded in ADR 0041 (D50): Node + `undici`, no new dependency, budgets as code.
