@@ -16,3 +16,6 @@ opencode.json
 
 # Local database backups (scripts/db/backup.sh default output)
 backups/
+
+# Load-test reports (scripts/ci/load.sh)
+load-reports/

@@ -5,6 +5,8 @@ import { buildServices, makeTenantConfigLoader } from "./services.js";
 import { buildObjectStorage } from "./storage.js";
 import { createOtelTelemetry } from "@tpirs/adapters-otel-telemetry";
 import { createPrometheusTelemetry } from "@tpirs/adapters-prometheus-telemetry";
+import { createPaystackPaymentProvider } from "@tpirs/payment-provider-paystack";
+import { createRemitaPaymentProvider } from "@tpirs/payment-provider-remita";
 import { createEnvSecretsProvider } from "@tpirs/adapters-env-secrets";
 import { createMockCache } from "@tpirs/cache-mock";
 import type { Cache } from "@tpirs/ports";
@@ -93,6 +95,13 @@ async function main(): Promise<void> {
         locks: createMockLockService(),
         clock: createMockClock(),
         qrKeyRef: QR_KEY_REF,
+        // Payment intake needs the adapters the tenant config names. Without
+        // them every webhook answers "provider not configured", which is how the
+        // load harness found this gap in Phase 10 (Step 11).
+        paymentProviders: {
+          paystack: createPaystackPaymentProvider(),
+          remita: createRemitaPaymentProvider(),
+        },
         // Phase 8: a deployment supplies the statement reader and the report
         // renderers; tenants decide their columns, schedule and rules in config.
         settlementReader: createCsvSettlementImport(),

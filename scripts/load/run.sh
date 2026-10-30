@@ -11,6 +11,7 @@ set -eu
 scenario="${1:-verify}"
 rate="${2:-200}"
 duration="${3:-20}"
+shift 3 2>/dev/null || true
 
 container="tpirs-load-$$"
 api_log="$(mktemp)"
@@ -66,11 +67,15 @@ for _ in $(seq 1 60); do
   sleep 1
 done
 
-verify_token="$(node scripts/load/seed.mjs | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{process.stdout.write(JSON.parse(s).verifyToken)})")"
+seeded="$(node scripts/load/seed.mjs)"
+verify_token="$(printf '%s' "$seeded" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{process.stdout.write(JSON.parse(s).verifyToken)})")"
+webhook_token="$(printf '%s' "$seeded" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{process.stdout.write(JSON.parse(s).webhookToken)})")"
 
 node scripts/load/run.mjs \
   --scenario "$scenario" \
   --rate "$rate" \
   --duration "$duration" \
   --base-url "http://localhost:$API_PORT" \
-  --verify-token "$verify_token"
+  --verify-token "$verify_token" \
+  --webhook-token "$webhook_token" \
+  "$@"

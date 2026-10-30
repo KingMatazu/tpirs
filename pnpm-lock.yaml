@@ -205,6 +205,12 @@ importers:
       '@tpirs/lock-service-mock':
         specifier: workspace:*
         version: link:../../packages/adapters/lock-service/mock
+      '@tpirs/payment-provider-paystack':
+        specifier: workspace:*
+        version: link:../../packages/adapters/payment-provider/paystack
+      '@tpirs/payment-provider-remita':
+        specifier: workspace:*
+        version: link:../../packages/adapters/payment-provider/remita
       '@tpirs/ports':
         specifier: workspace:*
         version: link:../../packages/ports

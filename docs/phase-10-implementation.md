@@ -433,7 +433,7 @@ Recorded in ADR 0041 (D50): Node + `undici`, no new dependency, budgets as code.
   stale when the worker stops, which is what the alert needs.
 - Commit: `feat(ops): add alert rules for failure paths`.
 
-## Step 11: CI wiring — security gate and load smoke (pending)
+## Step 11: CI wiring — security gate and load smoke (completed)
 
 - `scripts/ci/security.sh`: audit (Step 4) + access matrix (Step 5) + RLS
   coverage (Step 6) against a scratch Postgres, so the security suite runs with
@@ -445,6 +445,26 @@ Recorded in ADR 0041 (D50): Node + `undici`, no new dependency, budgets as code.
   (percentiles + status counts) as an artefact, plus a one-line trend entry in
   `docs/performance-budgets.md` per release.
 - Keep total PR time bounded: the load smoke must stay under ~3 minutes.
+- Delivered:
+  - `scripts/ci/security.sh` — the audit gate, the route × role matrix and the
+    RLS coverage guard against one scratch Postgres. It replaces the audit-only
+    step in CI so the job count does not grow.
+  - `scripts/ci/load.sh` — a quarter-rate run for 60 s (verify at 50 rps) that
+    writes `load-reports/<scenario>-<rate>rps.json` and exits non-zero on a
+    budget breach. Measured locally: 3 000 requests, p95 38–43 ms.
+  - `.github/workflows/ci.yml` — security suite + load smoke on every change.
+  - `.github/workflows/nightly.yml` — full-rate verify (200 rps) and webhook
+    intake (50 rps) for five minutes each, with the JSON reports uploaded as an
+    artefact.
+  - **The webhook load scenario deferred from Step 3 now exists**: it signs a
+    Paystack payload with the adapter's test secret, posts to a provisioned
+    endpoint token, and replays a fixed event id on 10% of requests. Local run:
+    200 requests at 20 rps, all `200`, p95 58 ms.
+- The webhook scenario immediately found a real gap: the API composition root
+  never wired `paymentProviders`, so every webhook answered "provider not
+  configured" — the adapters existed and passed conformance, but the running API
+  could not accept a payment. Fixed by wiring the Paystack and Remita adapters in
+  `apps/api/src/index.ts`.
 - Commit: `ci: run the security suite and a load smoke on every change`.
 
 ## Step 12: Pen-test readiness and findings register (pending)

@@ -21,11 +21,13 @@ jobs:
           cache: pnpm
       - name: Verify (lint, typecheck, build)
         run: sh scripts/ci/verify.sh
-      - name: Dependency audit (critical/high)
-        run: sh scripts/ci/audit.sh
+      - name: Security suite (audit, access matrix, RLS)
+        run: sh scripts/ci/security.sh
       - name: Integration tests (scratch Postgres)
         run: sh scripts/ci/integration.sh
       - name: Backup and restore check
         run: sh scripts/ci/backup-check.sh
+      - name: Load smoke (quarter rate, 60 s)
+        run: sh scripts/ci/load.sh
       - name: Migration check (reversibility)
         run: sh scripts/ci/migration-check.sh

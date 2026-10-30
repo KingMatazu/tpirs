@@ -12,7 +12,10 @@
  *   node scripts/load/seed.mjs
  * Prints `{ "assetId": "...", "verifyToken": "..." }` on stdout.
  */
-const { createDb, repositories, withTenant } = await import("../../packages/db/dist/index.js");
+import { randomUUID } from "node:crypto";
+
+const { createDb, repositories, withSystem, withTenant } =
+  await import("../../packages/db/dist/index.js");
 const { buildQrToken } = await import("../../packages/domain/dist/index.js");
 const { createQrTokenSigner } = await import("../../packages/crypto/dist/index.js");
 
@@ -48,7 +51,19 @@ try {
 
   // The QR payload is the asset's own opaque token, not its id (ADR 0007).
   const verifyToken = buildQrToken(asset.qrPayload, createQrTokenSigner(key));
-  process.stdout.write(`${JSON.stringify({ assetId: asset.id, verifyToken })}\n`);
+
+  // A webhook endpoint token is stored only as a hash, so the plaintext exists
+  // exactly here. Provisioning runs under the system scope because the table is
+  // system-only by design: it is read before a tenant is known (ADR 0017).
+  const webhookToken = `load-${randomUUID()}`;
+  await withSystem(db, async (tx) => {
+    await repositories(tx).webhookEndpoints.create(tenant.id, {
+      provider: "paystack",
+      token: webhookToken,
+    });
+  });
+
+  process.stdout.write(`${JSON.stringify({ assetId: asset.id, verifyToken, webhookToken })}\n`);
 } finally {
   await db.destroy();
 }

@@ -46,6 +46,8 @@
     "@tpirs/fee-engine-config": "workspace:*",
     "@tpirs/identity-provider-db": "workspace:*",
     "@tpirs/lock-service-mock": "workspace:*",
+    "@tpirs/payment-provider-paystack": "workspace:*",
+    "@tpirs/payment-provider-remita": "workspace:*",
     "@tpirs/ports": "workspace:*",
     "@tpirs/settlement-import-csv": "workspace:*",
     "@tpirs/sms-provider-mock": "workspace:*",

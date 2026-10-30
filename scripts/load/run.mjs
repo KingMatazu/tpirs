@@ -58,8 +58,12 @@ async function login() {
 async function main() {
   const token = await login();
   const verifyToken = arg("verify-token", process.env.LOAD_VERIFY_TOKEN);
+  const webhookToken = arg("webhook-token", process.env.LOAD_WEBHOOK_TOKEN);
   if (scenario.needsVerifyToken === true && (verifyToken === undefined || verifyToken === "")) {
     throw new Error("this scenario needs --verify-token (run scripts/load/seed.mjs first)");
+  }
+  if (scenario.needsWebhookToken === true && (webhookToken === undefined || webhookToken === "")) {
+    throw new Error("this scenario needs --webhook-token (run scripts/load/seed.mjs first)");
   }
 
   process.stdout.write(
@@ -71,7 +75,13 @@ async function main() {
     durationMs: durationSeconds * 1000,
     concurrency,
     send: async () => {
-      const response = await scenario.request({ baseUrl, token, verifyToken });
+      const response = await scenario.request({
+        baseUrl,
+        token,
+        verifyToken,
+        webhookToken,
+        random: Math.random,
+      });
       // Drain the body so the connection can be reused.
       await response.arrayBuffer();
       return response.status;
