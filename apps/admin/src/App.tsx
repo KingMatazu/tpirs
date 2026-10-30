@@ -20,12 +20,13 @@ const FALLBACK_ROUTE = "/registry";
 
 export function App(): ReactElement {
   const sessionStatus = useSession((state) => state.status);
-  const initialize = useSession((state) => () => state.initialize());
   const route = useRoute();
 
+  // Reach the store method directly: selecting a closure would return a new
+  // function on every render and send useSyncExternalStore into a loop.
   useEffect(() => {
-    void initialize();
-  }, [initialize]);
+    void useSession.getState().initialize();
+  }, []);
 
   if (sessionStatus === "unknown") {
     return <p className="min-h-screen p-8 text-sm text-slate-500">Checking session…</p>;

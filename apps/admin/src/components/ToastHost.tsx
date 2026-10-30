@@ -4,9 +4,6 @@ import { useToasts } from "../toast.js";
 /** Renders queued toasts fixed at the bottom right; dismissible inline. */
 export function ToastHost(): ReactElement | null {
   const toasts = useToasts((state) => state.toasts);
-  const dismiss = useToasts((state) => (id: string) => {
-    state.dismiss(id);
-  });
   if (toasts.length === 0) return null;
 
   return (
@@ -16,10 +13,15 @@ export function ToastHost(): ReactElement | null {
       aria-live="polite"
     >
       {toasts.map((toast) => (
-        <ToastCard key={toast.id} toast={toast} onDismiss={dismiss} />
+        <ToastCard key={toast.id} toast={toast} onDismiss={dismissToast} />
       ))}
     </div>
   );
+}
+
+/** Stable dismiss callback; selecting a closure from the store would loop. */
+function dismissToast(id: string): void {
+  useToasts.getState().dismiss(id);
 }
 
 interface ToastCardProps {
@@ -41,7 +43,9 @@ function ToastCard({ toast, onDismiss }: ToastCardProps): ReactElement {
       <button
         type="button"
         className="mt-2 cursor-pointer text-xs underline"
-        onClick={() => { onDismiss(toast.id); }}
+        onClick={() => {
+          onDismiss(toast.id);
+        }}
       >
         Dismiss
       </button>

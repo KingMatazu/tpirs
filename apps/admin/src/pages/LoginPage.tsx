@@ -20,7 +20,6 @@ type LoginForm = z.infer<typeof loginSchema>;
 
 /** Step 1: staff sign-in. Sends credentials once; code + password never cached. */
 export function LoginPage(): ReactElement {
-  const login = useSession((state) => (input: Parameters<typeof state.login>[0]) => state.login(input));
   const [submitting, setSubmitting] = useState(false);
   const {
     register,
@@ -32,11 +31,13 @@ export function LoginPage(): ReactElement {
     void (async () => {
       setSubmitting(true);
       try {
-        await login({
+        await useSession.getState().login({
           tenantSlug: values.tenantSlug,
           username: values.username,
           password: values.password,
-          ...(values.totpCode === undefined || values.totpCode === "" ? {} : { totpCode: values.totpCode }),
+          ...(values.totpCode === undefined || values.totpCode === ""
+            ? {}
+            : { totpCode: values.totpCode }),
         });
         navigate("/registry");
       } catch {
@@ -56,17 +57,47 @@ export function LoginPage(): ReactElement {
           void handleSubmit(onSubmit)(event);
         }}
       >
-        <Field label="Tenant slug" {...(errors.tenantSlug?.message === undefined ? {} : { error: errors.tenantSlug.message })}>
-          <input className={inputClass} {...register("tenantSlug")} autoComplete="off" placeholder="example-state" />
+        <Field
+          label="Tenant slug"
+          {...(errors.tenantSlug?.message === undefined
+            ? {}
+            : { error: errors.tenantSlug.message })}
+        >
+          <input
+            className={inputClass}
+            {...register("tenantSlug")}
+            autoComplete="off"
+            placeholder="example-state"
+          />
         </Field>
-        <Field label="Username" {...(errors.username?.message === undefined ? {} : { error: errors.username.message })}>
+        <Field
+          label="Username"
+          {...(errors.username?.message === undefined ? {} : { error: errors.username.message })}
+        >
           <input className={inputClass} {...register("username")} autoComplete="username" />
         </Field>
-        <Field label="Password" {...(errors.password?.message === undefined ? {} : { error: errors.password.message })}>
-          <input className={inputClass} {...register("password")} type="password" autoComplete="current-password" />
+        <Field
+          label="Password"
+          {...(errors.password?.message === undefined ? {} : { error: errors.password.message })}
+        >
+          <input
+            className={inputClass}
+            {...register("password")}
+            type="password"
+            autoComplete="current-password"
+          />
         </Field>
-        <Field label="Two-factor code" hint="Optional when your account has no authenticator." {...(errors.totpCode?.message === undefined ? {} : { error: errors.totpCode.message })}>
-          <input className={inputClass} {...register("totpCode")} inputMode="numeric" autoComplete="one-time-code" />
+        <Field
+          label="Two-factor code"
+          hint="Optional when your account has no authenticator."
+          {...(errors.totpCode?.message === undefined ? {} : { error: errors.totpCode.message })}
+        >
+          <input
+            className={inputClass}
+            {...register("totpCode")}
+            inputMode="numeric"
+            autoComplete="one-time-code"
+          />
         </Field>
         <Button type="submit" disabled={submitting}>
           {submitting ? "Signing in…" : "Sign in"}
