@@ -23,13 +23,21 @@ export const REFRESH_COOKIE = "tpirs_refresh";
  * everywhere (localhost is exempt in modern browsers), and scoped to the refresh
  * path so no other endpoint ever receives it.
  */
-function setRefreshCookie(reply: FastifyReply, token: string, expiresAt: Date): void {
+function setRefreshCookie(
+  reply: FastifyReply,
+  token: string,
+  expiresAt: Date,
+  secure: boolean,
+): void {
   const maxAgeSeconds = Math.max(1, Math.floor((expiresAt.getTime() - Date.now()) / 1000));
   reply.setCookie(REFRESH_COOKIE, token, {
     path: "/v1/auth/refresh",
     httpOnly: true,
     sameSite: "strict",
-    secure: true,
+    // Secure in production (HTTPS). Local development is served over plain
+    // http://localhost, where browsers may drop a Secure cookie, which turned
+    // every reload into a sign-out.
+    secure,
     maxAge: maxAgeSeconds,
   });
 }
@@ -57,8 +65,9 @@ async function sessionReply(
     refreshExpiresAt: Date;
     user: { userId: string; tenantId: string; displayName: string; roles: readonly string[] };
   },
+  secure: boolean,
 ): Promise<unknown> {
-  setRefreshCookie(reply, session.refreshToken, session.refreshExpiresAt);
+  setRefreshCookie(reply, session.refreshToken, session.refreshExpiresAt, secure);
   return reply.send({
     token: session.token,
     expiresAt: session.expiresAt.toISOString(),
@@ -74,6 +83,7 @@ async function sessionReply(
 }
 
 export function registerAuthRoutes(app: FastifyInstance, context: AuthContext): void {
+  const secureCookies = context.secureCookies ?? true;
   app.post("/v1/auth/login", { schema: authLoginSchema }, async (request, reply) => {
     const body = (request.body ?? {}) as LoginBody;
     const tenantSlug = asString(body.tenantSlug);
@@ -111,7 +121,7 @@ export function registerAuthRoutes(app: FastifyInstance, context: AuthContext): 
         entityType: "user",
         entityId: session.user.userId,
       };
-      return await sessionReply(reply, session);
+      return await sessionReply(reply, session, secureCookies);
     } catch (error) {
       if (error instanceof PortError && error.code === "unauthorized") {
         return reply.code(401).send({
@@ -145,7 +155,7 @@ export function registerAuthRoutes(app: FastifyInstance, context: AuthContext): 
         entityType: "user",
         entityId: rotated.user.userId,
       };
-      return await sessionReply(reply, rotated);
+      return await sessionReply(reply, rotated, secureCookies);
     } catch (error) {
       if (error instanceof PortError && error.code === "unauthorized") {
         reply.clearCookie(REFRESH_COOKIE, { path: "/v1/auth/refresh" });

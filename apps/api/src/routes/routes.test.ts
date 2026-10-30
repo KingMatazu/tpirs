@@ -182,6 +182,18 @@ describeIntegration("api auth/config/audit (integration)", () => {
   });
 
   it("logs in and returns the caller's permissions via /me", async () => {
+    const loginResponse = await app.inject({
+      method: "POST",
+      url: "/v1/auth/login",
+      payload: { tenantSlug: slug, username: "rt.admin", password },
+    });
+    expect(loginResponse.statusCode).toBe(200);
+    const cookie = String(loginResponse.headers["set-cookie"] ?? "");
+    expect(cookie).toContain("tpirs_refresh=");
+    expect(cookie).toContain("HttpOnly");
+    // The test config is not production, so local http:// keeps the cookie.
+    expect(cookie).not.toContain("Secure");
+
     const token = await login("rt.admin");
     const response = await app.inject({
       method: "GET",

@@ -9,6 +9,11 @@ import type { AnyDb } from "@tpirs/db";
 export interface AuthContext {
   readonly identity: IdentityProvider;
   readonly db: AnyDb;
+  /**
+   * Whether the D26 refresh cookie carries `Secure`. Defaults to true; local
+   * development over plain http://localhost passes false so browsers keep it.
+   */
+  readonly secureCookies?: boolean;
 }
 
 declare module "fastify" {
