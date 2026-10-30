@@ -5,6 +5,7 @@ import type { AppConfig } from "./config.js";
 import { createMockTelemetry } from "@tpirs/telemetry-mock";
 import { createPrometheusTelemetry } from "@tpirs/adapters-prometheus-telemetry";
 import { LOG_REDACT_PATHS } from "./server.js";
+import { clientErrorMessage } from "./errors.js";
 
 const config: AppConfig = {
   nodeEnv: "test",
@@ -70,6 +71,15 @@ describe("api server", () => {
       // HSTS only over HTTPS: the test config is not production.
       expect(response.headers["strict-transport-security"]).toBeUndefined();
     }
+  });
+
+  it("never echoes an internal message to the client", () => {
+    const error = new Error('invalid input syntax for type uuid: "dfgjgh"');
+    // 4xx explains itself; 5xx does not, because the text is SQL, table names or
+    // internal state.
+    expect(clientErrorMessage(error, 400)).toContain("invalid input syntax");
+    expect(clientErrorMessage(error, 500)).toBe("Internal server error");
+    expect(clientErrorMessage(error, 503)).toBe("Internal server error");
   });
 
   it("redacts credentials from anything the logger serialises", () => {

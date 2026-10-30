@@ -23,3 +23,14 @@ const STATUS_TO_CODE: Record<number, string> = {
 export function defaultErrorCode(statusCode: number): string {
   return STATUS_TO_CODE[statusCode] ?? (statusCode >= 500 ? "internal_error" : "error");
 }
+
+/**
+ * What a client may see. A 4xx explains itself — the caller can act on it. A 5xx
+ * does not: the message would leak SQL, table names or internal state, so it is
+ * replaced with a generic one and the detail goes to telemetry with the request
+ * id (Phase 10, Step 7).
+ */
+export function clientErrorMessage(error: unknown, statusCode: number): string {
+  if (statusCode >= 500) return "Internal server error";
+  return error instanceof Error ? error.message : "Request failed";
+}

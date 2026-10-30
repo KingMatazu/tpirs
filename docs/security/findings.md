@@ -5,7 +5,7 @@ Every finding, accepted risk and observation from the internal adversarial revie
 the same ids.
 
 **Status:** no open critical or high findings. Five accepted risks, each with an
-owner and a date.
+owner and a date, and one medium fixed during manual testing.
 
 Last review: 2026-10-30, internal adversarial review by the platform team.
 
@@ -15,7 +15,7 @@ Last review: 2026-10-30, internal adversarial review by the platform team.
 | -------- | ---- | -------- | ----- |
 | Critical | 0    | 0        | 0     |
 | High     | 0    | 0        | 1     |
-| Medium   | 0    | 3        | 1     |
+| Medium   | 0    | 3        | 2     |
 | Low      | 0    | 2        | 0     |
 
 ## Findings
@@ -32,6 +32,24 @@ Last review: 2026-10-30, internal adversarial review by the platform team.
 - **Fix:** the Paystack and Remita adapters are wired in the composition root.
   `scripts/load/run.sh webhooks` now proves intake end to end (200/200 accepted).
 - **Retest:** 2026-10-30 — 200 signed payloads, all `200`, 10% replays deduped.
+
+### F-08: A bad query filter returned 500 and echoed the database message (fixed)
+
+- **Severity:** medium (wrong status plus information disclosure)
+- **Area:** audit search, reconciliation exception filter
+- **Found:** 2026-10-30, by manual testing — `GET /v1/audit?actor=dfgjgh`
+  returned `500` with `invalid input syntax for type uuid: "dfgjgh"` in the
+  response body.
+- **Detail:** query-string ids were passed straight into `uuid` columns, so a
+  typo became a Postgres cast error. The error handler also echoed any 5xx
+  message to the client, so the response leaked SQL-level detail.
+- **Fix:** `isUuid()` validates `actor` and `runId` before the query and returns
+  `400 bad_request` with the standard envelope; `clientErrorMessage()` replaces
+  every 5xx message with "Internal server error" and keeps the detail in
+  telemetry alongside the request id.
+- **Retest:** 2026-10-30 — the same request returns `400` with
+  `actor must be a user id`; `server.test.ts` asserts a 5xx never echoes the
+  original message.
 
 ### F-02: Rate limiting and USSD locks are per process (accepted)
 

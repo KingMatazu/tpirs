@@ -124,7 +124,9 @@ describeIntegration("api auth/config/audit (integration)", () => {
         tenantId: tenant.id,
         key: "system_admin",
         name: "System Admin",
-        permissions: ["tenant:read", "tenant:configure"],
+        // audit:read so the actor-filter test reaches the handler rather than
+        // stopping at the permission check.
+        permissions: ["tenant:read", "tenant:configure", "audit:read"],
       });
       const officerRole = await repos.roles.create({
         tenantId: tenant.id,
@@ -272,6 +274,20 @@ describeIntegration("api auth/config/audit (integration)", () => {
     );
     expect(audit.length).toBeGreaterThanOrEqual(1);
     expect(audit[0]?.entityId).toBe(tenantId);
+  });
+
+  it("refuses a non-uuid actor filter instead of failing in the database", async () => {
+    const token = await login("rt.admin");
+    const response = await app.inject({
+      method: "GET",
+      url: "/v1/audit?actor=dfgjgh",
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(response.statusCode).toBe(400);
+    const body = response.json() as { error: { code: string; message: string; requestId: string } };
+    expect(body.error.code).toBe("bad_request");
+    expect(body.error.message).toBe("actor must be a user id");
+    expect(body.error.requestId).toBe(response.headers["x-request-id"]);
   });
 
   it("throttles repeated login attempts for one username", async () => {

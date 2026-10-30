@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { repositories, withTenant } from "@tpirs/db";
 import type { AnyDb } from "@tpirs/db";
 import { requirePermission } from "../auth.js";
-import { listAuditSchema, parseAuditCursor } from "../schemas.js";
+import { isUuid, listAuditSchema, parseAuditCursor } from "../schemas.js";
 
 /**
  * Read-only listing of the append-only audit trail (UI track Step 6). Rows are
@@ -37,6 +37,18 @@ export function registerAuditRoutes(app: FastifyInstance, context: { readonly db
     ) {
       return reply.code(400).send({
         error: { code: "bad_request", message: "from/to must be ISO dates", requestId: request.id },
+      });
+    }
+
+    // `actor` goes into a uuid column; a non-uuid would surface as a Postgres
+    // cast error, so it is refused here with the standard envelope.
+    if (query.actor !== undefined && query.actor !== "" && !isUuid(query.actor)) {
+      return reply.code(400).send({
+        error: {
+          code: "bad_request",
+          message: "actor must be a user id",
+          requestId: request.id,
+        },
       });
     }
 

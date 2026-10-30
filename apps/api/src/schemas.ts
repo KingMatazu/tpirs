@@ -1637,3 +1637,14 @@ export const rejectReversalSchema: FastifySchema = {
     409: errorResponseSchema,
   },
 };
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Query-string ids that end up in a `uuid` column must be validated here: a
+ * cast error from Postgres is a 500 with the database's own message, which is
+ * both the wrong status and a leak (Phase 10 review, finding F-08).
+ */
+export function isUuid(value: string): boolean {
+  return UUID_PATTERN.test(value);
+}

@@ -5,7 +5,7 @@ import cookie from "@fastify/cookie";
 import swagger from "@fastify/swagger";
 import type { FastifyInstance } from "fastify";
 import type { BuildAppOptions } from "./config.js";
-import { defaultErrorCode, errorEnvelope } from "./errors.js";
+import { clientErrorMessage, defaultErrorCode, errorEnvelope } from "./errors.js";
 import { authenticate, UnauthorizedError } from "./auth.js";
 import { auditOnSuccess } from "./audit.js";
 import { sharedSchemas, healthSchema, readySchema } from "./schemas.js";
@@ -243,7 +243,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
             typeof error.statusCode === "number"
           ? error.statusCode
           : 500;
-    const message = error instanceof Error ? error.message : "Internal server error";
+    const message = clientErrorMessage(error, statusCode);
     if (statusCode >= 500) {
       telemetry.captureError(error, {
         requestId: request.id,

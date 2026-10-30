@@ -13,6 +13,7 @@ import {
   getReconciliationRunSchema,
   getReportSchema,
   importSettlementSchema,
+  isUuid,
   listAnomaliesSchema,
   listReconciliationExceptionsSchema,
   listReconciliationRunsSchema,
@@ -285,6 +286,11 @@ export function registerReconciliationRoutes(
     async (request, reply) => {
       const principal = requirePermission(request, "reconciliation:read");
       const { status, severity, runId, limit } = request.query;
+      if (runId !== undefined && runId !== "" && !isUuid(runId)) {
+        return reply
+          .code(400)
+          .send(errorEnvelope("bad_request", "runId must be a run id", request.id));
+      }
       const exceptions = await services.exceptions.list(principal.tenantId, {
         ...(status === undefined ? {} : { status: status as never }),
         ...(severity === undefined ? {} : { severity: severity as never }),
