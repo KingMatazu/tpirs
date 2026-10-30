@@ -1,0 +1,29 @@
+{
+  "comment": "Live exceptions for the dependency-audit gate. Production critical/high advisories cannot be listed here — the gate fails regardless. Every entry needs a reason, a mitigation and an expiry (YYYY-MM-DD); the gate fails once an entry is past it, and reports entries that are no longer needed so they get deleted.",
+  "entries": [
+    {
+      "id": "1241260",
+      "package": "tinypool",
+      "severity": "critical",
+      "reason": "Vitest 3's worker pool; test tooling only, never part of a deployed artefact.",
+      "mitigation": "Not reachable at runtime: no production dependency path includes tinypool.",
+      "expires": "2026-12-31"
+    },
+    {
+      "id": "1241261",
+      "package": "tinypool",
+      "severity": "critical",
+      "reason": "Vitest 3's worker pool; test tooling only, never part of a deployed artefact.",
+      "mitigation": "Not reachable at runtime: no production dependency path includes tinypool.",
+      "expires": "2026-12-31"
+    },
+    {
+      "id": "1119441",
+      "package": "uuid",
+      "severity": "moderate",
+      "reason": "Transitive through exceljs (XLSX export). ExcelJS pins uuid 8; the advisory needs v3/v5/v6 with a caller-supplied buffer, which the export path never uses.",
+      "mitigation": "Only the XLSX writer reaches uuid, and only for v4 ids.",
+      "expires": "2027-06-30"
+    }
+  ]
+}
