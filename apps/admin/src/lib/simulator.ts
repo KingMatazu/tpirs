@@ -50,10 +50,29 @@ export function createTenantTranslator(config: TenantConfig): Translator {
   });
 }
 
+/**
+ * Variables the session has not collected yet render as their own placeholder
+ * (`{amount}`) instead of throwing. A simulator must show the prompt a handset
+ * would, including the parts the driver has not supplied.
+ */
+function simulatorVars(collected: Readonly<Record<string, string>>): Record<string, string> {
+  return new Proxy(
+    { ...collected },
+    {
+      get: (target, property) => target[String(property)] ?? `{${String(property)}}`,
+    },
+  );
+}
+
 /** Missing catalogue keys render as a visible marker, never a thrown error. */
-function safeTranslate(translator: Translator, key: string, language: string): string {
+function safeTranslate(
+  translator: Translator,
+  key: string,
+  language: string,
+  collected: Readonly<Record<string, string>> = {},
+): string {
   try {
-    return translator.t(key, undefined, language);
+    return translator.t(key, simulatorVars(collected), language);
   } catch (error) {
     if (error instanceof MessageCatalogError && error.code === "missing_key") {
       return `[${key}]`;
@@ -84,15 +103,17 @@ export function simulateUssd(config: TenantConfig, text: string, language: strin
   if (step.kind === "prompt") {
     return {
       kind: "prompt",
-      prompt: safeTranslate(translator, step.promptKey, language),
+      prompt: safeTranslate(translator, step.promptKey, language, step.collected),
       errorLine:
-        step.errorKey === undefined ? null : safeTranslate(translator, step.errorKey, language),
+        step.errorKey === undefined
+          ? null
+          : safeTranslate(translator, step.errorKey, language, step.collected),
       choices: config.channels.menus.some(
         (menu) => menu.key === step.menuKey && menu.type === "menu",
       )
         ? stepMenu(config, step.menuKey).options.map((option) => ({
             key: option.key,
-            label: safeTranslate(translator, option.labelKey, language),
+            label: safeTranslate(translator, option.labelKey, language, step.collected),
           }))
         : [],
       expectsInput: config.channels.menus.some(

@@ -57,6 +57,40 @@ describe("simulateUssd", () => {
     expect(frame.prompt).toBe("[ussd.main.prompt]");
   });
 
+  it("renders placeholders the session has not collected instead of throwing", () => {
+    const prompt = "Hello {name}, pay {amount}";
+    const withVariables: TenantConfig = {
+      ...config,
+      channels: {
+        ...config.channels,
+        messages: {
+          ...config.channels.messages,
+          en: { ...config.channels.messages?.["en"], "ussd.main.prompt": prompt },
+        },
+      },
+    };
+    const frame = simulateUssd(withVariables, "", "en");
+    if (frame.kind !== "prompt") throw new Error("expected prompt");
+    expect(frame.prompt).toBe("Hello {name}, pay {amount}");
+  });
+
+  it("substitutes variables the session has collected", () => {
+    const withVariables: TenantConfig = {
+      ...config,
+      channels: {
+        ...config.channels,
+        messages: {
+          ...config.channels.messages,
+          en: { ...config.channels.messages?.["en"], "ussd.main.prompt": "Plate {assetRef}" },
+        },
+      },
+    };
+    // The start menu has not collected anything, so the placeholder stays.
+    const start = simulateUssd(withVariables, "", "en");
+    if (start.kind !== "prompt") throw new Error("expected prompt");
+    expect(start.prompt).toBe("Plate {assetRef}");
+  });
+
   it("shows an unknown option through the configured invalid message", () => {
     const frame = simulateUssd(config, "7", "en");
     if (frame.kind !== "prompt") throw new Error("expected prompt");
