@@ -59,12 +59,12 @@ Last reviewed: 2026-10-30 (Phase 10, Step 0).
 
 ## Data protection
 
-| Control                                             | Where                                              | Proven by                                                                         |
-| --------------------------------------------------- | -------------------------------------------------- | --------------------------------------------------------------------------------- |
-| Minimal personal data; phone verification by OTP    | `packages/application/src/otp-service.ts`          | service tests                                                                     |
-| Secrets referenced, never stored in config          | `packages/adapters/secrets-provider/env`, ADR 0022 | channel-provider composition tests                                                |
-| Photos served through the API, never presigned URLs | ADR 0008                                           | storage route tests                                                               |
-| Backups and retention                               | `scripts/db/backup.sh`, `scripts/db/restore.sh`    | `scripts/ci/backup-check.sh` (backup → restore → migrations); the drill is Step 9 |
+| Control                                             | Where                                              | Proven by                                                                                                                     |
+| --------------------------------------------------- | -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Minimal personal data; phone verification by OTP    | `packages/application/src/otp-service.ts`          | service tests                                                                                                                 |
+| Secrets referenced, never stored in config          | `packages/adapters/secrets-provider/env`, ADR 0022 | channel-provider composition tests                                                                                            |
+| Photos served through the API, never presigned URLs | ADR 0008                                           | storage route tests                                                                                                           |
+| Backups, retention and restore drill                | `scripts/db/{backup,restore,restore-drill}.sh`     | `scripts/ci/backup-check.sh` on every change; the drill ran on 2026-10-30 and is recorded in `runbooks/backup-and-restore.md` |
 
 ## Audit trail
 
