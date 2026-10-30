@@ -143,6 +143,7 @@ adds the missing backend for reversals, and proves the acceptance check:
 - Config editing with audited confirmation (the viewer stays read-only).
 - Playwright e2e: the suite remains jsdom-based; the main flows are covered by
   page tests and the API integration suite.
-- Translating every pre-Phase-9 page: the shell and Phase 9 screens are
-  catalogue-driven; the older pages keep English literals until they are
-  touched (recorded in the UI-track doc).
+- Translating the dashboard pages: only the shell and navigation are
+  catalogue-driven (`nav.*` and `shell.*` in `apps/admin/src/lib/uiCopy.ts`);
+  every page — the Phase 9 screens included — keeps English literals until the
+  translation pass, deferred to Phase 11 (recorded in the UI-track doc).

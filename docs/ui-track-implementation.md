@@ -8,18 +8,23 @@ screens and the shell acceptance; its working plan is
 `apps/admin` only; the officer field app and its offline store are deferred
 entirely (D29).
 
+**Status: closed 2026-10-30.** Every screen the brief asks for is delivered and
+tested; three items are knowingly left open and listed under
+[Closing the track](#closing-the-track-2026-10-30).
+
 ## Scope decisions carried into this track
 
 - **Stack: React + Vite SPAs, TypeScript end to end** (D27). Components are a
   shadcn-style copy-in layer (Tailwind styling, Radix behavior), forms are
   react-hook-form + zod, server state is TanStack Query, session/nav state is
-  zustand. UI e2e tests use Playwright.
+  zustand. UI e2e tests were planned in Playwright; they are not wired, and the
+  flows are covered by jsdom page tests plus the API integration suite.
 - **Clients only talk to the API.** No component fetches a URL by hand;
   everything goes through `packages/api-client`, generated from the OpenAPI
   document the server emits (D28).
-- **Session:** short-lived bearer in memory, refresh token in an
-  httpOnly `Secure SameSite=strict` cookie scoped to `/v1/auth/refresh`,
-  server-side rotation (D26).
+- **Session:** short-lived bearer in memory, refresh token in an httpOnly,
+  `SameSite=strict` cookie scoped to `/v1/auth/refresh`, `Secure` only over
+  HTTPS, server-side rotation (D26).
 - **Theming is data.** Colors, app name, logo, currency, and number/date
   formats come from tenant config through `packages/ui-tokens` as CSS custom
   properties. No tenant literals anywhere in `apps/*`.
@@ -152,58 +157,75 @@ Tracked in [`phase-9-implementation.md`](./phase-9-implementation.md):
 
 ## Acceptance gates for the track
 
-- `pnpm format` → `pnpm lint` → `pnpm typecheck` → `pnpm test` pass with the
-  new packages included; `apps/admin` has its own `vitest.config.ts`
-  following the package shape.
-- Playwright e2e for the main flows: login (with TOTP) → find asset → view
-  sticker → payment appears → resolve a suspense item → audit trail shows
-  each act.
-- Negative tests: expired session silently refreshes exactly once then
-  fails closed; cross-tenant 403 renders the standard error envelope with a
-  request ID; double-submitting a money POST is harmless (idempotency key).
-- Re-theme test: toggling between the two seed tenants re-renders name,
-  colors, currency, and formats from tokens alone; grep proves no tenant
-  literals in `apps/*`.
-- OpenAPI emission is part of CI so the contract and the server cannot
-  drift.
+| Gate                                                                                                                                                    | Result                                                                       |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `pnpm format` → `pnpm lint` → `pnpm typecheck` → `pnpm test`, `apps/admin` with its own `vitest.config.ts`                                              | met — 187 tests across 24 files at close-out                                 |
+| Playwright e2e: login (TOTP) → find asset → sticker → payment → resolve suspense → audit trail                                                          | **waived** — not wired; see "Remaining" below                                |
+| Negative tests: refresh exactly once then fail closed; cross-tenant 403 with the error envelope and request id; double-submitted money POST is harmless | met — `session.test.ts`, `App.test.tsx`, `paymentsView`/`PaymentsPage` tests |
+| Re-theme test across the two seed tenants; no tenant literals in `apps/*`                                                                               | met — `Layout.test.tsx` ("re-themes and re-labels from the beta fixture")    |
+| OpenAPI emission part of CI so contract and server cannot drift                                                                                         | met — `packages/api-client/scripts/generate.mjs`, run by its `build`         |
 
-## Status (updated 2026-10-29)
+## Status (updated 2026-10-30)
 
-| Step | Scope                                                               | Status                                            |
-| ---- | ------------------------------------------------------------------- | ------------------------------------------------- |
-| 0    | OpenAPI emission, `api-client`, `ui-tokens`, admin scaffold         | completed (Playwright e2e not wired)              |
-| 1    | Auth shell, D26 session, toasts, pagination, nav shell              | completed (TOTP input still open; local TOTP off) |
-| 2    | Registry screens                                                    | pending (Phase 9)                                 |
-| 3    | Payments and suspense screens                                       | pending (Phase 9)                                 |
-| 4    | Config viewer (read-only)                                           | completed                                         |
-| 5    | Channels viewer and USSD simulator                                  | completed                                         |
-| 6    | Audit backend (`GET /v1/audit`) and audit screen                    | completed                                         |
-| 7    | Collectors (cash wallet, deposits, freeze/unfreeze)                 | completed                                         |
-| 8    | Reconciliation, reports and anomaly feed                            | completed with Phase 8                            |
-| 9    | Phase 9 assembly: registry/payments/disputes/reversals, i18n switch | in progress (Phase 9)                             |
+| Step | Scope                                                               | Status                                          |
+| ---- | ------------------------------------------------------------------- | ----------------------------------------------- |
+| 0    | OpenAPI emission, `api-client`, `ui-tokens`, admin scaffold         | completed (Playwright e2e not wired — deferred) |
+| 1    | Auth shell, D26 session, toasts, pagination, nav shell              | completed (TOTP input included)                 |
+| 2    | Registry screens                                                    | completed (Phase 9)                             |
+| 3    | Payments and suspense screens                                       | completed (Phase 9)                             |
+| 4    | Config viewer (read-only)                                           | completed                                       |
+| 5    | Channels viewer and USSD simulator                                  | completed                                       |
+| 6    | Audit backend (`GET /v1/audit`) and audit screen                    | completed                                       |
+| 7    | Collectors (cash wallet, deposits, freeze/unfreeze)                 | completed                                       |
+| 8    | Reconciliation, reports and anomaly feed                            | completed (Phase 8)                             |
+| 9    | Phase 9 assembly: registry/payments/disputes/reversals, i18n switch | completed (Phase 9)                             |
 
 Delivered in the track: `packages/ui-tokens` (tokens + Intl helpers, tests),
-`apps/admin` (scaffold, login with the D26 cookie/refresh session store,
-error-envelope toasts with request IDs, cursor pagination, permission-aware
-nav), the config viewer, channels + in-browser USSD simulator (pure
-`advanceUssdSession` + `createTranslator`), the audit route/repository/screen,
-collectors, reconciliation and reports. ADRs 0025–0027 record the decisions.
+`apps/admin` (scaffold, login with the D26 cookie/refresh session store, the TOTP
+field, error-envelope toasts with request IDs, cursor pagination,
+permission-aware nav), the config viewer, channels + in-browser USSD simulator
+(pure `advanceUssdSession` + `createTranslator`), the audit
+route/repository/screen, collectors, reconciliation, reports, and — with Phase 9 —
+the registry, payments/suspense, disputes inbox and reversals screens plus a
+catalogue-driven language switch and the tenant-aware shell acceptance test. ADRs
+0025–0027 record the decisions.
 
-Phase 9 added the registry, payments/suspense, disputes inbox and reversals
-screens, a catalogue-driven language switch and the tenant-aware shell
-acceptance test. Still open from this track: the TOTP input on the login form
-(the session store already accepts a code; local development runs with
-`REQUIRE_STAFF_TOTP=false`), Playwright e2e (jsdom page tests and the API
-integration suite cover the flows), page-level translation of the pre-Phase-9
-screens (the shell and the Phase 9 screens are catalogue-driven), and dispute
-resolution (needs a recorded policy).
+## Closing the track (2026-10-30)
+
+The track is closed: every screen the brief asks for exists and is tested, and
+the acceptance gate that mattered — switching tenants re-themes and re-labels the
+dashboard with no code changes — is proven by the two-fixture shell test. Three
+items are knowingly left open, recorded here so nobody reads the closure as a
+claim they were done.
+
+### Remaining, with reasons
+
+- **Page translation (deferred to Phase 11).** Only the shell and navigation are
+  catalogue-driven: `apps/admin/src/lib/uiCopy.ts` currently holds `nav.*` and
+  `shell.*` keys, and the language switch re-labels exactly those. **Every page**
+  — the Phase 9 screens included, not only the pre-Phase-9 ones — still renders
+  English literals. Migrating them is a mechanical sweep of several hundred
+  strings across a dozen pages that touches every page test; it changes no
+  behaviour, blocks no other work, and is better done as one deliberate pass than
+  opportunistically. The scope comment at the top of `uiCopy.ts` describes the
+  older split and will be corrected in that pass.
+- **Playwright e2e (deferred, second time).** The main flows are covered twice
+  over: jsdom page tests for each screen and the API integration suite for the
+  routes they call. A browser download in CI, a dev-server harness and flaky-run
+  triage is real cost for a third copy of the same assertions. Recorded as a
+  known gap — this track does not claim browser-level coverage.
+- **Dispute resolution (blocked on policy).** The inbox is read-only by design;
+  who may resolve a dispute and what evidence it requires is still unrecorded.
+  The screen says so in the UI rather than hiding the action silently.
 
 ## Deferred items
 
-- Officer field PWA, IndexedDB offline store (D29), scan log and native
-  Android app. The disputes inbox is read-only in Phase 9; resolution needs a
-  recorded policy first.
-- OpenAPI documentation playground UI (Swagger UI / Elements) — cosmetic,
-  add once the document exists.
-- OpenAPI-driven admin screens for config editing (Phase 9 scope, with
-  audited confirmation flows).
+- Officer field PWA, IndexedDB offline store (D29), scan log and native Android
+  app. The disputes inbox is read-only; resolution needs a recorded policy first.
+- Dashboard page translation into the catalogue, in the languages a tenant
+  enables (Phase 11).
+- Playwright e2e for the main flows.
+- OpenAPI documentation playground UI (Swagger UI / Elements) — cosmetic, add
+  once the document exists.
+- OpenAPI-driven admin screens for config editing (with audited confirmation
+  flows); the viewer stays read-only.
