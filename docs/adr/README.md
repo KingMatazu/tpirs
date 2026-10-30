@@ -43,3 +43,9 @@ Format: context, decision, consequences, alternatives considered.
 - [0038](./0038-compliance-reporting.md) Compliance reporting from scan results
 - [0039](./0039-anomaly-rules.md) Anomaly rules and how an alert is delivered
 - [0040](./0040-cron-scheduling.md) Cron scheduling with `cron-parser`
+- [0041](./0041-load-test-harness.md) Load generation with Node and `undici`
+- [0042](./0042-metrics-endpoint.md) Prometheus metrics behind a flag
+- [0043](./0043-backup-and-restore.md) Nightly logical backups, RPO 24 h, RTO 2 h
+- [0044](./0044-alert-delivery.md) Alert rules now, delivery at the deploy target
+- [0045](./0045-security-review-path.md) Internal adversarial review instead of a paid pen test
+- [0046](./0046-login-throttling.md) Login throttling by IP and by username, fixed window

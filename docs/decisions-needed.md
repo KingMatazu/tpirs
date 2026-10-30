@@ -936,3 +936,148 @@ a gateway.
   hide the cost of collection; gross-only would overstate what reached the bank.
   Settle the exact column set with the first finance user during the pilot
   rather than guessing now.
+
+## D50: How load is generated and asserted
+
+**Status:** resolved (Phase 10, ADR 0041).
+
+Phase 10 has to prove peak-hour behaviour, and the interesting properties are
+invariants a burst can break: a replayed webhook must not double-post, an
+unmatched amount must land in suspense, debits must still equal credits, and the
+outbox must drain.
+
+- Options: k6; `autocannon`; Node + `undici`.
+- Decision: **Node + `undici`**, no new dependency and no second runtime. One
+  process family seeds through the repositories, drives a fixed-rate load with a
+  bounded pool, and asserts the invariants afterwards against the same database.
+- Decision: budgets are thresholds in code, and the webhook scenario signs
+  payloads with the tenant's endpoint secret and includes a deliberate 10% replay
+  share, because idempotency under concurrency is the property most likely to
+  regress.
+- Decision: full-rate runs are nightly; pull requests run a one-quarter-rate
+  smoke capped at about three minutes.
+- Rejected: k6 (a second runtime, and seeding/assertions would live outside the
+  scenario anyway); `autocannon` (cannot express signed bodies or post-run
+  assertions); load-testing staging only (makes the invariants a manual ritual).
+
+## D51: How metrics are exposed and protected
+
+**Status:** resolved (Phase 10, ADR 0042).
+
+Counters already flow through the `Telemetry` port to stdout JSON. Nothing can
+scrape that, so no alert can fire on it.
+
+- Options: Prometheus text on `GET /metrics`; OTLP push to a collector; log-based
+  alerting.
+- Decision: **`GET /metrics` in Prometheus text format**, rendered by a telemetry
+  sink behind the existing port, with no vendor SDK and no new dependency.
+- Decision: **disabled unless `METRICS_ENABLED=true`** (404 otherwise), hidden
+  from the OpenAPI document, and outside the audit hook. It shares `/v1/health`'s
+  trust boundary — internal network only, blocked at the edge — and the runbook
+  says so.
+- Decision: **the metric names are the contract**. Alert rules and load budgets
+  reference them, and a test fails when a rule names a metric the contract does
+  not define. No high-cardinality labels: route patterns, never resolved paths;
+  never a plate, token, MSISDN or user id.
+- Rejected: OTLP push (a collector in the deployment and nothing scrapeable
+  without it); log-based alerting (rules in a vendor query language, drifting
+  from the budgets); a bearer token on `/metrics` (complicates scraping for an
+  endpoint with no personal or financial data).
+
+## D52: Backup scope, RPO and RTO
+
+**Status:** resolved (Phase 10, ADR 0043).
+
+The ledger is the record of money already collected and the audit log is the
+evidence behind it. Until Phase 10 the only protection was a Docker volume.
+
+- Options: nightly logical dump plus an object-store copy; continuous WAL
+  archiving; provider snapshots.
+- Decision: **nightly `pg_dump --format=custom`** plus an object-store copy and a
+  manifest (git SHA, migration version, row counts, checksums).
+- Decision: **RPO 24 hours, RTO 2 hours for the pilot**, measured by a drill and
+  revisited if a tighter SLA is signed.
+- Decision: restores go to a **scratch database by default**; `restore.sh` refuses
+  a target it was not explicitly given, so the drill and a real recovery share one
+  code path.
+- Decision: retention, encryption at rest and the off-site copy belong to the
+  deploy target. A dump contains password hashes and session rows, so it is
+  treated as sensitive material.
+- Rejected: WAL archiving / PITR now (needs an archive destination and an operator
+  runbook no one has signed for); provider snapshots (binds recovery to an
+  unchosen vendor and cannot be drilled locally); per-table `COPY` (worse
+  consistency than `pg_dump`).
+
+## D53: Where alerts are delivered
+
+**Status:** resolved (Phase 10, ADR 0044).
+
+The signals exist — 5xx counts, webhook outcomes, outbox backlog, worker
+heartbeat, reconciliation age — but nothing turns them into a notification.
+
+- Options: a paging vendor now; rules as documentation; machine-readable rules
+  delivered by the deploy target.
+- Decision: **`infra/alerts/tpirs.rules.yml`** in Prometheus rule format, with a
+  test that every metric and label a rule uses exists in the D51 contract.
+- Decision: **delivery is a deploy-target adapter.** Until a target wires
+  Alertmanager or a pager, the rules evaluate and nothing notifies; the runbook
+  and the delivery notes say that plainly rather than implying monitoring exists.
+- Decision: every alert carries a runbook section with what it means and the first
+  three checks, and no alert fires on business figures an operator cannot act on
+  at 03:00.
+- Rejected: a hosted monitoring SaaS (a vendor decision that belongs with the
+  target); log-only alerting (not reviewable in a diff); alerting solely on the
+  reconciliation outcome (hours after the failure started).
+
+## D54: External pen test or internal review
+
+**Status:** resolved (Phase 10, ADR 0045). An external test remains open for
+procurement.
+
+A paid engagement needs budget, a vendor and a signed scope; none exist while the
+deployment target is `noop`. The acceptance check says "external pen test if
+possible", so the record has to say what actually happened.
+
+- Options: paid external test; no review; internal adversarial review.
+- Decision: **internal adversarial review** by two engineers (one attacking, one
+  defending, neither signing off their own fix), using the artefacts a vendor
+  would produce: `docs/security/pen-test-scope.md` and
+  `docs/security/findings.md` with severity, owner, status and retest evidence.
+- Decision: the result is labelled **"internal adversarial review"**, never "pen
+  tested". No open critical or high finding is required to close the phase;
+  medium and low findings are accepted with an owner and a date and listed in the
+  acceptance table.
+- Decision: the scope document is written vendor-ready, so commissioning an
+  external test later needs no rewriting.
+- Rejected: automated scanning as a substitute (finds known classes, not
+  authorisation mistakes in a multi-tenant ledger); a bug bounty (no budget or
+  triage capacity); calling the automated suites a pen test.
+
+## D55: Login brute-force policy
+
+**Status:** resolved (Phase 10, ADR 0046).
+
+`POST /v1/auth/login` is the only unauthenticated route that accepts a password,
+and an authenticated account can configure a tenant or approve a reversal.
+
+- Options: account lockout; per-IP only; per-username only; both as fixed windows.
+- Decision: **per-IP and per-username counters, both must pass**, using the
+  existing fixed-window limiter: `login:ip:<ip>` 60/min,
+  `login:user:<tenant>:<username>` 5/min, `auth.refresh:ip:<ip>` 30/min and
+  `login:totp:user:<userId>` 5/min.
+- Decision: **throttle, never lock out.** The response is the standard `429`
+  envelope with `Retry-After`; the key expires on its own, so there is no
+  persistent lockout state, no unlock path, and no way for an attacker to lock a
+  named employee out. The limiter runs before the identity lookup so a throttled
+  response cannot be used to enumerate usernames.
+- Decision: the username key includes the tenant id and is trimmed and
+  lower-cased; successful attempts also consume; TOTP has its own counter after
+  the password succeeds. The numbers are platform constants, not tenant config.
+- Known limitation: counters are per process while `Cache` is the mock adapter,
+  so two API replicas double the effective limit. The Redis `Cache` adapter is
+  the fix when the API scales out.
+- Rejected: lockout with admin unlock (a guess becomes an outage for a named
+  employee, plus persistent state and a support process); per-IP only (shared NAT
+  forces a generous limit and distributed guessing defeats it); per-username only
+  (one host can try one password against every account); a CAPTCHA (an external
+  dependency and an accessibility problem for staff on low-end devices).

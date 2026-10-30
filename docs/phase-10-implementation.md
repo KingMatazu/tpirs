@@ -71,23 +71,24 @@ flipped to `(completed)` as each lands, one commit per step.
 - **Windows dev, Linux CI.** Load and restore drills run in CI or a Linux
   container; the Windows laptop only runs short smoke loads.
 
-## Decisions to record first
+## Decisions recorded (D50–D55)
 
-Add these to `docs/decisions-needed.md` and answer them before the step that
-depends on them. Each answer gets an ADR (next free number is 0041).
+Answered before implementation; each has an ADR. Details and rejected
+alternatives live in `docs/decisions-needed.md` and `docs/adr/`.
 
-| ID  | Question                               | Options                                                             | Recommendation                                                                                                                                             |
-| --- | -------------------------------------- | ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| D50 | How is load generated and asserted?    | k6 binary / autocannon / Node + undici harness                      | Node + undici: no new binary, runs on Windows and Linux, can seed data and assert ledger invariants after the run                                          |
-| D51 | How are metrics exposed and protected? | Prometheus text on `GET /metrics` / OTLP push / stdout only         | `GET /metrics`, Prometheus text, enabled by `METRICS_ENABLED`, unauthenticated but documented as internal-only (same trust boundary as `/v1/health`)       |
-| D52 | Backup scope, RPO and RTO?             | nightly logical dump / continuous WAL archiving / managed snapshots | Nightly `pg_dump --format=custom` + object-store copy; RPO 24 h, RTO 2 h for the pilot. Revisit WAL archiving if the state signs an SLA tighter than a day |
-| D53 | Where do alerts go?                    | rule files only / e-mail / on-call pager                            | Ship rule files + metric contract now; the pilot target wires delivery. Recorded as an adapter gap, not a silent no-op                                     |
-| D54 | Pen test: external or internal?        | paid external / internal adversarial review / both                  | External if procurement allows, otherwise internal review with the same scope document; record which one happened                                          |
-| D55 | Login brute-force policy?              | per-IP only / per-IP + per-username / lockout after N failures      | Per-IP + per-username fixed window, no account lockout (lockout is a DoS lever against staff)                                                              |
+| ID  | Question                               | Decision                                                                                           | ADR  |
+| --- | -------------------------------------- | -------------------------------------------------------------------------------------------------- | ---- |
+| D50 | How is load generated and asserted?    | Node + `undici` harness under `scripts/load/`; budgets as thresholds in code; 10% webhook replay   | 0041 |
+| D51 | How are metrics exposed and protected? | Prometheus text on `GET /metrics`, behind `METRICS_ENABLED`, internal-only, names are the contract | 0042 |
+| D52 | Backup scope, RPO and RTO?             | Nightly `pg_dump --format=custom` + object-store copy + manifest; RPO 24 h, RTO 2 h                | 0043 |
+| D53 | Where do alerts go?                    | `infra/alerts/tpirs.rules.yml` now; delivery is a deploy-target adapter, documented as a gap       | 0044 |
+| D54 | Pen test: external or internal?        | Internal adversarial review, two engineers, vendor-ready scope doc; labelled honestly              | 0045 |
+| D55 | Login brute-force policy?              | Per-IP + per-username fixed windows, throttle never lockout, TOTP on its own counter               | 0046 |
 
 ## Step 0: Reconcile and inventory (pending)
 
-- Write this plan; add the decisions above to `docs/decisions-needed.md`.
+- Write this plan; record D50–D55 in `docs/decisions-needed.md` with ADRs 0041–0046
+  (done before implementation started).
 - Inventory the security surface into `docs/security/README.md`: which controls
   exist, where they are tested, and which are only asserted in prose. This is
   the document the pen test and the auditor read first.
@@ -98,7 +99,7 @@ depends on them. Each answer gets an ADR (next free number is 0041).
 - New `packages/adapters/telemetry/prometheus` (or extend the OTel adapter's
   sink) exposing counters and histograms in Prometheus text format, wired
   through the existing `Telemetry` port — no vendor SDK, no new runtime
-  dependency (hand-rolled text rendering is ~60 lines and is what ADR 0041
+  dependency (hand-rolled text rendering is ~60 lines and is what ADR 0042
   records).
 - `GET /metrics` in `apps/api/src/server.ts`, registered like `/v1/health`,
   gated on `METRICS_ENABLED=true`, excluded from the audit hook and from the
@@ -167,6 +168,8 @@ depends on them. Each answer gets an ADR (next free number is 0041).
 - Tests: the harness itself gets a smoke test at low rate in CI (Step 11).
 - Commit: `test(load): add the load harness and scenarios`.
 
+Recorded in ADR 0041 (D50): Node + `undici`, no new dependency, budgets as code.
+
 ## Step 4: Dependency audit gate (pending)
 
 - `scripts/ci/audit.sh`: `pnpm audit --audit-level high --prod` plus the full
@@ -219,9 +222,12 @@ depends on them. Each answer gets an ADR (next free number is 0041).
   `referrer-policy: no-referrer`, `x-frame-options: DENY`, HSTS only when
   `nodeEnv === "production"`). CORS stays absent by design — same-origin
   clients — and that decision is written down, not implied.
-- Login and refresh throttle (D55): fixed-window per IP and per username through
-  the existing `RateLimiter`, returning the standard `429` envelope with
-  `Retry-After`.
+- Login and refresh throttle (D55, ADR 0046): fixed windows per IP
+  (`login:ip:<ip>` 60/min, `auth.refresh:ip:<ip>` 30/min) and per username
+  (`login:user:<tenant>:<username>` 5/min, `login:totp:user:<userId>` 5/min),
+  through the existing `RateLimiter`, returning the standard `429` envelope with
+  `Retry-After`. Throttle, never lock out; the limiter runs before the identity
+  lookup so it cannot enumerate usernames.
 - Log redaction: pino `redact` for `authorization`, `cookie`, `set-cookie`, body
   fields named `password`, `totpCode`, `refreshToken`; assert no plate, MSISDN or
   token appears in the webhook raw-payload log line.
@@ -255,8 +261,9 @@ depends on them. Each answer gets an ADR (next free number is 0041).
 - `docs/runbooks/disaster-recovery.md`: scenarios (database loss, object-store
   loss, region loss, bad migration, leaked QR signing key, compromised staff
   session, provider outage), the decision tree, who declares an incident, RTO
-  and RPO per scenario (D52), communication steps, and the integrity checks that
-  must pass before traffic returns.
+  and RPO per scenario (D52, ADR 0043: RPO 24 h, RTO 2 h for the pilot),
+  communication steps, and the integrity checks that must pass before traffic
+  returns.
 - Secret rotation runbook: QR signing key (and what happens to printed
   stickers), webhook endpoint tokens, provider API keys, staff session revocation.
 - Commit: `docs(runbooks): backup, restore and disaster recovery`.
@@ -274,8 +281,8 @@ depends on them. Each answer gets an ADR (next free number is 0041).
   - audit write failures and RLS denials (both are security signals).
 - `docs/runbooks/alerting.md`: what each alert means, the first three things to
   check, and the escalation path. Delivery is recorded as a deploy-time adapter
-  (D53) — the rules exist and are tested against synthetic metric values, even
-  when no pager is wired.
+  (D53, ADR 0044) — the rules exist and are tested against synthetic metric
+  values, even when no pager is wired.
 - Test: a unit test that every alert's metric name exists in the Step 1
   contract, so renaming a metric breaks the build rather than the alert.
 - Commit: `feat(ops): add alert rules for failure paths`.
@@ -303,8 +310,11 @@ depends on them. Each answer gets an ADR (next free number is 0041).
 - `docs/security/findings.md`: register with id, severity, area, owner, status,
   fix commit and retest evidence. Acceptance requires **zero open critical or
   high** entries — this file is the evidence, not a verbal assurance.
-- If external testing is not possible (D54), run the same scope as an internal
-  adversarial review with two people, and label the result accordingly.
+- This phase runs the **internal adversarial review** (D54, ADR 0045): two
+  engineers, one attacking and one defending, neither signing off their own fix.
+  The register and the delivery notes label the result "internal adversarial
+  review", never "pen tested"; an external test stays open for procurement and
+  the scope document is written vendor-ready.
 - Commit: `docs(security): pen-test scope and findings register`.
 
 ## Step 13: Acceptance run and delivery notes (pending)
