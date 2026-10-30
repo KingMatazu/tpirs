@@ -138,7 +138,7 @@ alternatives live in `docs/decisions-needed.md` and `docs/adr/`.
   those need no further plumbing.
 - Commit: `feat(api): expose prometheus metrics behind a flag`.
 
-## Step 2: Performance budgets (pending)
+## Step 2: Performance budgets (completed)
 
 - `docs/performance-budgets.md` with the initial budgets below, the load
   profile that measures them, and how to re-baseline after a hardware or
@@ -158,6 +158,9 @@ alternatives live in `docs/decisions-needed.md` and `docs/adr/`.
 
 - Record the machine profile each run was measured on (CI runner class), so
   numbers are comparable.
+- Delivered in [`performance-budgets.md`](./performance-budgets.md), including
+  the metric mapping, the re-baselining procedure and the known limits (one
+  replica, warm cache, no network shaping).
 - Commit: `docs(performance): set initial budgets`.
 
 ## Step 3: Load-test harness (pending)
