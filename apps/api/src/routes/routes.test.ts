@@ -236,9 +236,11 @@ describeIntegration("api auth/config/audit (integration)", () => {
 
   it("denies a role without the required permission", async () => {
     const token = await login("rt.officer");
+    // The audit log is the permission-gated read an officer cannot have; the
+    // tenant config is deliberately readable by every signed-in role.
     const response = await app.inject({
       method: "GET",
-      url: "/v1/tenants/current/config",
+      url: "/v1/audit",
       headers: { authorization: `Bearer ${token}` },
     });
     expect(response.statusCode).toBe(403);
@@ -276,34 +278,29 @@ describeIntegration("api auth/config/audit (integration)", () => {
     expect(audit[0]?.entityId).toBe(tenantId);
   });
 
-  it("lets an officer read the branding projection but not the full config", async () => {
+  it("lets an officer read the tenant config but not write it", async () => {
     const token = await login("rt.officer");
     const headers = { authorization: `Bearer ${token}` };
 
-    const branding = await app.inject({
-      method: "GET",
-      url: "/v1/tenants/current/branding",
-      headers,
-    });
-    expect(branding.statusCode).toBe(200);
-    const body = branding.json() as {
-      identity: { name: string };
-      branding: { appName: string };
-      locale: { currency: string };
-    };
-    expect(body.identity.name).toBe("Test State");
-    expect(body.branding.appName).toBe("Test");
-    expect(body.locale.currency).toBe("NGN");
-    // The projection must not leak the rest of the config.
-    expect(body).not.toHaveProperty("providers");
-    expect(body).not.toHaveProperty("cashRules");
-
+    // Every screen renders from the config, and the officer holds none of the
+    // admin permissions, so the read must not require one.
     const config = await app.inject({
       method: "GET",
       url: "/v1/tenants/current/config",
       headers,
     });
-    expect(config.statusCode).toBe(403);
+    expect(config.statusCode).toBe(200);
+    expect(
+      (config.json() as { config: { branding: { appName: string } } }).config.branding.appName,
+    ).toBe("Test");
+
+    const write = await app.inject({
+      method: "PUT",
+      url: "/v1/tenants/current/config",
+      headers,
+      payload: validConfig(slug),
+    });
+    expect(write.statusCode).toBe(403);
   });
 
   it("refuses a non-uuid actor filter instead of failing in the database", async () => {

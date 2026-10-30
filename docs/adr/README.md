@@ -49,3 +49,4 @@ Format: context, decision, consequences, alternatives considered.
 - [0044](./0044-alert-delivery.md) Alert rules now, delivery at the deploy target
 - [0045](./0045-security-review-path.md) Internal adversarial review instead of a paid pen test
 - [0046](./0046-login-throttling.md) Login throttling by IP and by username, fixed window
+- [0047](./0047-tenant-config-readability.md) Tenant config readable by staff, writable by admins

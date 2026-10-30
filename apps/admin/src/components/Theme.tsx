@@ -1,6 +1,6 @@
 import { useEffect, type ReactElement } from "react";
 import { buildDesignTokens, tokensToCssRoot } from "@tpirs/ui-tokens";
-import type { TenantBranding } from "../lib/tenantConfig.js";
+import type { TenantConfig } from "@tpirs/config";
 
 /**
  * Re-themes the dashboard from tenant branding (ADR 0027): one CSS block of
@@ -10,7 +10,7 @@ import type { TenantBranding } from "../lib/tenantConfig.js";
 export function TenantTheme({
   config,
 }: {
-  readonly config: TenantBranding | undefined;
+  readonly config: TenantConfig | undefined;
 }): ReactElement | null {
   useEffect(() => {
     if (config === undefined) return;

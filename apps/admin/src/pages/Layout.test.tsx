@@ -32,15 +32,8 @@ let current: TenantConfig = alpha;
 const fakeFetch = vi.fn(async (input: unknown): Promise<Response> => {
   const request = input as Request;
   const url = new URL(request.url, "http://localhost");
-  if (url.pathname === "/v1/tenants/current/branding") {
-    // The shell reads the branding projection, which every signed-in role may
-    // read; the full config stays behind tenant:read.
-    const { identity, branding, locale } = current;
-    return json(200, {
-      identity: { name: identity.name, slug: identity.slug },
-      branding: JSON.parse(JSON.stringify(branding)),
-      locale: JSON.parse(JSON.stringify(locale)),
-    });
+  if (url.pathname === "/v1/tenants/current/config") {
+    return json(200, { config: JSON.parse(JSON.stringify(current)), version: 1 });
   }
   return json(404, { error: { code: "not_found", message: "nope", requestId: "r0" } });
 });

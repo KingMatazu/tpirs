@@ -38,9 +38,11 @@ const PUBLIC: Readonly<Record<string, string>> = {
 /** Authenticated, but about the caller's own session: no permission applies. */
 const AUTHENTICATED: Readonly<Record<string, string>> = {
   "GET /v1/auth/me": "the caller's own session and permissions",
-  // Name, branding and locale: every signed-in role renders the shell with them,
-  // and none of it is the full config (which stays behind tenant:read).
-  "GET /v1/tenants/current/branding": "the shell's branding projection",
+  // Every screen renders from the tenant config (branding, locale, asset
+  // schemas, cash and reconciliation rules), so any staff member may read it;
+  // only writing it needs tenant:configure. The config holds secret references,
+  // never secret values.
+  "GET /v1/tenants/current/config": "any signed-in staff member renders screens from it",
 };
 
 /** The permission each protected route must demand, keyed by `METHOD path`. */
@@ -65,7 +67,6 @@ const REQUIRED: Readonly<Record<string, readonly Permission[]>> = {
   "POST /v1/cash/collectors/:collectorUserId/deposit-instruction": ["payment:manage"],
   "GET /v1/cash/deposits": ["cash:deposit:read"],
   "POST /v1/cash/deposits/:id/match": ["cash:deposit:match"],
-  "GET /v1/tenants/current/config": ["tenant:read"],
   "PUT /v1/tenants/current/config": ["tenant:configure"],
   "GET /v1/verifications/search": ["asset:read"],
   "GET /v1/sync/paid": ["asset:read"],

@@ -13,32 +13,14 @@ function serializeIssues(error: TenantConfigValidationError): { path: string; me
 
 export function registerConfigRoutes(app: FastifyInstance, context: AuthContext): void {
   /**
-   * The subset of tenant config the dashboard shell needs to render: name,
-   * branding and locale. Every signed-in staff member needs it — an officer sees
-   * the tenant's name, colours and languages — but `tenant:read` guards the full
-   * config (providers, cash rules, reconciliation tolerances), which only
-   * finance and administrators need. Without this projection every non-admin
-   * role saw "missing permission tenant:read" on sign-in.
+   * Readable by any authenticated staff member: the dashboard needs the tenant's
+   * name, branding, locale, asset schemas and cash/reconciliation rules to render
+   * every screen, and only system admins and auditors hold `tenant:read`. The
+   * config holds references to secrets, never secret values, and it is
+   * tenant-scoped by the principal. Writing it still needs `tenant:configure`.
    */
-  app.get("/v1/tenants/current/branding", async (request, reply) => {
-    const principal = requirePrincipal(request);
-    const current = await readTenantConfig(context.db, principal.tenantId);
-    if (current === undefined) {
-      return reply
-        .code(404)
-        .send({ error: { code: "not_found", message: "Tenant not found", requestId: request.id } });
-    }
-    // The stored config is validated on write; validating again here keeps the
-    // projection typed and fails loudly (500) rather than half-rendering a shell.
-    const { identity, branding, locale } = validateTenantConfig(current.config);
-    return reply.send({
-      identity: { name: identity.name, slug: identity.slug },
-      branding,
-      locale,
-    });
-  });
   app.get("/v1/tenants/current/config", async (request, reply) => {
-    const principal = requirePermission(request, "tenant:read");
+    const principal = requirePrincipal(request);
     const current = await readTenantConfig(context.db, principal.tenantId);
     if (current === undefined) {
       return reply

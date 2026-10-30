@@ -1043,15 +1043,6 @@
         }
       }
     },
-    "/v1/tenants/current/branding": {
-      "get": {
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
-      }
-    },
     "/v1/tenants/current/config": {
       "get": {
         "responses": {
