@@ -29,6 +29,7 @@
     "@tpirs/adapters-env-secrets": "workspace:*",
     "@tpirs/adapters-localdisk-storage": "workspace:*",
     "@tpirs/adapters-otel-telemetry": "workspace:*",
+    "@tpirs/adapters-prometheus-telemetry": "workspace:*",
     "@tpirs/adapters-s3-storage": "workspace:*",
     "@tpirs/application": "workspace:*",
     "@tpirs/asset-schema-registry-config": "workspace:*",

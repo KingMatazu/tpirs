@@ -126,6 +126,8 @@ export interface Services {
   readonly inboundSms: InboundSmsService;
   /** Shared abuse control for unauthenticated endpoints. */
   readonly rateLimiter: RateLimiter;
+  /** Metrics/log sink, when the composition root supplied one (ADR 0042). */
+  readonly telemetry?: Telemetry;
   /** Tenant config to live channel adapters; used by the webhook routes. */
   readonly channelProviders: ChannelProviderFactory;
   /** Paid-set snapshot/delta feed for the offline field app. */
@@ -267,6 +269,7 @@ export async function buildServices(deps: ServiceDeps): Promise<Services> {
     anomalies,
     reports,
     reversals,
+    ...telemetryProps,
     ...(settlementImport === undefined ? {} : { settlementImport }),
   };
 }

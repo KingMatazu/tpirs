@@ -29,6 +29,7 @@ const appConfig: AppConfig = {
   logLevel: "silent",
   deploymentRegion: "test",
   databaseUrl: "",
+  metricsEnabled: false,
 };
 
 const FEE_MINOR = 20_000;

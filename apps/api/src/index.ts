@@ -4,6 +4,7 @@ import type { Services } from "./services.js";
 import { buildServices, makeTenantConfigLoader } from "./services.js";
 import { buildObjectStorage } from "./storage.js";
 import { createOtelTelemetry } from "@tpirs/adapters-otel-telemetry";
+import { createPrometheusTelemetry } from "@tpirs/adapters-prometheus-telemetry";
 import { createEnvSecretsProvider } from "@tpirs/adapters-env-secrets";
 import { createMockCache } from "@tpirs/cache-mock";
 import { createMockClock } from "@tpirs/clock-mock";
@@ -26,14 +27,23 @@ function loadConfig(): AppConfig {
     logLevel: process.env.LOG_LEVEL ?? "info",
     deploymentRegion: process.env.DEPLOYMENT_REGION ?? "local",
     databaseUrl: process.env.DATABASE_URL ?? "",
+    metricsEnabled: process.env.METRICS_ENABLED === "true",
   };
 }
 
 async function main(): Promise<void> {
   const config = loadConfig();
-  const telemetry = createOtelTelemetry({
+  // Metrics first, console logs underneath (ADR 0042). Spans are not forwarded:
+  // a per-request span would add a JSON line to stdout on every call, while its
+  // duration still lands in the histogram.
+  const consoleTelemetry = createOtelTelemetry({
     serviceName: process.env.OTEL_SERVICE_NAME ?? "tpirs",
   });
+  const metrics = createPrometheusTelemetry({
+    forward: consoleTelemetry,
+    forwardSpans: false,
+  });
+  const telemetry = metrics;
   const objectStorage = buildObjectStorage(process.env);
   telemetry.log("info", "object storage adapter ready", {
     adapter: process.env.OBJECT_STORAGE_ADAPTER ?? "s3",
@@ -86,6 +96,7 @@ async function main(): Promise<void> {
     ...(identity === undefined ? {} : { identity }),
     ...(services === undefined ? {} : { services }),
     ...(loadConfigFn === undefined ? {} : { loadConfig: loadConfigFn }),
+    metrics,
     readiness: async () => {
       if (db === undefined) return true;
       try {

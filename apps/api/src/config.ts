@@ -10,6 +10,8 @@ export interface AppConfig {
   readonly logLevel: string;
   readonly deploymentRegion: string;
   readonly databaseUrl: string;
+  /** Exposes `GET /metrics` when true (ADR 0042); 404 otherwise. */
+  readonly metricsEnabled: boolean;
 }
 
 export interface BuildAppOptions {
@@ -27,4 +29,9 @@ export interface BuildAppOptions {
   readonly loadConfig?: (tenantId: string) => Promise<TenantConfig | undefined>;
   /** Optional readiness probe (e.g. database ping). Resolves true when ready. */
   readonly readiness?: () => Promise<boolean>;
+  /**
+   * Prometheus exposition sink (ADR 0042). Present only when the process built
+   * one; the route still needs `config.metricsEnabled` to answer.
+   */
+  readonly metrics?: { render(): string };
 }

@@ -22,6 +22,7 @@ const config: AppConfig = {
   logLevel: "silent",
   deploymentRegion: "test",
   databaseUrl: "",
+  metricsEnabled: false,
 };
 
 function validConfig(slug: string): TenantConfig {

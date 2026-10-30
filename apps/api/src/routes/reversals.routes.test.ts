@@ -31,6 +31,7 @@ const appConfig: AppConfig = {
   logLevel: "silent",
   deploymentRegion: "test",
   databaseUrl: "",
+  metricsEnabled: false,
 };
 
 function validConfig(slug: string): unknown {

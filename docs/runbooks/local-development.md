@@ -59,15 +59,15 @@ This starts the four dev servers in one terminal through `scripts/dev.mjs`
 (prefixing each line with the app name). One Ctrl+C stops all of them, including
 the compiler processes `tsx watch` spawns:
 
-| Service         | URL                     | Notes                                                          |
-| --------------- | ----------------------- | -------------------------------------------------------------- |
-| Admin dashboard | <http://localhost:5173> | the interface to test                                          |
-| API             | <http://localhost:3000> | `/v1/health`, `/v1/ready`, `/v1/openapi.json`                  |
-| Field PWA       | <http://localhost:5174> | officer app, offline-capable                                   |
-| Worker          | —                       | outbox sweepers, SMS/channel delivery, reconciliation schedule |
-| Postgres        | `localhost:5433`        | user `tpirs`, password `tpirs`, database `tpirs`               |
-| Redis           | `localhost:6380`        |                                                                |
-| Object storage  | `localhost:9000`        | SeaweedFS S3 API (`tpirs-uploads`, `tpirs-exports`)            |
+| Service         | URL                     | Notes                                                              |
+| --------------- | ----------------------- | ------------------------------------------------------------------ |
+| Admin dashboard | <http://localhost:5173> | the interface to test                                              |
+| API             | <http://localhost:3000> | `/v1/health`, `/v1/ready`, `/v1/openapi.json`, `/metrics` (opt-in) |
+| Field PWA       | <http://localhost:5174> | officer app, offline-capable                                       |
+| Worker          | —                       | outbox sweepers, SMS/channel delivery, reconciliation schedule     |
+| Postgres        | `localhost:5433`        | user `tpirs`, password `tpirs`, database `tpirs`                   |
+| Redis           | `localhost:6380`        |                                                                    |
+| Object storage  | `localhost:9000`        | SeaweedFS S3 API (`tpirs-uploads`, `tpirs-exports`)                |
 
 If you only need the dashboard and API:
 

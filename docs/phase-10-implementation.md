@@ -94,7 +94,7 @@ alternatives live in `docs/decisions-needed.md` and `docs/adr/`.
   the document the pen test and the auditor read first.
 - Commit: `docs(phase-10): outline hardening`.
 
-## Step 1: Metrics endpoint and metric contract (pending)
+## Step 1: Metrics endpoint and metric contract (completed)
 
 - New `packages/adapters/telemetry/prometheus` (or extend the OTel adapter's
   sink) exposing counters and histograms in Prometheus text format, wired
@@ -124,6 +124,18 @@ alternatives live in `docs/decisions-needed.md` and `docs/adr/`.
   resolved path.
 - Tests: text format parses; counters move on a request; labels never include a
   plate or token; `/metrics` 404s when disabled.
+- Delivered as `packages/adapters/telemetry/prometheus` (name
+  `@tpirs/adapters-prometheus-telemetry`) wrapping the port and forwarding logs
+  to the OTel console sink; request spans are not forwarded, so a per-request
+  span does not become a log line on every call. The span duration still lands in
+  the histogram, and attributes set during the span (the route pattern) become
+  its labels.
+- Emitted so far: `http_requests_total`, `http_request_duration_seconds`,
+  `verify_lookups_total`, `rate_limit_rejections_total{scope="verify"}`. The
+  remaining names in the contract are emitted by the components that own them
+  (worker heartbeat, outbox age, job depth, reconciliation age) when Step 10
+  wires the alerts; the registry renders any counter or span automatically, so
+  those need no further plumbing.
 - Commit: `feat(api): expose prometheus metrics behind a flag`.
 
 ## Step 2: Performance budgets (pending)

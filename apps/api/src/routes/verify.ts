@@ -34,6 +34,8 @@ export function registerVerifyRoutes(
   app.get("/v1/verify/:token", { schema: verifyTokenSchema }, async (request, reply) => {
     const limit = await services.rateLimiter.consume(`verify:ip:${request.ip}`, VERIFY_RATE_LIMIT);
     if (!limit.allowed) {
+      services.telemetry?.counter("verify.lookups", 1, { result: "rate_limited" });
+      services.telemetry?.counter("rate_limit.rejections", 1, { scope: "verify" });
       void reply.header("Retry-After", String(limit.retryAfterSeconds));
       return reply.code(429).send(errorEnvelope("rate_limited", "Too many requests", request.id));
     }
@@ -44,6 +46,7 @@ export function registerVerifyRoutes(
       verified = await services.asset.verifyQrToken(token);
     } catch (error) {
       if (error instanceof InvalidQrTokenError || error instanceof AssetNotFoundError) {
+        services.telemetry?.counter("verify.lookups", 1, { result: "not_found" });
         return reply.code(404).send(notFound(request));
       }
       throw error;
@@ -61,6 +64,8 @@ export function registerVerifyRoutes(
       );
       paymentStatus = paymentStatusFromPeriod(period?.status ?? "none");
     }
+
+    services.telemetry?.counter("verify.lookups", 1, { result: paymentStatus });
 
     return reply.send({
       status: asset.status,

@@ -22,6 +22,13 @@ import { registerAuditRoutes } from "./routes/audit.js";
 import { registerReconciliationRoutes } from "./routes/reconciliation.js";
 import { registerReversalRoutes } from "./routes/reversals.js";
 
+declare module "fastify" {
+  interface FastifyRequest {
+    /** Request span started on arrival and ended on response (ADR 0042). */
+    metricsSpan?: import("@tpirs/ports").Span;
+  }
+}
+
 export interface HealthResponse {
   readonly status: "ok";
   readonly service: string;
@@ -86,6 +93,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
 
   app.addHook("onRequest", (request, reply, done) => {
     reply.header("x-request-id", request.id);
+    request.metricsSpan = telemetry.startSpan("http.request", { method: request.method });
     done();
   });
 
@@ -156,10 +164,21 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   }
 
   app.addHook("onResponse", (request, reply, done) => {
+    // The route pattern, never the resolved path: `/v1/verify/:token` keeps the
+    // label cardinality bounded, the token itself would blow it up (ADR 0042).
+    const route = request.routeOptions.url ?? "unmatched";
     telemetry.counter("http.requests", 1, {
       method: request.method,
       status: reply.statusCode,
+      route,
     });
+    const span = request.metricsSpan;
+    if (span !== undefined) {
+      // Latency is labelled by route and method only; the status code lives on
+      // the counter, so one slow path does not multiply the histogram series.
+      span.setAttribute("route", route);
+      span.end();
+    }
     done();
   });
 
@@ -208,6 +227,17 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     const body: ReadyResponse = { status: ready ? "ready" : "not_ready" };
     void reply.code(ready ? 200 : 503).send(body);
   });
+
+  if (config.metricsEnabled && options.metrics !== undefined) {
+    // Prometheus text exposition (ADR 0042): no authentication and outside the
+    // audit hook, like /v1/health. It is an internal-network endpoint; a
+    // deployment must not publish it at the edge.
+    app.get("/metrics", { schema: { hide: true } }, (_request, reply) => {
+      void reply
+        .header("content-type", "text/plain; version=0.0.4")
+        .send(options.metrics?.render());
+    });
+  }
 
   return app;
 }

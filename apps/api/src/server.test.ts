@@ -3,6 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { buildApp } from "./server.js";
 import type { AppConfig } from "./config.js";
 import { createMockTelemetry } from "@tpirs/telemetry-mock";
+import { createPrometheusTelemetry } from "@tpirs/adapters-prometheus-telemetry";
 
 const config: AppConfig = {
   nodeEnv: "test",
@@ -11,6 +12,7 @@ const config: AppConfig = {
   logLevel: "silent",
   deploymentRegion: "test",
   databaseUrl: "",
+  metricsEnabled: false,
 };
 
 describe("api server", () => {
@@ -55,6 +57,35 @@ describe("api server", () => {
     const response = await notReady.inject({ method: "GET", url: "/v1/ready" });
     expect(response.statusCode).toBe(503);
     await notReady.close();
+  });
+
+  it("does not expose /metrics unless it is enabled", async () => {
+    const response = await app.inject({ method: "GET", url: "/metrics" });
+    expect(response.statusCode).toBe(404);
+  });
+
+  it("renders prometheus metrics when enabled", async () => {
+    const metrics = createPrometheusTelemetry();
+    const withMetrics = await buildApp({
+      config: { ...config, metricsEnabled: true },
+      telemetry: metrics,
+      metrics,
+    });
+    await withMetrics.ready();
+
+    await withMetrics.inject({ method: "GET", url: "/v1/health" });
+    await withMetrics.inject({ method: "GET", url: "/v1/health" });
+    const response = await withMetrics.inject({ method: "GET", url: "/metrics" });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["content-type"]).toContain("text/plain");
+    const body = response.body;
+    expect(body).toContain("# TYPE http_requests_total counter");
+    expect(body).toContain('http_requests_total{method="GET",route="/v1/health",status="200"}');
+    expect(body).toContain('http_request_duration_seconds_count{method="GET",route="/v1/health"}');
+    // The label is the route pattern, never a resolved path or a token.
+    expect(body).not.toContain("/v1/health?");
+    await withMetrics.close();
   });
 
   it("uses the error envelope for unknown routes", async () => {
