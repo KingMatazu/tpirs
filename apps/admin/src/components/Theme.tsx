@@ -1,13 +1,17 @@
 import { useEffect, type ReactElement } from "react";
 import { buildDesignTokens, tokensToCssRoot } from "@tpirs/ui-tokens";
-import type { TenantConfig } from "@tpirs/config";
+import type { TenantBranding } from "../lib/tenantConfig.js";
 
 /**
  * Re-themes the dashboard from tenant branding (ADR 0027): one CSS block of
  * custom properties is injected, and components bind Tailwind utilities to
  * those variables. No component code ever branches on a tenant.
  */
-export function TenantTheme({ config }: { readonly config: TenantConfig | undefined }): ReactElement | null {
+export function TenantTheme({
+  config,
+}: {
+  readonly config: TenantBranding | undefined;
+}): ReactElement | null {
   useEffect(() => {
     if (config === undefined) return;
     const id = "tpirs-theme";

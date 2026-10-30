@@ -25,7 +25,10 @@ const PREFIX = "--tpirs-";
  * Builds the design-token map. Only configured values are emitted — the token
  * layer never invents colors; fallbacks live in the app's own CSS defaults.
  */
-export function buildDesignTokens(config: TenantConfig): DesignTokens {
+export function buildDesignTokens(config: {
+  readonly branding: TenantConfig["branding"];
+  readonly locale: TenantConfig["locale"];
+}): DesignTokens {
   const { branding, locale } = config;
   return {
     variables: {

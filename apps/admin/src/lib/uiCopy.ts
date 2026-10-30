@@ -60,7 +60,7 @@ export const UI_LANGUAGES: readonly UiLanguage[] = Object.keys(UI_CATALOGS) as U
  * languages intersected with the shipped catalogues. Always at least English,
  * and the tenant's default when it has a catalogue.
  */
-export function dashboardLanguages(config: TenantConfig): {
+export function dashboardLanguages(config: { readonly locale: TenantConfig["locale"] }): {
   readonly languages: readonly UiLanguage[];
   readonly defaultLanguage: UiLanguage;
 } {
@@ -76,7 +76,7 @@ export function dashboardLanguages(config: TenantConfig): {
 }
 
 export function dashboardTranslator(
-  config: TenantConfig,
+  config: { readonly locale: TenantConfig["locale"] },
   selected: string | undefined,
 ): {
   readonly t: (key: keyof (typeof UI_CATALOGS)["en"]) => string;

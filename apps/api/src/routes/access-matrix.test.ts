@@ -38,6 +38,9 @@ const PUBLIC: Readonly<Record<string, string>> = {
 /** Authenticated, but about the caller's own session: no permission applies. */
 const AUTHENTICATED: Readonly<Record<string, string>> = {
   "GET /v1/auth/me": "the caller's own session and permissions",
+  // Name, branding and locale: every signed-in role renders the shell with them,
+  // and none of it is the full config (which stays behind tenant:read).
+  "GET /v1/tenants/current/branding": "the shell's branding projection",
 };
 
 /** The permission each protected route must demand, keyed by `METHOD path`. */

@@ -16,7 +16,7 @@ import {
 import type { ReactElement } from "react";
 import { currentPath, navigate, useRoute } from "../lib/router.js";
 import { TenantTheme } from "../components/Theme.js";
-import { useTenantConfig } from "../lib/tenantConfig.js";
+import { useTenantBranding } from "../lib/tenantConfig.js";
 import { dashboardTranslator } from "../lib/uiCopy.js";
 import { useUiLanguage } from "../lib/uiLanguage.js";
 import { useSession } from "../session.js";
@@ -74,8 +74,7 @@ export function Layout(props: Readonly<{ readonly children: ReactElement }>): Re
   // re-render forever.
   const permissions = useSession((state) => state.user?.permissions ?? NO_PERMISSIONS);
   const selectedLanguage = useUiLanguage((state) => state.language);
-  const { config } = useTenantConfig();
-  const tenantConfig = config?.config;
+  const { branding: tenantConfig } = useTenantBranding();
   const appName = tenantConfig?.branding.appName ?? "Admin";
   const copy =
     tenantConfig === undefined ? undefined : dashboardTranslator(tenantConfig, selectedLanguage);

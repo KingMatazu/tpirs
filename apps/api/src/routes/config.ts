@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { TenantConfigValidationError, validateTenantConfig } from "@tpirs/config";
 import { withTenant } from "@tpirs/db";
 import { repositories } from "@tpirs/db";
-import { requirePermission } from "../auth.js";
+import { requirePermission, requirePrincipal } from "../auth.js";
 import { readTenantConfig } from "../tenants.js";
 import type { AuthContext } from "../auth.js";
 import { tenantConfigPutSchema } from "../schemas.js";
@@ -12,6 +12,31 @@ function serializeIssues(error: TenantConfigValidationError): { path: string; me
 }
 
 export function registerConfigRoutes(app: FastifyInstance, context: AuthContext): void {
+  /**
+   * The subset of tenant config the dashboard shell needs to render: name,
+   * branding and locale. Every signed-in staff member needs it — an officer sees
+   * the tenant's name, colours and languages — but `tenant:read` guards the full
+   * config (providers, cash rules, reconciliation tolerances), which only
+   * finance and administrators need. Without this projection every non-admin
+   * role saw "missing permission tenant:read" on sign-in.
+   */
+  app.get("/v1/tenants/current/branding", async (request, reply) => {
+    const principal = requirePrincipal(request);
+    const current = await readTenantConfig(context.db, principal.tenantId);
+    if (current === undefined) {
+      return reply
+        .code(404)
+        .send({ error: { code: "not_found", message: "Tenant not found", requestId: request.id } });
+    }
+    // The stored config is validated on write; validating again here keeps the
+    // projection typed and fails loudly (500) rather than half-rendering a shell.
+    const { identity, branding, locale } = validateTenantConfig(current.config);
+    return reply.send({
+      identity: { name: identity.name, slug: identity.slug },
+      branding,
+      locale,
+    });
+  });
   app.get("/v1/tenants/current/config", async (request, reply) => {
     const principal = requirePermission(request, "tenant:read");
     const current = await readTenantConfig(context.db, principal.tenantId);
