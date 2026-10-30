@@ -81,6 +81,36 @@ export function formatMoneyMinor(
 }
 
 /**
+ * The inverse of `formatMoneyMinor` for an input field: "200.00" → 20000n.
+ * Returns undefined for anything that is not a non-negative amount, so a caller
+ * can refuse the submit rather than send NaN to the API.
+ */
+export function parseMajorToMinor(
+  input: string,
+  currency: string,
+  locale: string,
+): bigint | undefined {
+  const trimmed = input.trim().replace(/,/g, "");
+  if (!/^\d+(\.\d+)?$/.test(trimmed)) return undefined;
+  const digits = currencyDigits(currency, locale);
+  const [whole = "0", fraction = ""] = trimmed.split(".");
+  if (fraction.length > digits) return undefined;
+  const padded = fraction.padEnd(digits, "0");
+  return BigInt(`${whole}${padded}`);
+}
+
+/** A major-unit string for a minor amount, e.g. 20000n → "200.00". */
+export function formatMajorAmountInput(
+  amountMinor: bigint | number | string,
+  currency: string,
+  locale: string,
+): string {
+  const digits = currencyDigits(currency, locale);
+  const value = Number(amountMinor);
+  return (value / 10 ** digits).toFixed(digits);
+}
+
+/**
  * Formats a timestamp using the tenant's date token pattern (for example
  * `dd/MM/yyyy`). Recognised tokens: `yyyy`, `MM`, `dd` — any other characters
  * are preserved as literals. Zero padding is always applied for tokens.

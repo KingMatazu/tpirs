@@ -164,6 +164,27 @@ describeIntegration("createAssetService (integration)", () => {
     ).rejects.toThrow(AssetValidationError);
   });
 
+  it("filters a search by short code or plate, and returns nothing for a miss", async () => {
+    await service.register({
+      tenantId: alphaTenantId,
+      assetTypeKey: "bike",
+      attributes: { plate_number: "SEARCHME" },
+    });
+
+    // The free-text filter used to be dropped on the way to the repository, so
+    // every search returned the first page regardless of what was typed.
+    const hit = await service.search({ tenantId: alphaTenantId, query: "SEARCHME" });
+    expect(hit).toHaveLength(1);
+    expect(hit[0]?.attributes["plate_number"]).toBe("SEARCHME");
+
+    const shortCode = hit[0]?.shortCode ?? "";
+    const byShortCode = await service.search({ tenantId: alphaTenantId, query: shortCode });
+    expect(byShortCode.map((asset) => asset.id)).toContain(hit[0]?.id);
+
+    const miss = await service.search({ tenantId: alphaTenantId, query: "NO-SUCH-PLATE" });
+    expect(miss).toEqual([]);
+  });
+
   it("cannot read another tenant's asset (row-level security)", async () => {
     const asset = await service.register({
       tenantId: alphaTenantId,

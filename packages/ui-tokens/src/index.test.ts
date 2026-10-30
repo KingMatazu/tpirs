@@ -3,7 +3,9 @@ import { loadTenantConfigFromString } from "@tpirs/config";
 import {
   buildDesignTokens,
   formatBusinessDate,
+  formatMajorAmountInput,
   formatMoneyMinor,
+  parseMajorToMinor,
   tokensToCssRoot,
 } from "./index.js";
 
@@ -181,5 +183,27 @@ describe("formatBusinessDate", () => {
 
   it("rejects invalid dates loudly", () => {
     expect(() => formatBusinessDate("not-a-date", "en-NG", "dd/MM/yyyy")).toThrow();
+  });
+});
+
+describe("major-unit input", () => {
+  it("parses a typed amount into minor units", () => {
+    expect(parseMajorToMinor("200", "NGN", "en-NG")).toBe(20000n);
+    expect(parseMajorToMinor("200.5", "NGN", "en-NG")).toBe(20050n);
+    expect(parseMajorToMinor("1,250.00", "NGN", "en-NG")).toBe(125000n);
+  });
+
+  it("refuses what is not an amount", () => {
+    expect(parseMajorToMinor("", "NGN", "en-NG")).toBeUndefined();
+    expect(parseMajorToMinor("abc", "NGN", "en-NG")).toBeUndefined();
+    expect(parseMajorToMinor("-5", "NGN", "en-NG")).toBeUndefined();
+    // More decimals than the currency has.
+    expect(parseMajorToMinor("1.234", "NGN", "en-NG")).toBeUndefined();
+  });
+
+  it("round-trips a fee rule into the input and back", () => {
+    const typed = formatMajorAmountInput(20000n, "NGN", "en-NG");
+    expect(typed).toBe("200.00");
+    expect(parseMajorToMinor(typed, "NGN", "en-NG")).toBe(20000n);
   });
 });

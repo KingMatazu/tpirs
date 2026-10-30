@@ -45,6 +45,8 @@ export interface AttachPhotoInput {
 
 export interface AssetSearchQuery {
   readonly tenantId: string;
+  /** Free text: matches a short code or a plate/identifier attribute. */
+  readonly query?: string;
   readonly assetTypeKey?: string;
   readonly status?: AssetStatus;
   readonly zoneId?: string;
@@ -175,6 +177,8 @@ export function createAssetService(deps: AssetServiceDeps) {
   async function search(query: AssetSearchQuery): Promise<readonly AssetRecord[]> {
     return withTenant(deps.db, query.tenantId, async (tx) =>
       repositories(tx).assets.search({
+        // Free text was dropped here, so every search returned the first page.
+        ...(query.query === undefined ? {} : { query: query.query }),
         ...(query.assetTypeKey === undefined ? {} : { assetTypeKey: query.assetTypeKey }),
         ...(query.status === undefined ? {} : { status: query.status }),
         ...(query.zoneId === undefined ? {} : { zoneId: query.zoneId }),

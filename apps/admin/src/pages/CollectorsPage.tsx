@@ -1,6 +1,11 @@
 import { useMemo, useState, type FormEvent, type ReactElement } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { formatMoneyMinor, formatTimestamp } from "@tpirs/ui-tokens";
+import {
+  formatMajorAmountInput,
+  formatMoneyMinor,
+  formatTimestamp,
+  parseMajorToMinor,
+} from "@tpirs/ui-tokens";
 import { api } from "../api/client.js";
 import { unwrap } from "../api/unwrap.js";
 import { Badge, Button, Card, EmptyState, Field, TextInput } from "../components/ui.js";
@@ -49,9 +54,12 @@ export function CollectorsPage(): ReactElement {
   });
 
   if (!canRead) {
-    return <p className="text-sm text-slate-600">You do not have permission to view collector cash.</p>;
+    return (
+      <p className="text-sm text-slate-600">You do not have permission to view collector cash.</p>
+    );
   }
-  if (wallets.isLoading) return <p className="text-sm text-slate-500">Loading collector wallets…</p>;
+  if (wallets.isLoading)
+    return <p className="text-sm text-slate-500">Loading collector wallets…</p>;
   if (wallets.error !== null) {
     return <p className="text-sm text-red-600">Collector wallets could not be loaded.</p>;
   }
@@ -158,7 +166,11 @@ function WalletTable(props: {
                   {formatMoneyMinor(wallet.balanceMinor, props.currency, props.numberFormat)}
                 </td>
                 <td className="py-2 pr-4 text-slate-700">
-                  {formatMoneyMinor(wallet.openIntakeTotalMinor, props.currency, props.numberFormat)}
+                  {formatMoneyMinor(
+                    wallet.openIntakeTotalMinor,
+                    props.currency,
+                    props.numberFormat,
+                  )}
                 </td>
                 <td className="py-2 pr-4 text-slate-600">
                   {wallet.oldestOpenIntakeAt === null
@@ -168,11 +180,7 @@ function WalletTable(props: {
                 <td className="py-2 pr-4 text-slate-600">
                   {wallet.lastDepositAt === null
                     ? "—"
-                    : formatTimestamp(
-                        wallet.lastDepositAt,
-                        props.numberFormat,
-                        props.timezone,
-                      )}
+                    : formatTimestamp(wallet.lastDepositAt, props.numberFormat, props.timezone)}
                 </td>
                 <td className="py-2">
                   <button
@@ -238,9 +246,7 @@ function WalletDetail(props: {
   const depositRows = deposits.data ?? [];
   const candidates = matchCandidates(depositRows, intakes);
   const overdue =
-    props.deadlineHours === undefined
-      ? false
-      : isOverdue(wallet, props.deadlineHours, new Date());
+    props.deadlineHours === undefined ? false : isOverdue(wallet, props.deadlineHours, new Date());
 
   return (
     <div className="space-y-4">
@@ -354,8 +360,12 @@ async function fetchDeposits(collectorUserId: string): Promise<readonly CashDepo
   return (data as { deposits: readonly CashDepositView[] }).deposits;
 }
 
-async function fetchAssets(): Promise<readonly AssetLookupRow[]> {
-  const data = await unwrap(api.GET("/v1/assets", { params: { query: { limit: String(PAGE_SIZE) } } }));
+async function fetchAssets(search: string): Promise<readonly AssetLookupRow[]> {
+  const data = await unwrap(
+    api.GET("/v1/assets", {
+      params: { query: { limit: String(PAGE_SIZE), query: search } },
+    }),
+  );
   return (data as { assets: readonly AssetLookupRow[] }).assets;
 }
 
@@ -529,33 +539,56 @@ function TakeCashForm(props: {
 }): ReactElement {
   const { config } = useTenantConfig();
   const [assetId, setAssetId] = useState("");
-  const [amountMinor, setAmountMinor] = useState("");
+  // The amount is entered and shown in major units (₦200.00), never as minor
+  // units: a collector reading "20000" for ₦200 is a mis-charge waiting to
+  // happen. It is converted to minor units only on submit.
+  const [amount, setAmount] = useState("");
+  const [searchText, setSearchText] = useState("");
+  const [appliedSearch, setAppliedSearch] = useState("");
+  // The client reference is the intake's idempotency key, generated per intake
+  // and rotated after each success. It is not a user field: editing it would
+  // break the replay guarantee (ADR 0031).
   const [clientReference, setClientReference] = useState(() =>
     newClientReference(props.collectorUserId),
   );
   const [busy, setBusy] = useState(false);
 
+  const tenantConfig = config?.config;
+  const numberFormat = tenantConfig?.locale.numberFormat ?? "en-NG";
+
+  // Search runs on the server: a list of every asset is neither useful nor
+  // correct once a state has thousands of them.
   const assets = useQuery({
-    queryKey: ["cash-asset-lookup"],
-    queryFn: fetchAssets,
+    queryKey: ["cash-asset-search", appliedSearch],
+    queryFn: () => fetchAssets(appliedSearch),
+    enabled: appliedSearch.trim() !== "",
   });
 
   const today = new Date().toISOString().slice(0, 10);
   const assetOptions = useMemo(() => assets.data ?? [], [assets.data]);
-  const tenantConfig = config?.config;
 
   const chooseAsset = (id: string): void => {
     setAssetId(id);
     const asset = assetOptions.find((row) => row.id === id);
     if (asset !== undefined && tenantConfig !== undefined) {
-      setAmountMinor(prefillAmountMinor(tenantConfig, asset.assetTypeKey, today) ?? "");
+      const minor = prefillAmountMinor(tenantConfig, asset.assetTypeKey, today);
+      setAmount(
+        minor === undefined
+          ? ""
+          : formatMajorAmountInput(minor, props.currency, tenantConfig.locale.numberFormat),
+      );
     }
   };
 
   const submit = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
-    if (assetId === "" || amountMinor === "") {
-      pushToast({ kind: "error", message: "Pick an asset; the fee fills the amount." });
+    if (assetId === "") {
+      pushToast({ kind: "error", message: "Search for an asset and pick it first." });
+      return;
+    }
+    const amountMinor = parseMajorToMinor(amount, props.currency, numberFormat);
+    if (amountMinor === undefined || amountMinor <= 0n) {
+      pushToast({ kind: "error", message: `Enter the amount as ${props.currency}, e.g. 200.00.` });
       return;
     }
     setBusy(true);
@@ -565,7 +598,7 @@ function TakeCashForm(props: {
           body: {
             collectorUserId: props.collectorUserId,
             clientReference,
-            amountMinor,
+            amountMinor: amountMinor.toString(),
             currency: props.currency,
             assetId,
           },
@@ -581,7 +614,9 @@ function TakeCashForm(props: {
       // A new reference for the next driver: the old one is now a spent key.
       setClientReference(newClientReference(props.collectorUserId));
       setAssetId("");
-      setAmountMinor("");
+      setAmount("");
+      setSearchText("");
+      setAppliedSearch("");
     } catch (error) {
       pushToast({ kind: "error", ...describeError(error) });
     } finally {
@@ -592,11 +627,37 @@ function TakeCashForm(props: {
   return (
     <Card
       title="Take cash"
-      description="The amount comes from the tenant's fee rule and the server re-checks it exactly."
+      description="Search by short code or plate, pick the vehicle, and the fee fills the amount."
     >
       <form className="space-y-3" onSubmit={(event) => void submit(event)}>
         <div className="grid gap-3 sm:grid-cols-3">
-          <Field label="Asset">
+          <Field label="Find asset">
+            <div className="flex gap-2">
+              <TextInput
+                name="assetSearch"
+                value={searchText}
+                onValueChange={setSearchText}
+                placeholder="Short code or plate"
+              />
+              <Button
+                type="button"
+                onClick={() => {
+                  setAppliedSearch(searchText);
+                  setAssetId("");
+                }}
+              >
+                Search
+              </Button>
+            </div>
+          </Field>
+          <Field
+            label="Asset"
+            {...(appliedSearch.trim() === ""
+              ? { hint: "Search first." }
+              : assetOptions.length === 0
+                ? { hint: "No asset matches that search." }
+                : {})}
+          >
             <select
               aria-label="Asset"
               className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
@@ -613,23 +674,11 @@ function TakeCashForm(props: {
               ))}
             </select>
           </Field>
-          <Field label="Amount (minor units)" hint="Pre-filled from the effective fee rule.">
-            <TextInput
-              name="amountMinor"
-              inputMode="numeric"
-              value={amountMinor}
-              onValueChange={setAmountMinor}
-            />
-          </Field>
           <Field
-            label="Client reference"
-            hint="Sent with the intake; a replayed submit returns the same receipt."
+            label={`Amount (${props.currency})`}
+            hint="Pre-filled from the effective fee rule. Edit only if the fee is different."
           >
-            <TextInput
-              name="clientReference"
-              value={clientReference}
-              onValueChange={setClientReference}
-            />
+            <TextInput name="amount" inputMode="text" value={amount} onValueChange={setAmount} />
           </Field>
         </div>
         <Button type="submit" disabled={busy}>
