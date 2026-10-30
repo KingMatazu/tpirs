@@ -18,7 +18,7 @@ Last reviewed: 2026-10-30 (Phase 10, Step 0).
 | Refresh token rotation, single use                                                        | `packages/db/src/repositories/session*`, `routes/auth.ts`               | `routes.test.ts` refresh cases                                        |
 | Cookie scope: `HttpOnly`, `SameSite=strict`, `/v1/auth/refresh`, `Secure` only over HTTPS | `apps/api/src/routes/auth.ts`                                           | `routes.test.ts` asserts the cookie shape for a non-production config |
 | Device binding for field sessions                                                         | `packages/db/src/repositories/device.ts`, `apps/api/src/auth.ts`        | `routes.test.ts` device-mismatch case                                 |
-| Login and refresh throttling                                                              | Phase 10 Step 7 (planned)                                               | _not yet — see the Phase 10 plan_                                     |
+| Login and refresh throttling                                                              | ADR 0046, `apps/api/src/routes/auth.ts`                                 | `routes.test.ts`: per-username and per-IP 429 with `Retry-After`      |
 
 ## Authorisation
 
@@ -49,13 +49,13 @@ Last reviewed: 2026-10-30 (Phase 10, Step 0).
 
 ## Abuse controls and transport
 
-| Control                                                 | Where                                                       | Proven by                               |
-| ------------------------------------------------------- | ----------------------------------------------------------- | --------------------------------------- |
-| Rate limits on verify / USSD / SMS                      | ADR 0024, `routes/verify.ts`, `routes/field.ts`             | route tests (429 + `Retry-After`)       |
-| Request IDs on every response and log line              | `apps/api/src/server.ts`                                    | `server.test.ts`                        |
-| One error envelope, no stack traces or SQL in responses | `apps/api/src/errors.ts`, `server.ts`                       | `server.test.ts`, per-route error cases |
-| Body size limits, timeouts, security headers            | Phase 10 Step 7 (planned)                                   | _not yet_                               |
-| Dependency audit on critical/high                       | `scripts/ci/audit.sh`, `docs/security/audit-allowlist.json` | the gate itself, run in CI              |
+| Control                                                 | Where                                                       | Proven by                                                         |
+| ------------------------------------------------------- | ----------------------------------------------------------- | ----------------------------------------------------------------- |
+| Rate limits on verify / USSD / SMS                      | ADR 0024, `routes/verify.ts`, `routes/field.ts`             | route tests (429 + `Retry-After`)                                 |
+| Request IDs on every response and log line              | `apps/api/src/server.ts`                                    | `server.test.ts`                                                  |
+| One error envelope, no stack traces or SQL in responses | `apps/api/src/errors.ts`, `server.ts`                       | `server.test.ts`, per-route error cases                           |
+| Body size limits, timeouts, security headers            | `apps/api/src/server.ts`, per-route limits on the uploads   | `server.test.ts` (headers on 200 and 404), `routes.test.ts` (413) |
+| Dependency audit on critical/high                       | `scripts/ci/audit.sh`, `docs/security/audit-allowlist.json` | the gate itself, run in CI                                        |
 
 ## Data protection
 
