@@ -13,3 +13,6 @@ infra/staging-data/
 build.log
 .DS_Store
 opencode.json
+
+# Local database backups (scripts/db/backup.sh default output)
+backups/

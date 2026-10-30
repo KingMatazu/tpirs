@@ -323,7 +323,7 @@ Recorded in ADR 0041 (D50): Node + `undici`, no new dependency, budgets as code.
   the port, and a wrong password with a code is harmless to count.
 - Commit: `feat(api): harden request limits, headers and login throttling`.
 
-## Step 8: Backup and restore scripts (pending)
+## Step 8: Backup and restore scripts (completed)
 
 - `scripts/db/backup.sh <out-dir>`: `pg_dump --format=custom` for the database,
   a `tar` of the object-store volume (or `aws s3 sync` against the S3 adapter),
@@ -334,6 +334,30 @@ Recorded in ADR 0041 (D50): Node + `undici`, no new dependency, budgets as code.
   off-site copy belongs to the deploy target and is documented as such.
 - Tests: a script-level test that a backup of the seeded DB restores and passes
   `pnpm db:check`.
+- Delivered:
+  - `scripts/db/backup.sh` writes `database.dump` (`pg_dump --format=custom`), the
+    object-store tarball when `OBJECT_STORAGE_BACKUP_PATH` is set (otherwise a
+    manifest entry saying it was not included), `row-counts.txt`, `manifest.json`
+    (timestamp, database, migration, git SHA, per-table counts) and
+    `checksums.sha256`. Retention keeps the newest `BACKUP_KEEP` (default 7).
+  - `scripts/db/restore.sh` restores into a **scratch database by default**
+    (created on the `DATABASE_URL` server), refuses to overwrite the live
+    database without an explicit URL _and_ `--force`, verifies the checksums, then
+    checks per-table row counts against the manifest, that the ledger balances to
+    zero, and that the migration table is populated.
+  - `scripts/db/lib.sh` picks local `pg_dump`/`pg_restore` when present and falls
+    back to the `postgres:16-alpine` image otherwise, rewriting `localhost` to
+    `host.docker.internal` and handling Git Bash's path mangling.
+  - `scripts/ci/backup-check.sh` proves it on every change: scratch Postgres →
+    migrate → seed → backup → restore into a scratch DB → assert nothing is
+    pending in `migrate status`. Wired into `.github/workflows/ci.yml`.
+- One deviation from the plan text: the restored copy is checked with
+  `migrate status` rather than `migrate check`, because `check` rolls the whole
+  schema back to zero and therefore only works on an empty database. On a
+  restored copy the right question is whether any migration is still pending.
+- Verified locally: backup of a seeded database (39 tables, migration
+  `0014_reconciliation`), restore into `tpirs_restore_<ts>`, row counts match,
+  ledger balances, 14 migrations present.
 - Commit: `feat(ops): add backup and restore scripts`.
 
 ## Step 9: Restore drill and disaster-recovery runbook (pending)

@@ -25,5 +25,7 @@ jobs:
         run: sh scripts/ci/audit.sh
       - name: Integration tests (scratch Postgres)
         run: sh scripts/ci/integration.sh
+      - name: Backup and restore check
+        run: sh scripts/ci/backup-check.sh
       - name: Migration check (reversibility)
         run: sh scripts/ci/migration-check.sh
