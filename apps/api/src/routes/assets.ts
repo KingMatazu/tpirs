@@ -170,31 +170,37 @@ export function registerAssetRoutes(app: FastifyInstance, context: AssetRoutesCo
     }
   });
 
-  app.post("/v1/assets/:id/photos", { schema: attachPhotoSchema }, async (request, reply) => {
-    const principal = requirePermission(request, "asset:manage");
-    const { id } = request.params as { id: string };
-    const body = asRecord(request.body);
-    if (body === undefined) return badRequest(request, reply, "A JSON body is required");
-    const contentType = asString(body.contentType);
-    const content = asString(body.content);
-    if (contentType === undefined || content === undefined) {
-      return badRequest(request, reply, "contentType and base64 content are required");
-    }
-    try {
-      await services.asset.attachPhoto({
-        tenantId: principal.tenantId,
-        assetId: id,
-        contentType,
-        body: new Uint8Array(Buffer.from(content, "base64")),
-        createdByUserId: principal.userId,
-      });
-      request.audit = { action: "asset.photo.attach", entityType: "asset", entityId: id };
-      return await reply.code(201).send({ ok: true });
-    } catch (error) {
-      if (error instanceof AssetNotFoundError) return notFound(request, reply);
-      throw error;
-    }
-  });
+  // Photos are base64 JSON, so this route opts into a larger body than the
+  // 1 MiB global limit (Phase 10, Step 7).
+  app.post(
+    "/v1/assets/:id/photos",
+    { schema: attachPhotoSchema, bodyLimit: 8 * 1024 * 1024 },
+    async (request, reply) => {
+      const principal = requirePermission(request, "asset:manage");
+      const { id } = request.params as { id: string };
+      const body = asRecord(request.body);
+      if (body === undefined) return badRequest(request, reply, "A JSON body is required");
+      const contentType = asString(body.contentType);
+      const content = asString(body.content);
+      if (contentType === undefined || content === undefined) {
+        return badRequest(request, reply, "contentType and base64 content are required");
+      }
+      try {
+        await services.asset.attachPhoto({
+          tenantId: principal.tenantId,
+          assetId: id,
+          contentType,
+          body: new Uint8Array(Buffer.from(content, "base64")),
+          createdByUserId: principal.userId,
+        });
+        request.audit = { action: "asset.photo.attach", entityType: "asset", entityId: id };
+        return await reply.code(201).send({ ok: true });
+      } catch (error) {
+        if (error instanceof AssetNotFoundError) return notFound(request, reply);
+        throw error;
+      }
+    },
+  );
 
   app.get(
     "/v1/assets/:id/photos/:photoId",

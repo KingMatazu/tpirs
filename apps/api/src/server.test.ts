@@ -4,6 +4,7 @@ import { buildApp } from "./server.js";
 import type { AppConfig } from "./config.js";
 import { createMockTelemetry } from "@tpirs/telemetry-mock";
 import { createPrometheusTelemetry } from "@tpirs/adapters-prometheus-telemetry";
+import { LOG_REDACT_PATHS } from "./server.js";
 
 const config: AppConfig = {
   nodeEnv: "test",
@@ -57,6 +58,31 @@ describe("api server", () => {
     const response = await notReady.inject({ method: "GET", url: "/v1/ready" });
     expect(response.statusCode).toBe(503);
     await notReady.close();
+  });
+
+  it("sets the security headers on every response, including errors", async () => {
+    for (const url of ["/v1/health", "/v1/does-not-exist"]) {
+      const response = await app.inject({ method: "GET", url });
+      expect(response.headers["x-content-type-options"]).toBe("nosniff");
+      expect(response.headers["x-frame-options"]).toBe("DENY");
+      expect(response.headers["referrer-policy"]).toBe("no-referrer");
+      expect(response.headers["cross-origin-opener-policy"]).toBe("same-origin");
+      // HSTS only over HTTPS: the test config is not production.
+      expect(response.headers["strict-transport-security"]).toBeUndefined();
+    }
+  });
+
+  it("redacts credentials from anything the logger serialises", () => {
+    expect([...LOG_REDACT_PATHS]).toEqual(
+      expect.arrayContaining([
+        "req.headers.authorization",
+        "req.headers.cookie",
+        'res.headers["set-cookie"]',
+        "req.body.password",
+        "req.body.totpCode",
+        "req.body.refreshToken",
+      ]),
+    );
   });
 
   it("does not expose /metrics unless it is enabled", async () => {

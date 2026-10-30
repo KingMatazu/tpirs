@@ -1,5 +1,6 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
 import type { IdentityProvider } from "@tpirs/ports";
+import type { RateLimiter } from "@tpirs/application";
 import { PortError } from "@tpirs/ports";
 import { principal } from "@tpirs/domain";
 import type { Permission, Principal } from "@tpirs/domain";
@@ -9,6 +10,12 @@ import type { AnyDb } from "@tpirs/db";
 export interface AuthContext {
   readonly identity: IdentityProvider;
   readonly db: AnyDb;
+  /**
+   * Abuse control for the unauthenticated auth routes (ADR 0046). Absent only in
+   * compositions that have no limiter wired, in which case throttling is off —
+   * the API always supplies one.
+   */
+  readonly rateLimiter?: RateLimiter;
   /**
    * Whether the D26 refresh cookie carries `Secure`. Defaults to true; local
    * development over plain http://localhost passes false so browsers keep it.

@@ -7,6 +7,10 @@ import { createMockTelemetry } from "@tpirs/telemetry-mock";
 import { createDb, migrateUp, repositories, withSystem } from "@tpirs/db";
 import type { AnyDb } from "@tpirs/db";
 import { createDbIdentityProvider } from "@tpirs/identity-provider-db";
+import { createRateLimiter } from "@tpirs/application";
+import type { RateLimiter } from "@tpirs/application";
+import { createMockCache } from "@tpirs/cache-mock";
+import { createMockClock } from "@tpirs/clock-mock";
 import { hashPassword } from "@tpirs/crypto";
 import { validateTenantConfig } from "@tpirs/config";
 import type { TenantConfig } from "@tpirs/config";
@@ -97,6 +101,7 @@ function validConfig(slug: string): TenantConfig {
 describeIntegration("api auth/config/audit (integration)", () => {
   let db: AnyDb;
   let app: FastifyInstance;
+  let identity: ReturnType<typeof createDbIdentityProvider>;
   const slug = `route-test-${Date.now().toString()}`;
   const password = "route-test-password";
   let tenantId: string;
@@ -152,8 +157,16 @@ describeIntegration("api auth/config/audit (integration)", () => {
         roleId: officerRole.id,
       });
     });
-    const identity = createDbIdentityProvider({ db });
-    app = await buildApp({ config, telemetry: createMockTelemetry(), db, identity });
+    identity = createDbIdentityProvider({ db });
+    // The shared app is not about throttling: a limiter that never refuses keeps
+    // the login-heavy tests below from tripping each other's counters.
+    app = await buildApp({
+      config,
+      telemetry: createMockTelemetry(),
+      db,
+      identity,
+      rateLimiter: allowAllLimiter(),
+    });
     await app.ready();
   });
 
@@ -162,6 +175,13 @@ describeIntegration("api auth/config/audit (integration)", () => {
     await app.close();
     await db.destroy();
   });
+
+  function allowAllLimiter(): RateLimiter {
+    return {
+      consume: () =>
+        Promise.resolve({ allowed: true, limit: 1_000, remaining: 999, retryAfterSeconds: 0 }),
+    };
+  }
 
   async function login(username: string): Promise<string> {
     const response = await app.inject({
@@ -252,6 +272,66 @@ describeIntegration("api auth/config/audit (integration)", () => {
     );
     expect(audit.length).toBeGreaterThanOrEqual(1);
     expect(audit[0]?.entityId).toBe(tenantId);
+  });
+
+  it("throttles repeated login attempts for one username", async () => {
+    const throttled = await buildApp({
+      config,
+      telemetry: createMockTelemetry(),
+      db,
+      identity,
+      rateLimiter: createRateLimiter({ cache: createMockCache(), clock: createMockClock() }),
+    });
+    await throttled.ready();
+    try {
+      const attempt = () =>
+        throttled.inject({
+          method: "POST",
+          url: "/v1/auth/login",
+          payload: { tenantSlug: slug, username: "rt.officer", password: "wrong-password" },
+        });
+
+      for (let index = 0; index < 5; index += 1) {
+        expect((await attempt()).statusCode).toBe(401);
+      }
+      const blocked = await attempt();
+      expect(blocked.statusCode).toBe(429);
+      expect(Number(blocked.headers["retry-after"])).toBeGreaterThan(0);
+      const body = blocked.json() as { error: { code: string; requestId: string } };
+      expect(body.error.code).toBe("rate_limited");
+      expect(body.error.requestId).toBe(blocked.headers["x-request-id"]);
+    } finally {
+      await throttled.close();
+    }
+  });
+
+  it("throttles refresh attempts per source address", async () => {
+    const throttled = await buildApp({
+      config,
+      telemetry: createMockTelemetry(),
+      db,
+      identity,
+      rateLimiter: createRateLimiter({ cache: createMockCache(), clock: createMockClock() }),
+    });
+    await throttled.ready();
+    try {
+      const attempt = () => throttled.inject({ method: "POST", url: "/v1/auth/refresh" });
+      for (let index = 0; index < 30; index += 1) {
+        expect((await attempt()).statusCode).toBe(401);
+      }
+      expect((await attempt()).statusCode).toBe(429);
+    } finally {
+      await throttled.close();
+    }
+  });
+
+  it("refuses a body above the 1 MiB limit", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/auth/login",
+      payload: { tenantSlug: slug, username: "rt.admin", password: "x".repeat(1_200_000) },
+    });
+    expect(response.statusCode).toBe(413);
   });
 
   it("forbids updating the audit log directly", async () => {

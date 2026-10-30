@@ -278,7 +278,7 @@ Recorded in ADR 0041 (D50): Node + `undici`, no new dependency, budgets as code.
   than an accident.
 - Commit: `test(db): guard row-level security coverage`.
 
-## Step 7: API surface hardening (pending)
+## Step 7: API surface hardening (completed)
 
 - Fastify limits in `apps/api/src/server.ts`: `bodyLimit`, `connectionTimeout`,
   `requestTimeout`, `keepAliveTimeout`, and a max header size; document the
@@ -300,6 +300,27 @@ Recorded in ADR 0041 (D50): Node + `undici`, no new dependency, budgets as code.
 - 5xx responses keep the envelope and request id, never a stack trace or SQL.
 - Tests for each: header presence, body-limit 413, timeout behaviour, throttle
   after N attempts, redaction snapshot.
+- Delivered:
+  - **Limits** — global `bodyLimit` 1 MiB, `connectionTimeout`/`requestTimeout`
+    30 s, `keepAliveTimeout` 72 s; the two upload paths opt into their own
+    ceiling (photos 8 MiB, settlement import 16 MiB). Header size stays a Node
+    flag (`--max-http-header-size`) and is documented rather than half-supported.
+  - **Headers** — `nosniff`, `DENY`, `no-referrer`, `same-origin` opener policy on
+    every response including errors; HSTS only when `nodeEnv === "production"`.
+    CORS stays absent by design, now written down.
+  - **Login throttling (D55, ADR 0046)** — `login:ip:<ip>` 60/min,
+    `login:user:<tenant>:<username>` 5/min, `auth.refresh:ip:<ip>` 30/min and
+    `login:totp:<tenant>:<username>` 5/min through the existing fixed-window
+    limiter, consumed before the tenant or user lookup so a throttled answer
+    cannot enumerate usernames. `429` carries the standard envelope and
+    `Retry-After`; nothing locks out.
+  - **Redaction** — pino `redact` over `authorization`, `cookie`, `set-cookie`
+    and the three body secrets, exported as `LOG_REDACT_PATHS` so a test can
+    assert the list rather than trusting it.
+- One honest deviation from ADR 0046: the identity port checks password and TOTP
+  together, so the TOTP counter is consumed whenever a code is presented, not
+  strictly after a correct password. That is the closest signal without splitting
+  the port, and a wrong password with a code is harmless to count.
 - Commit: `feat(api): harden request limits, headers and login throttling`.
 
 ## Step 8: Backup and restore scripts (pending)

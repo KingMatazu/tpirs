@@ -82,8 +82,32 @@ async function sessionReply(
   });
 }
 
+/**
+ * Login and refresh throttling (ADR 0046, D55). Two independent fixed windows on
+ * login — per source IP and per username — plus one on refresh and one on TOTP.
+ * Throttle, never lock out: the key expires on its own, so a guess cannot take a
+ * named employee's account away from them.
+ */
+const LOGIN_IP_LIMIT = { limit: 60, windowSeconds: 60 } as const;
+const LOGIN_USER_LIMIT = { limit: 5, windowSeconds: 60 } as const;
+const LOGIN_TOTP_LIMIT = { limit: 5, windowSeconds: 60 } as const;
+const REFRESH_IP_LIMIT = { limit: 30, windowSeconds: 60 } as const;
+
+/** Key parts are normalised so case or whitespace cannot dodge a counter. */
+function normalise(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function tooMany(reply: FastifyReply, request: { id: string }, retryAfterSeconds: number) {
+  void reply.header("Retry-After", String(retryAfterSeconds));
+  return reply.code(429).send({
+    error: { code: "rate_limited", message: "Too many requests", requestId: request.id },
+  });
+}
+
 export function registerAuthRoutes(app: FastifyInstance, context: AuthContext): void {
   const secureCookies = context.secureCookies ?? true;
+  const limiter = context.rateLimiter;
   app.post("/v1/auth/login", { schema: authLoginSchema }, async (request, reply) => {
     const body = (request.body ?? {}) as LoginBody;
     const tenantSlug = asString(body.tenantSlug);
@@ -99,6 +123,19 @@ export function registerAuthRoutes(app: FastifyInstance, context: AuthContext): 
       });
     }
 
+    // Both counters are consumed before the tenant or the user is looked up, so
+    // a throttled answer is identical for existing and non-existent accounts and
+    // cannot be used to enumerate usernames.
+    if (limiter !== undefined) {
+      const byIp = await limiter.consume(`login:ip:${request.ip}`, LOGIN_IP_LIMIT);
+      if (!byIp.allowed) return tooMany(reply, request, byIp.retryAfterSeconds);
+      const byUser = await limiter.consume(
+        `login:user:${normalise(tenantSlug)}:${normalise(username)}`,
+        LOGIN_USER_LIMIT,
+      );
+      if (!byUser.allowed) return tooMany(reply, request, byUser.retryAfterSeconds);
+    }
+
     const tenantId = await resolveTenantIdBySlug(context.db, tenantSlug);
     if (tenantId === undefined) {
       return reply.code(401).send({
@@ -107,6 +144,17 @@ export function registerAuthRoutes(app: FastifyInstance, context: AuthContext): 
     }
 
     const totpCode = asString(body.totpCode);
+    // The identity port checks password and TOTP together, so this counter is
+    // consumed whenever a code is presented: that is the closest signal available
+    // without splitting the port, and a wrong password with a code is harmless to
+    // count here.
+    if (limiter !== undefined && totpCode !== undefined) {
+      const byTotp = await limiter.consume(
+        `login:totp:${normalise(tenantSlug)}:${normalise(username)}`,
+        LOGIN_TOTP_LIMIT,
+      );
+      if (!byTotp.allowed) return tooMany(reply, request, byTotp.retryAfterSeconds);
+    }
     const device = asDevice(body.device);
     try {
       const session = await context.identity.authenticate({
@@ -138,6 +186,10 @@ export function registerAuthRoutes(app: FastifyInstance, context: AuthContext): 
    * token. A revoked, expired, replayed, or absent token fails closed with 401.
    */
   app.post("/v1/auth/refresh", { schema: authRefreshSchema }, async (request, reply) => {
+    if (limiter !== undefined) {
+      const byIp = await limiter.consume(`auth.refresh:ip:${request.ip}`, REFRESH_IP_LIMIT);
+      if (!byIp.allowed) return tooMany(reply, request, byIp.retryAfterSeconds);
+    }
     const refreshToken = request.cookies[REFRESH_COOKIE];
     if (typeof refreshToken !== "string" || refreshToken === "") {
       return reply.code(401).send({

@@ -30,6 +30,12 @@ export interface BuildAppOptions {
   /** Optional readiness probe (e.g. database ping). Resolves true when ready. */
   readonly readiness?: () => Promise<boolean>;
   /**
+   * Abuse control for the unauthenticated auth routes (ADR 0046). Compositions
+   * without services (some tests) may omit it; the running API always supplies
+   * the same limiter the rest of the routes use.
+   */
+  readonly rateLimiter?: import("@tpirs/application").RateLimiter;
+  /**
    * Prometheus exposition sink (ADR 0042). Present only when the process built
    * one; the route still needs `config.metricsEnabled` to answer.
    */

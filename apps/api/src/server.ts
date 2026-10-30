@@ -42,11 +42,41 @@ export interface ReadyResponse {
 
 const VERSION = "0.0.0";
 
+/**
+ * Request-shape limits (Phase 10, Step 7). A JSON API's bodies are small; the two
+ * upload paths opt into a larger limit at the route.
+ */
+const BODY_LIMIT_BYTES = 1024 * 1024;
+const CONNECTION_TIMEOUT_MS = 30_000;
+const REQUEST_TIMEOUT_MS = 30_000;
+const KEEP_ALIVE_TIMEOUT_MS = 72_000;
+
+/**
+ * Fields the logger must never print, wherever they appear (pino `redact`).
+ * Bodies are not logged by default; this is defence in depth for a future
+ * serializer, and for the headers a proxy might add.
+ */
+export const LOG_REDACT_PATHS = [
+  "req.headers.authorization",
+  "req.headers.cookie",
+  'res.headers["set-cookie"]',
+  "req.body.password",
+  "req.body.totpCode",
+  "req.body.refreshToken",
+] as const;
+
 export async function buildApp(options: BuildAppOptions): Promise<FastifyInstance> {
   const { config, telemetry } = options;
   const app = Fastify({
-    logger: { level: config.logLevel },
+    logger: {
+      level: config.logLevel,
+      redact: { paths: [...LOG_REDACT_PATHS], censor: "[redacted]" },
+    },
     genReqId: () => randomUUID(),
+    bodyLimit: BODY_LIMIT_BYTES,
+    connectionTimeout: CONNECTION_TIMEOUT_MS,
+    requestTimeout: REQUEST_TIMEOUT_MS,
+    keepAliveTimeout: KEEP_ALIVE_TIMEOUT_MS,
   });
 
   await app.register(sensible);
@@ -91,6 +121,19 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     done(null, body);
   });
 
+  app.addHook("onSend", (_request, reply, payload, done) => {
+    // Security headers on every response, including errors (Phase 10, Step 7).
+    // CORS is deliberately absent: every client is same-origin (ADR 0025).
+    void reply.header("x-content-type-options", "nosniff");
+    void reply.header("x-frame-options", "DENY");
+    void reply.header("referrer-policy", "no-referrer");
+    void reply.header("cross-origin-opener-policy", "same-origin");
+    if (config.nodeEnv === "production") {
+      void reply.header("strict-transport-security", "max-age=31536000; includeSubDomains");
+    }
+    done(null, payload);
+  });
+
   app.addHook("onRequest", (request, reply, done) => {
     reply.header("x-request-id", request.id);
     request.metricsSpan = telemetry.startSpan("http.request", { method: request.method });
@@ -105,6 +148,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       db: options.db,
       // Secure cookies need HTTPS; local development is plain http://localhost.
       secureCookies: config.nodeEnv === "production",
+      ...(options.rateLimiter === undefined ? {} : { rateLimiter: options.rateLimiter }),
     });
     registerConfigRoutes(app, { identity: options.identity, db: options.db });
     registerAuditRoutes(app, { db: options.db });

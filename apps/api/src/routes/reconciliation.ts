@@ -157,7 +157,9 @@ export function registerReconciliationRoutes(
 
   app.post<{ Body: { filename: string; content: string } }>(
     "/v1/settlements/import",
-    { schema: importSettlementSchema },
+    // A settlement statement is a file in a JSON body; it gets its own ceiling
+    // above the 1 MiB global limit (Phase 10, Step 7).
+    { schema: importSettlementSchema, bodyLimit: 16 * 1024 * 1024 },
     async (request, reply) => {
       const principal = requirePermission(request, "reconciliation:run");
       const config = await loadConfig(principal.tenantId);

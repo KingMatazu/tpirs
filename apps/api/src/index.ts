@@ -117,6 +117,7 @@ async function main(): Promise<void> {
     ...(db === undefined ? {} : { db }),
     ...(identity === undefined ? {} : { identity }),
     ...(services === undefined ? {} : { services }),
+    ...(services === undefined ? {} : { rateLimiter: services.rateLimiter }),
     ...(loadConfigFn === undefined ? {} : { loadConfig: loadConfigFn }),
     metrics,
     readiness: async () => {
