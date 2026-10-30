@@ -31,11 +31,11 @@ Last reviewed: 2026-10-30 (Phase 10, Step 0).
 
 ## Tenant isolation
 
-| Control                                                                 | Where                                                                              | Proven by                                                         |
-| ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| `tenant_id` on every tenant-owned table                                 | `packages/db/migrations`                                                           | Step 6 adds an automated coverage guard over `information_schema` |
-| Row-level security policies per table                                   | migrations 0002–0014                                                               | `tenant-scope.ts` tests; cross-tenant cases in the repositories   |
-| Application role cannot bypass RLS; worker drains use a documented path | `packages/db/src/tenant-scope.ts`, `pending-sms.ts`, `pending-channel-messages.ts` | repository tests; Step 6 extends this to every table              |
+| Control                                                                 | Where                                                                              | Proven by                                                                                                         |
+| ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `tenant_id` on every tenant-owned table                                 | `packages/db/migrations`                                                           | `rls-coverage.test.ts`: every table with a `tenant_id` has RLS and a policy, or is a documented system-only table |
+| Row-level security policies per table                                   | migrations 0002–0014                                                               | `tenant-scope.ts` tests; cross-tenant cases in the repositories                                                   |
+| Application role cannot bypass RLS; worker drains use a documented path | `packages/db/src/tenant-scope.ts`, `pending-sms.ts`, `pending-channel-messages.ts` | `rls-coverage.test.ts`: `rolbypassrls = false`, scoped reads and writes confined, system scope sees all           |
 
 ## Financial integrity
 
