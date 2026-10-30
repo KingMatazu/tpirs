@@ -65,6 +65,7 @@ const telemetry: Telemetry & { readonly errors: unknown[] } = (() => {
       end: () => undefined,
     }),
     counter: () => undefined,
+    gauge: () => undefined,
     log: () => undefined,
     captureError: (error) => {
       errors.push(error);

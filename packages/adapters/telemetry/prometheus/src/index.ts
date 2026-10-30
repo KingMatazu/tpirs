@@ -103,6 +103,7 @@ export function createPrometheusTelemetry(
   const forward = options.forward;
   const forwardSpans = options.forwardSpans ?? true;
   const counters = new Map<string, Map<string, Series>>();
+  const gauges = new Map<string, Map<string, Series>>();
   const histograms = new Map<string, Map<string, HistogramSeries>>();
 
   function recordCounter(name: string, value: number, attributes?: SpanAttributes): void {
@@ -120,6 +121,19 @@ export function createPrometheusTelemetry(
     } else {
       existing.value += value;
     }
+  }
+
+  function recordGauge(name: string, value: number, attributes?: SpanAttributes): void {
+    const metric = metricName(name);
+    const labels = toLabels(attributes);
+    const key = seriesKey(labels);
+    let series = gauges.get(metric);
+    if (series === undefined) {
+      series = new Map();
+      gauges.set(metric, series);
+    }
+    // A gauge holds the latest value; it is not accumulated.
+    series.set(key, { labels, value });
   }
 
   function recordDuration(spanName: string, durationMs: number, attributes?: SpanAttributes): void {
@@ -151,6 +165,16 @@ export function createPrometheusTelemetry(
     for (const name of [...counters.keys()].sort()) {
       lines.push(`# TYPE ${name} counter`);
       const series = counters.get(name);
+      if (series === undefined) continue;
+      for (const key of [...series.keys()].sort()) {
+        const entry = series.get(key);
+        if (entry === undefined) continue;
+        lines.push(`${name}${renderLabels(entry.labels)} ${formatNumber(entry.value)}`);
+      }
+    }
+    for (const name of [...gauges.keys()].sort()) {
+      lines.push(`# TYPE ${name} gauge`);
+      const series = gauges.get(name);
       if (series === undefined) continue;
       for (const key of [...series.keys()].sort()) {
         const entry = series.get(key);
@@ -212,6 +236,11 @@ export function createPrometheusTelemetry(
     counter(name: string, value: number, attributes?: SpanAttributes) {
       recordCounter(name, value, attributes);
       forward?.counter(name, value, attributes);
+    },
+
+    gauge(name: string, value: number, attributes?: SpanAttributes) {
+      recordGauge(name, value, attributes);
+      forward?.gauge(name, value, attributes);
     },
 
     log(level: LogLevel, message: string, attributes?: SpanAttributes) {

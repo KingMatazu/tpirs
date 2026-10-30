@@ -18,7 +18,7 @@ import { createChannelProviderFactory } from "@tpirs/channel-providers";
 import type { ChannelProviderFactory } from "@tpirs/channel-providers";
 import { validateTenantConfig } from "@tpirs/config";
 import type { TenantConfig } from "@tpirs/config";
-import { createDb, repositories, withSystem } from "@tpirs/db";
+import { createDb, outboxBacklog, repositories, withSystem } from "@tpirs/db";
 import type { AnyDb } from "@tpirs/db";
 import { createPostgresJobQueue } from "@tpirs/job-queue-postgres";
 import { createMockSmsProvider } from "@tpirs/sms-provider-mock";
@@ -200,6 +200,30 @@ export function createWorker(deps: WorkerDeps): Worker {
   async function sweepAll(): Promise<void> {
     await sweeper.sweep();
     await channelSweeper.sweep();
+    await reportOutbox();
+  }
+
+  /**
+   * Backlog age and a heartbeat, on every sweep (Phase 10, Step 10). Age is the
+   * signal an operator acts on: a queue with depth but young work is healthy,
+   * and a queue with one old row is not. The heartbeat is a timestamp so an
+   * alert can ask "has this worker been alive in the last ten minutes?".
+   */
+  async function reportOutbox(): Promise<void> {
+    const now = deps.now === undefined ? new Date() : deps.now();
+    telemetry.gauge("worker.last_heartbeat_seconds", Math.floor(now.getTime() / 1000));
+    try {
+      const backlog = await outboxBacklog(db);
+      if (backlog.sms !== null) {
+        telemetry.gauge("outbox.backlog_age_seconds", backlog.sms, { queue: "sms" });
+      }
+      if (backlog.channel !== null) {
+        telemetry.gauge("outbox.backlog_age_seconds", backlog.channel, { queue: "channel" });
+      }
+    } catch (error) {
+      // A metrics query must never take the sweeper down with it.
+      telemetry.captureError(error, { stage: "outbox-metrics" });
+    }
   }
 
   async function sweepCash(): Promise<void> {

@@ -1,0 +1,45 @@
+{
+  "comment": "The metrics the API and worker actually emit (Phase 10, Steps 1 and 10). Alert rules may only reference these names and labels; the test in apps/api/src/metrics-contract.test.ts fails when a rule drifts from the code.",
+  "metrics": [
+    {
+      "name": "http_requests_total",
+      "type": "counter",
+      "labels": ["method", "status", "route"]
+    },
+    {
+      "name": "http_request_duration_seconds",
+      "type": "histogram",
+      "labels": ["method", "route"]
+    },
+    {
+      "name": "verify_lookups_total",
+      "type": "counter",
+      "labels": ["result"]
+    },
+    {
+      "name": "rate_limit_rejections_total",
+      "type": "counter",
+      "labels": ["scope"]
+    },
+    {
+      "name": "webhook_events_total",
+      "type": "counter",
+      "labels": ["provider", "outcome"]
+    },
+    {
+      "name": "outbox_backlog_age_seconds",
+      "type": "gauge",
+      "labels": ["queue"]
+    },
+    {
+      "name": "worker_last_heartbeat_seconds",
+      "type": "gauge",
+      "labels": []
+    },
+    {
+      "name": "reconciliation_last_run_timestamp_seconds",
+      "type": "gauge",
+      "labels": ["tenant"]
+    }
+  ]
+}

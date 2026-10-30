@@ -63,6 +63,7 @@ function harness(
       end: () => undefined,
     }),
     counter: () => undefined,
+    gauge: () => undefined,
     log: (level, message) => {
       logs.push({ level, message });
     },

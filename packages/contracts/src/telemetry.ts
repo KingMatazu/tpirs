@@ -23,6 +23,7 @@ export function createTelemetryConformanceSuite(
       withAdapter(factory, (telemetry) => {
         expect(() => {
           telemetry.counter("conformance.counter", 1, { "conf.test": true });
+          telemetry.gauge("conformance.gauge", 42, { "conf.test": true });
           telemetry.log("info", "conformance log message", { "conf.test": true });
           telemetry.captureError(new Error("conformance capture"), { "conf.test": true });
         }).not.toThrow();

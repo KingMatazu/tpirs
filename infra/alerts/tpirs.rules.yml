@@ -1,0 +1,120 @@
+# Prometheus rules for the failure paths an operator can act on (Phase 10, Step 10).
+#
+# Delivery is a deploy-target adapter (D53, ADR 0044): until a target wires
+# Alertmanager or a pager these rules evaluate and nothing notifies. Every alert
+# names a section of docs/runbooks/alerting.md.
+#
+# The metric names and labels are the contract in metric-contract.json; a test
+# fails when a rule references something the code does not emit.
+
+groups:
+  - name: tpirs-availability
+    rules:
+      - alert: TpirsHighErrorRate
+        expr: |
+          sum(rate(http_requests_total{status=~"5.."}[5m]))
+          /
+          clamp_min(sum(rate(http_requests_total[5m])), 0.001)
+          > 0.01
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "More than 1% of API responses are 5xx for five minutes"
+          runbook: "docs/runbooks/alerting.md#high-error-rate"
+
+      - alert: TpirsVerifyLatencyHigh
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le) (rate(http_request_duration_seconds_bucket{route="/v1/verify/:token"}[10m]))
+          ) > 0.15
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Verify p95 above the 150 ms budget for ten minutes"
+          runbook: "docs/runbooks/alerting.md#verify-latency"
+
+      - alert: TpirsRouteLatencyHigh
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le, route) (rate(http_request_duration_seconds_bucket[10m]))
+          ) > 1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "A route's p95 is above one second for ten minutes"
+          runbook: "docs/runbooks/alerting.md#verify-latency"
+
+  - name: tpirs-payment-intake
+    rules:
+      - alert: TpirsWebhookRejected
+        expr: increase(webhook_events_total{outcome="rejected"}[10m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "A payment webhook was rejected (signature or endpoint token)"
+          runbook: "docs/runbooks/alerting.md#webhook-rejected"
+
+      - alert: TpirsWebhookSuspense
+        expr: increase(webhook_events_total{outcome=~"suspense|deposit_suspense"}[15m]) > 0
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Payments are landing in suspense; finance must attribute them"
+          runbook: "docs/runbooks/alerting.md#webhook-suspense"
+
+  - name: tpirs-delivery
+    rules:
+      - alert: TpirsOutboxBacklog
+        expr: max by (queue) (outbox_backlog_age_seconds) > 300
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "A driver-facing message has been pending for over five minutes"
+          runbook: "docs/runbooks/alerting.md#outbox-backlog"
+
+      - alert: TpirsWorkerHeartbeatStale
+        expr: time() - max(worker_last_heartbeat_seconds) > 600
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "The worker has not reported a heartbeat for ten minutes"
+          runbook: "docs/runbooks/alerting.md#worker-down"
+
+      - alert: TpirsReconciliationOverdue
+        expr: time() - max by (tenant) (reconciliation_last_run_timestamp_seconds) > 93600
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "A tenant has not reconciled in over 26 hours"
+          runbook: "docs/runbooks/alerting.md#reconciliation-overdue"
+
+      - alert: TpirsVerifyTrafficMissing
+        # Only when lookups have happened before: a fresh process has no series yet.
+        expr: sum(rate(verify_lookups_total[30m])) == 0 and sum(verify_lookups_total) > 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "No verification lookups at all; the endpoint or the officers are down"
+          runbook: "docs/runbooks/alerting.md#verify-traffic-missing"
+
+  - name: tpirs-abuse
+    rules:
+      - alert: TpirsRateLimitSpike
+        expr: sum by (scope) (rate(rate_limit_rejections_total[5m])) > 5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Rejections are sustained; abuse or a broken client"
+          runbook: "docs/runbooks/alerting.md#rate-limit-spike"

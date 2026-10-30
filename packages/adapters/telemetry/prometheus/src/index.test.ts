@@ -55,6 +55,15 @@ describe("createPrometheusTelemetry", () => {
     expect(metrics.render()).toContain('hits_total{method="GET"} 1');
   });
 
+  it("renders a gauge as its latest value, not a sum", () => {
+    const metrics = createPrometheusTelemetry();
+    metrics.gauge("worker.heartbeat", 1_700_000_000, { worker: "a" });
+    metrics.gauge("worker.heartbeat", 1_700_000_030, { worker: "a" });
+    const parsed = series(metrics.render());
+    expect(parsed.get('worker_heartbeat{worker="a"}')).toBe(1_700_000_030);
+    expect(metrics.render()).toContain("# TYPE worker_heartbeat gauge");
+  });
+
   it("turns a span into a cumulative duration histogram", () => {
     const metrics = createPrometheusTelemetry({ buckets: [0.1, 1] });
     metrics.startSpan("http.request", { route: "/v1/health" }).end();
@@ -106,6 +115,7 @@ describe("createPrometheusTelemetry", () => {
         };
       },
       counter: () => events.push("counter"),
+      gauge: () => events.push("gauge"),
       log: () => events.push("log"),
       captureError: () => events.push("error"),
     };
@@ -124,6 +134,7 @@ describe("createPrometheusTelemetry", () => {
         end: () => events.push("span-end"),
       }),
       counter: (counter) => events.push(`counter:${counter}`),
+      gauge: (gauge) => events.push(`gauge:${gauge}`),
       log: (level, message) => events.push(`log:${level}:${message}`),
       captureError: () => events.push("error"),
     };

@@ -21,6 +21,7 @@ const telemetry: Telemetry = {
     end: () => undefined,
   }),
   counter: () => undefined,
+  gauge: () => undefined,
   log: () => undefined,
   captureError: () => undefined,
 };

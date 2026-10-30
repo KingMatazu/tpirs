@@ -14,6 +14,7 @@ describe("createOtelTelemetry sink", () => {
       sink: {
         onSpanEnd: (name) => events.push(`span:${name}`),
         onCounter: (name) => events.push(`counter:${name}`),
+        onGauge: (name) => events.push(`gauge:${name}`),
         onLog: (level) => events.push(`log:${level}`),
         onError: () => events.push("error"),
       },

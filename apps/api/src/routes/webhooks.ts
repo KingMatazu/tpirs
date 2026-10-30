@@ -47,6 +47,10 @@ export function registerWebhookRoutes(
           headers,
           rawBody,
         });
+        services.telemetry?.counter("webhook.events", 1, {
+          provider,
+          outcome: result.outcome,
+        });
         if (result.accepted) {
           // Always return 200 for handled deliveries (including duplicates) so a
           // misbehaving gateway never treats a healthy endpoint as failing.
@@ -56,6 +60,7 @@ export function registerWebhookRoutes(
         }
         // A bad signature must not be "accepted", but we still return a generic
         // response shape to avoid leaking which detail failed.
+        services.telemetry?.counter("webhook.events", 1, { provider, outcome: "rejected" });
         return await Promise.resolve(reply.code(400).send({ accepted: false }));
       } catch (error) {
         if (error instanceof PaymentError) {

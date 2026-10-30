@@ -8,6 +8,7 @@ import type { AttributeValue, LogLevel, Span, SpanAttributes, Telemetry } from "
 export interface TelemetrySink {
   onSpanEnd(name: string, attributes: SpanAttributes, durationMs: number): void;
   onCounter(name: string, value: number, attributes: SpanAttributes): void;
+  onGauge(name: string, value: number, attributes: SpanAttributes): void;
   onLog(level: LogLevel, message: string, attributes: SpanAttributes): void;
   onError(error: unknown, context: SpanAttributes): void;
 }
@@ -27,6 +28,9 @@ function consoleSink(serviceName: string): TelemetrySink {
     },
     onCounter(name, value, attributes) {
       write({ kind: "counter", name, value, attributes });
+    },
+    onGauge(name, value, attributes) {
+      write({ kind: "gauge", name, value, attributes });
     },
     onLog(level, message, attributes) {
       write({ kind: "log", level, message, attributes });
@@ -64,6 +68,9 @@ export function createOtelTelemetry(options: OtelTelemetryOptions): Telemetry {
     },
     counter(name, value, attributes = {}) {
       sink.onCounter(name, value, { ...attributes });
+    },
+    gauge(name, value, attributes = {}) {
+      sink.onGauge(name, value, { ...attributes });
     },
     log(level, message, attributes = {}) {
       sink.onLog(level, message, { ...attributes });

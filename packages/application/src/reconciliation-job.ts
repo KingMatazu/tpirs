@@ -139,6 +139,13 @@ export function createReconciliationJobRunner(
         raised = events.length;
       }
 
+      // A timestamp, not an age: the gauge stops moving if the worker stops, and
+      // the alert asks "when did this tenant last reconcile?" (Phase 10, Step 10).
+      deps.telemetry?.gauge(
+        "reconciliation.last_run_timestamp_seconds",
+        Math.floor((deps.now === undefined ? new Date() : deps.now()).getTime() / 1000),
+        { tenant: job.tenantId },
+      );
       deps.telemetry?.log("info", "reconciliation run completed", {
         tenantId: job.tenantId,
         businessDate: date,

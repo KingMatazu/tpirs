@@ -135,11 +135,10 @@ alternatives live in `docs/decisions-needed.md` and `docs/adr/`.
   the histogram, and attributes set during the span (the route pattern) become
   its labels.
 - Emitted so far: `http_requests_total`, `http_request_duration_seconds`,
-  `verify_lookups_total`, `rate_limit_rejections_total{scope="verify"}`. The
-  remaining names in the contract are emitted by the components that own them
-  (worker heartbeat, outbox age, job depth, reconciliation age) when Step 10
-  wires the alerts; the registry renders any counter or span automatically, so
-  those need no further plumbing.
+  `verify_lookups_total`, `rate_limit_rejections_total{scope="verify"}`. Step 10
+  added the gauge method and the remaining emitters (webhook outcomes, worker
+  heartbeat, outbox backlog age, reconciliation timestamp); the contract in
+  `infra/alerts/metric-contract.json` is the current list.
 - Commit: `feat(api): expose prometheus metrics behind a flag`.
 
 ## Step 2: Performance budgets (completed)
@@ -360,7 +359,7 @@ Recorded in ADR 0041 (D50): Node + `undici`, no new dependency, budgets as code.
   ledger balances, 14 migrations present.
 - Commit: `feat(ops): add backup and restore scripts`.
 
-## Step 9: Restore drill and disaster-recovery runbook (pending)
+## Step 9: Restore drill and disaster-recovery runbook (completed)
 
 - `scripts/db/restore-drill.sh`: backup → restore into a scratch Postgres →
   `migrate check` → integrity queries (debits equal credits, audit row count,
@@ -377,9 +376,22 @@ Recorded in ADR 0041 (D50): Node + `undici`, no new dependency, budgets as code.
   returns.
 - Secret rotation runbook: QR signing key (and what happens to printed
   stickers), webhook endpoint tokens, provider API keys, staff session revocation.
+- Delivered:
+  - `scripts/db/restore-drill.sh` runs the whole path on a throwaway database —
+    migrate, seed, back up, restore into a scratch database, start the API
+    against the restored copy, smoke test — and prints the measured durations.
+    Executed: dump 194 KB, backup 8 s, restore 19 s, smoke passed (laptop
+    measurement, recorded in the runbook).
+  - [`backup-and-restore.md`](./runbooks/backup-and-restore.md): artefacts,
+    commands, retention, the scratch-first restore, promoting a restore, the
+    object-store caveat, and the recorded drill results table.
+  - [`disaster-recovery.md`](./runbooks/disaster-recovery.md): targets, who
+    decides, a five-step decision path, seven scenarios (database loss, object
+    store, region, bad migration, leaked QR key, compromised session, provider
+    outage), the secret-rotation table, and the pre-traffic checklist.
 - Commit: `docs(runbooks): backup, restore and disaster recovery`.
 
-## Step 10: Alert rules for failure paths (pending)
+## Step 10: Alert rules for failure paths (completed)
 
 - `infra/alerts/tpirs.rules.yml` (Prometheus rule format) covering:
   - 5xx rate above 1% for 5 min;
@@ -396,6 +408,29 @@ Recorded in ADR 0041 (D50): Node + `undici`, no new dependency, budgets as code.
   values, even when no pager is wired.
 - Test: a unit test that every alert's metric name exists in the Step 1
   contract, so renaming a metric breaks the build rather than the alert.
+- Delivered:
+  - `infra/alerts/tpirs.rules.yml` — ten rules across availability, payment
+    intake, delivery and abuse, each with a severity and a runbook anchor.
+  - `infra/alerts/metric-contract.json` — the eight metrics the API and worker
+    emit, with their labels; the contract the rules are tested against.
+  - `apps/api/src/metrics-contract.test.ts` — parses the rules (including YAML
+    block scalars and CRLF checkouts), and fails when a rule names a metric or
+    label the contract does not declare, when an alert lacks a severity or a
+    runbook link, or when a declared metric is unused.
+  - [`alerting.md`](./runbooks/alerting.md) — one section per alert with the
+    first three checks, plus the delivery gap stated plainly.
+  - New emissions: a `gauge` method on the `Telemetry` port (with the OTel, mock
+    and Prometheus adapters and the conformance suite), `webhook_events_total`
+    from the intake route, `worker_last_heartbeat_seconds` and
+    `outbox_backlog_age_seconds` from the worker (via a `SECURITY DEFINER`
+    function added in migration 0015, so the worker never reads outbox content),
+    and `reconciliation_last_run_timestamp_seconds` from the job runner.
+- Deviation from the contract in Step 1: `job_queue_depth` and
+  `reconciliation_last_run_age_seconds` are replaced by
+  `outbox_backlog_age_seconds` and `reconciliation_last_run_timestamp_seconds`.
+  Queue depth is a leading indicator that needs a port change and tells an
+  operator less than the age of the work; a timestamp is the shape that goes
+  stale when the worker stops, which is what the alert needs.
 - Commit: `feat(ops): add alert rules for failure paths`.
 
 ## Step 11: CI wiring — security gate and load smoke (pending)

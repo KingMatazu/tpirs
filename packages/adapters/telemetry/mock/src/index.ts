@@ -19,10 +19,17 @@ export interface RecordedCounter {
   readonly attributes: SpanAttributes;
 }
 
+export interface RecordedGauge {
+  readonly name: string;
+  readonly value: number;
+  readonly attributes: SpanAttributes;
+}
+
 export interface MockTelemetry extends Telemetry {
   readonly spans: RecordedSpan[];
   readonly logs: RecordedLog[];
   readonly counters: RecordedCounter[];
+  readonly gauges: RecordedGauge[];
   readonly errors: { readonly error: unknown; readonly context: SpanAttributes }[];
 }
 
@@ -34,12 +41,14 @@ export function createMockTelemetry(): MockTelemetry {
   const spans: MutableSpan[] = [];
   const logs: RecordedLog[] = [];
   const counters: RecordedCounter[] = [];
+  const gauges: RecordedGauge[] = [];
   const errors: { error: unknown; context: SpanAttributes }[] = [];
 
   return {
     spans,
     logs,
     counters,
+    gauges,
     errors,
     startSpan(name, attributes = {}) {
       const span: MutableSpan = {
@@ -63,6 +72,9 @@ export function createMockTelemetry(): MockTelemetry {
     },
     counter(name, value, attributes = {}) {
       counters.push({ name, value, attributes: { ...attributes } });
+    },
+    gauge(name, value, attributes = {}) {
+      gauges.push({ name, value, attributes: { ...attributes } });
     },
     log(level, message, attributes = {}) {
       logs.push({ level, message, attributes: { ...attributes } });
