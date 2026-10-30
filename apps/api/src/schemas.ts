@@ -202,6 +202,7 @@ const cashWallet = {
     "openIntakeTotalMinor",
     "oldestOpenIntakeAt",
     "lastDepositAt",
+    "depositInstruction",
   ],
   properties: {
     collectorUserId: { type: "string" },
@@ -216,6 +217,17 @@ const cashWallet = {
     /** Oldest still-open intake, and the last deposit, for the collector list. */
     oldestOpenIntakeAt: { type: "string", nullable: true },
     lastDepositAt: { type: "string", nullable: true },
+    /** The collector's dedicated deposit account, when finance provisioned one. */
+    depositInstruction: {
+      type: "object",
+      nullable: true,
+      required: ["provider", "reference", "kind"],
+      properties: {
+        provider: { type: "string" },
+        reference: { type: "string" },
+        kind: { type: "string", enum: ["virtual_account", "narration"] },
+      },
+    },
   },
 };
 

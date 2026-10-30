@@ -303,7 +303,8 @@
           "balanceMinor",
           "openIntakeTotalMinor",
           "oldestOpenIntakeAt",
-          "lastDepositAt"
+          "lastDepositAt",
+          "depositInstruction"
         ],
         "properties": {
           "collectorUserId": {
@@ -345,6 +346,30 @@
           "lastDepositAt": {
             "type": "string",
             "nullable": true
+          },
+          "depositInstruction": {
+            "type": "object",
+            "nullable": true,
+            "required": [
+              "provider",
+              "reference",
+              "kind"
+            ],
+            "properties": {
+              "provider": {
+                "type": "string"
+              },
+              "reference": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "virtual_account",
+                  "narration"
+                ]
+              }
+            }
           }
         },
         "title": "CashWallet"

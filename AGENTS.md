@@ -2,7 +2,7 @@
 
 ## Working in this repo (verified against the codebase)
 
-**Toolchain:** Node 24 (`.node-version`), pnpm 11.1.3 (`corepack enable`), turbo, vitest, TypeScript strict, type-aware ESLint (`strictTypeChecked` + stylistic), Prettier (printWidth 100). Frontends are React 18 + Vite (`apps/admin`, `apps/field`).
+**Toolchain:** Node 24 (`.node-version`), pnpm 11.1.3 (`corepack enable`), turbo, vitest, TypeScript strict, type-aware ESLint (`strictTypeChecked` + stylistic), Prettier (printWidth 100). Frontends are React 18 + Vite (`apps/admin`, `apps/field`, `apps/collector`).
 
 **Commands** (repo root, all in `package.json`):
 
@@ -24,8 +24,8 @@
 - One package: `pnpm --filter @tpirs/<name> test` (runs `vitest run`); one file: append `-- src/<file>.test.ts`.
 - DB-backed suites gate on `const describeIntegration = TEST_URL === undefined ? describe.skip : describe` (auth, audit, RLS, identity, registry, payments, worker) — a plain `pnpm test` can pass without ever touching Postgres. Grep for `TEST_DATABASE_URL` to find the ones that need it. Real run: `sh scripts/ci/integration.sh` (scratch Postgres on :55433, migrates, exports the var), or `pnpm dev:infra` + `pnpm db:migrate` with `TEST_DATABASE_URL` exported.
 - Cross-package imports resolve to built `dist/` (`main: ./dist/index.js`), never `src`. After editing a dependency, rebuild before testing dependents — running vitest directly inside a package uses stale `dist`. Root `pnpm test`/`pnpm typecheck` are safe: turbo declares `dependsOn: ^build`.
-- `apps/admin` and `apps/field` build with `vite build` and typecheck with `tsc --noEmit` on both tsconfigs (not `tsc -b`), so they fail differently from library packages. They test under jsdom, and reach the backend only through `@tpirs/api-client` (other workspace deps are config, domain, i18n, ui-tokens).
-- `apps/admin`'s vitest config has no `globals: true`, so Testing Library's auto-cleanup never registers: call `cleanup()` in `afterEach` or renders pile up and duplicate row text. `apps/field` does set `globals: true`.
+- `apps/admin`, `apps/field` and `apps/collector` build with `vite build` and typecheck with `tsc --noEmit` on both tsconfigs (not `tsc -b`), so they fail differently from library packages. They test under jsdom, and reach the backend only through `@tpirs/api-client` (other workspace deps are config, domain, i18n, ui-tokens).
+- `apps/admin`'s vitest config has no `globals: true`, so Testing Library's auto-cleanup never registers: call `cleanup()` in `afterEach` or renders pile up and duplicate row text. `apps/field` and `apps/collector` do set `globals: true`.
 - The admin suite boots a singleton API client at import time and calls same-origin `/v1/...` paths. Tests call `stubRelativeRequests()` (undici rejects relative URLs) and install the stub through `setRuntimeFetch(...)` — openapi-fetch snapshots `fetch` when the client is constructed, so assigning `globalThis.fetch` is too late.
 
 **Lint gotchas (type-aware ESLint, `eslint.config.mjs`):**

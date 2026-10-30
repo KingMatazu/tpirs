@@ -55,7 +55,7 @@ If a step fails, fix that step and re-run `pnpm setup`; it is safe to repeat.
 pnpm dev
 ```
 
-This starts the four dev servers in one terminal through `scripts/dev.mjs`
+This starts the five dev servers in one terminal through `scripts/dev.mjs`
 (prefixing each line with the app name). One Ctrl+C stops all of them, including
 the compiler processes `tsx watch` spawns:
 

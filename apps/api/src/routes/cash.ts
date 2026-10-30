@@ -28,6 +28,11 @@ function toWalletJson(wallet: {
   openIntakeTotalMinor: bigint;
   oldestOpenIntakeAt: Date | null;
   lastDepositAt: Date | null;
+  depositInstruction: {
+    provider: string;
+    reference: string;
+    kind: "virtual_account" | "narration";
+  } | null;
 }) {
   return {
     collectorUserId: wallet.collectorUserId,

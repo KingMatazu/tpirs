@@ -46,6 +46,16 @@ export interface CashWalletView {
   readonly oldestOpenIntakeAt: Date | null;
   /** When this collector's most recent deposit arrived; null before the first. */
   readonly lastDepositAt: Date | null;
+  /**
+   * The collector's dedicated deposit account, when finance has provisioned one.
+   * It is the reference the collector quotes when paying cash into the bank, so
+   * the collector app can show it instead of asking finance every time.
+   */
+  readonly depositInstruction: {
+    readonly provider: string;
+    readonly reference: string;
+    readonly kind: "virtual_account" | "narration";
+  } | null;
 }
 
 export interface CashWalletServiceDeps {
@@ -105,6 +115,23 @@ export class CashWalletService {
       }
       return this.view(repos, wallet);
     });
+  }
+
+  private async instruction(
+    repos: Repositories,
+    tenantId: string,
+    collectorUserId: string,
+  ): Promise<CashWalletView["depositInstruction"]> {
+    const instruction = await repos.collectorCash.findActiveInstructionForCollector(
+      tenantId,
+      collectorUserId,
+    );
+    if (instruction === undefined) return null;
+    return {
+      provider: instruction.provider,
+      reference: instruction.reference,
+      kind: instruction.kind,
+    };
   }
 
   private async transition(
@@ -188,6 +215,7 @@ export class CashWalletService {
         wallet.tenantId,
         wallet.collectorUserId,
       ),
+      depositInstruction: await this.instruction(repos, wallet.tenantId, wallet.collectorUserId),
     };
   }
 }

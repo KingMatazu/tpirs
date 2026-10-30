@@ -3072,6 +3072,12 @@ export interface components {
             openIntakeTotalMinor: string;
             oldestOpenIntakeAt: string | null;
             lastDepositAt: string | null;
+            depositInstruction: {
+                provider: string;
+                reference: string;
+                /** @enum {string} */
+                kind: "virtual_account" | "narration";
+            } | null;
         };
         /** CashIntake */
         "def-8": {
