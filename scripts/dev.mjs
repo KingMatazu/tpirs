@@ -58,6 +58,18 @@ const apps = [
       path.join(packageDir(path.join(root, "apps/field/package.json"), "vite"), "bin", "vite.js"),
     ],
   },
+  {
+    name: "collector",
+    dir: path.join(root, "apps/collector"),
+    command: process.execPath,
+    args: [
+      path.join(
+        packageDir(path.join(root, "apps/collector/package.json"), "vite"),
+        "bin",
+        "vite.js",
+      ),
+    ],
+  },
 ];
 
 const colors = {

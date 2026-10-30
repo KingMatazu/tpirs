@@ -47,6 +47,7 @@ function toWalletJson(wallet: {
     oldestOpenIntakeAt:
       wallet.oldestOpenIntakeAt === null ? null : wallet.oldestOpenIntakeAt.toISOString(),
     lastDepositAt: wallet.lastDepositAt === null ? null : wallet.lastDepositAt.toISOString(),
+    depositInstruction: wallet.depositInstruction,
   };
 }
 

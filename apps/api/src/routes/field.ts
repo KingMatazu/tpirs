@@ -195,12 +195,16 @@ export function registerVerificationAndSyncRoutes(
       const trimmed = (request.query.q ?? "").trim();
 
       const results = await withTenant(db, tenantId, async (tx) => {
+        // Exact reference first (a scanned short code), then a partial match so
+        // a collector typing "MTZ" still finds MTZ56AA on a phone keyboard.
+        const exact =
+          trimmed === "" ? undefined : await repositories(tx).assets.findByReference(trimmed);
         const matches: readonly AssetRecord[] =
           trimmed === ""
             ? await repositories(tx).assets.listAll(tenantId)
-            : [await repositories(tx).assets.findByReference(trimmed)].filter(
-                (asset): asset is AssetRecord => asset !== undefined,
-              );
+            : exact !== undefined
+              ? [exact]
+              : await repositories(tx).assets.search({ query: trimmed, limit: 20 });
         const out: VerificationSearchResult[] = [];
         for (const asset of matches.slice(0, 20)) {
           const period = await repositories(tx).obligations.findByAssetAndDate(
