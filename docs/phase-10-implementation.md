@@ -85,13 +85,17 @@ alternatives live in `docs/decisions-needed.md` and `docs/adr/`.
 | D54 | Pen test: external or internal?        | Internal adversarial review, two engineers, vendor-ready scope doc; labelled honestly              | 0045 |
 | D55 | Login brute-force policy?              | Per-IP + per-username fixed windows, throttle never lockout, TOTP on its own counter               | 0046 |
 
-## Step 0: Reconcile and inventory (pending)
+## Step 0: Reconcile and inventory (completed)
 
 - Write this plan; record D50–D55 in `docs/decisions-needed.md` with ADRs 0041–0046
   (done before implementation started).
 - Inventory the security surface into `docs/security/README.md`: which controls
   exist, where they are tested, and which are only asserted in prose. This is
   the document the pen test and the auditor read first.
+- Delivered as [`security/README.md`](./security/README.md): six control groups,
+  a "proven by" column per control, and explicit "not yet" rows for the controls
+  this phase has not landed (login throttling, request limits and headers,
+  backups). Anything without a test is marked as a claim, not as coverage.
 - Commit: `docs(phase-10): outline hardening`.
 
 ## Step 1: Metrics endpoint and metric contract (completed)
@@ -185,15 +189,23 @@ alternatives live in `docs/decisions-needed.md` and `docs/adr/`.
 
 Recorded in ADR 0041 (D50): Node + `undici`, no new dependency, budgets as code.
 
-## Step 4: Dependency audit gate (pending)
+## Step 4: Dependency audit gate (completed)
 
 - `scripts/ci/audit.sh`: `pnpm audit --audit-level high --prod` plus the full
   tree, failing on any high or critical advisory that has a fix.
 - `docs/security/audit-allowlist.md`: each accepted advisory with the reason it
   cannot be fixed yet, the mitigating control, and an expiry date. The script
   fails when an entry is past its expiry, so the allowlist cannot rot.
-- Wire into `scripts/ci/verify.sh` (fast) and keep a separate job so a transient
-  registry outage is distinguishable from a real finding.
+- Wire it into CI as its own step so a transient registry outage is
+  distinguishable from a real finding.
+- Delivered as `scripts/ci/audit.sh` + `scripts/ci/audit.mjs`, with the policy in
+  `docs/security/audit-allowlist.json` (machine-readable, expiry required). The
+  gate found a real production high — zod, memory exhaustion — and it was fixed
+  rather than allowlisted (zod 4.6.6, `@hookform/resolvers` 5). The two criticals
+  are Vitest 3's tinypool, dev-only, allowlisted until 2026-12-31.
+- Policy refinement: a **production** critical/high cannot be allowlisted at all;
+  the allowlist only silences dev-only findings. Expired entries fail, and entries
+  whose advisory disappeared are reported for deletion.
 - Commit: `ci: fail the build on high and critical advisories`.
 
 ## Step 5: Route × role access matrix (pending)
