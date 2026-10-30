@@ -25,7 +25,11 @@
     "ci:verify": "sh scripts/ci/verify.sh",
     "ci:migration-check": "sh scripts/ci/migration-check.sh",
     "ci:deploy": "sh scripts/ci/deploy.sh",
-    "smoke": "sh scripts/ci/smoke.sh"
+    "smoke": "sh scripts/ci/smoke.sh",
+    "ci:security": "sh scripts/ci/security.sh",
+    "ci:load": "sh scripts/ci/load.sh",
+    "db:backup": "sh scripts/db/backup.sh",
+    "db:restore-drill": "sh scripts/db/restore-drill.sh"
   },
   "lint-staged": {
     "*.{ts,mjs}": [

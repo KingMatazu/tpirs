@@ -467,7 +467,7 @@ Recorded in ADR 0041 (D50): Node + `undici`, no new dependency, budgets as code.
   `apps/api/src/index.ts`.
 - Commit: `ci: run the security suite and a load smoke on every change`.
 
-## Step 12: Pen-test readiness and findings register (pending)
+## Step 12: Pen-test readiness and findings register (completed)
 
 - `docs/security/pen-test-scope.md`: targets and URLs, test accounts per role,
   seeded data set, out-of-scope items (third-party providers, physical stickers),
@@ -483,7 +483,7 @@ Recorded in ADR 0041 (D50): Node + `undici`, no new dependency, budgets as code.
   the scope document is written vendor-ready.
 - Commit: `docs(security): pen-test scope and findings register`.
 
-## Step 13: Acceptance run and delivery notes (pending)
+## Step 13: Acceptance run and delivery notes (completed)
 
 - Execute, in order: `pnpm format` → `pnpm lint` → `pnpm typecheck` →
   `pnpm test`, `scripts/ci/security.sh`, `scripts/ci/integration.sh`,
@@ -493,6 +493,14 @@ Recorded in ADR 0041 (D50): Node + `undici`, no new dependency, budgets as code.
   "expected".
 - Update `README.md`, `AGENTS.md` (Phase 10 delivered, Phase 11 next),
   `docs/decisions-needed.md` (D50–D55 answered) and the new ADRs.
+- Executed on 2026-10-30: `pnpm format:check`, `lint`, `typecheck`, `test`
+  (93 tasks), `scripts/ci/security.sh`, `scripts/ci/integration.sh` (93 tasks,
+  full suite against a scratch Postgres), `scripts/ci/migration-check.sh`,
+  `scripts/ci/load.sh`, `scripts/ci/backup-check.sh`, `scripts/db/restore-drill.sh`
+  and `scripts/security/probe.sh` (14/14).
+- One acceptance item is **not** met on this hardware and is carried forward
+  rather than ticked: verify at 200 rps saturates a laptop at ~124 rps, so its
+  150 ms p95 target is a pilot-hardware target. Everything else is measured.
 - Commit: `docs(phase-10): delivery notes`.
 
 ## Acceptance mapping

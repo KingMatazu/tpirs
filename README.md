@@ -72,6 +72,10 @@ pnpm typecheck    # tsc across the workspace
 pnpm test         # vitest across the workspace
 pnpm db:migrate   # apply migrations
 pnpm db:check     # prove migrations apply and roll back
+pnpm db:backup    # pg_dump + object store + manifest (docs/runbooks/backup-and-restore.md)
+pnpm db:restore-drill  # back up, restore into a scratch DB, smoke test the API
+pnpm ci:security  # dependency audit + route/role matrix + RLS coverage
+pnpm ci:load      # quarter-rate load smoke against a scratch database
 pnpm dev:infra    # start local Postgres/Redis/SeaweedFS only
 ```
 
