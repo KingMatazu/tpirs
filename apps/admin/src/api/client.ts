@@ -18,7 +18,10 @@ export function wireSession(wiring: {
 }
 
 export const api = createApiClient({
-  baseUrl: "http://localhost",
+  // Same-origin by default: the page's own origin, so development requests hit
+  // Vite's /v1 proxy (apps/admin/vite.config.ts) and production sits behind one
+  // origin. A split-origin deployment sets VITE_API_BASE_URL.
+  baseUrl: import.meta.env.VITE_API_BASE_URL ?? window.location.origin,
   getAccessToken: () => tokenReader(),
   idempotencyKeyPrefix: "dashboard",
 });
