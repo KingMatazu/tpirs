@@ -133,6 +133,29 @@ describe("api client request plumbing", () => {
     await client.GET("/v1/auth/me");
     expect(calls[0]?.request.headers.get("authorization")).toBe("Bearer tok-1");
   });
+
+  it("keeps same-origin credentials so the refresh cookie is stored", async () => {
+    // `credentials: "omit"` makes the browser discard Set-Cookie entirely, so
+    // the D26 refresh cookie never reached the jar and every reload signed the
+    // user out. Same-origin is the default; the option stays overridable.
+    const { fetch: stubbed, calls } = stubFetch(
+      async () => new globalThis.Response("{}", { status: 200 }),
+    );
+    const client = createApiClient({ baseUrl: "http://api.test", fetch: stubbed });
+    await post(client, "/v1/auth/login", { tenantSlug: "a", username: "b", password: "c" });
+    expect(calls[0]?.request.credentials).toBe("same-origin");
+
+    const { fetch: includeStub, calls: includeCalls } = stubFetch(
+      async () => new globalThis.Response("{}", { status: 200 }),
+    );
+    const includeClient = createApiClient({
+      baseUrl: "https://api.test",
+      credentials: "include",
+      fetch: includeStub,
+    });
+    await includeClient.GET("/v1/auth/me");
+    expect(includeCalls[0]?.request.credentials).toBe("include");
+  });
 });
 
 describe("runtime fetch", () => {

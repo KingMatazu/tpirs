@@ -197,6 +197,31 @@ pnpm ci:migration-check
 | A migration check fails                                         | A migration's `down()` is not reversible; fix it before merging.                                                                                              |
 | `pnpm install` warns about blocked build scripts                | Only `esbuild` is allowed by pnpm 11; the warning is expected.                                                                                                |
 
+### Signed out on every reload
+
+Symptom: you sign in, reload, and land back on the login form, with
+`POST /v1/auth/refresh` returning `401` in the console. The browser has no usable
+`tpirs_refresh` cookie.
+
+1. DevTools → **Application** → **Cookies** → `http://localhost:5173`. After a
+   successful sign-in there must be one live `tpirs_refresh` row with
+   `Path /v1/auth/refresh`, `HttpOnly` ticked, and `Secure` blank. An empty row
+   with `path=/` is a tombstone left by an old cleared cookie.
+2. If the row is missing or stale: **Application → Storage → Storage → Clear
+   site data**, then sign in again. Chrome refuses to let an insecure origin
+   overwrite an existing `Secure` cookie of the same name and path, so a cookie
+   left over from an earlier HTTPS-only build survives sign-in and keeps sending
+   a rotated token.
+3. Use `http://localhost:5173` exactly — the cookie is host-scoped, so
+   `127.0.0.1:5173` is a different jar.
+4. `Secure` is set only when `NODE_ENV=production`; over plain `http://localhost`
+   browsers drop a `Secure` cookie, which also produced this loop.
+
+If the cookie is present, live, and still returns `401`, check the response body:
+"Refresh token is unknown, expired, or revoked" means it was rotated elsewhere (a
+second tab), while "Refresh token is missing" means the request carried no cookie
+at all.
+
 ## 9. What runs where (and why)
 
 The dev compose file (`infra/docker-compose.yml`) contains only infrastructure:

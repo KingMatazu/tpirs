@@ -79,6 +79,13 @@ export interface ApiClientOptions {
   /** Injectable fetch (tests); defaults to the runtime fetch set by setRuntimeFetch. */
   readonly fetch?: typeof fetch;
   /**
+   * Fetch credentials mode. Defaults to `same-origin`: the D26 refresh token
+   * travels in an httpOnly cookie, and the browser only stores a `Set-Cookie`
+   * when the request that produced it was not `omit` (omit suppresses storage,
+   * not just sending). A cross-origin client can pass `include` or `omit`.
+   */
+  readonly credentials?: "omit" | "same-origin" | "include";
+  /**
    * POST paths that create or move money are keyed automatically (build brief
    * section 7). The default guards payment resolution; callers may widen.
    */
@@ -123,7 +130,11 @@ export function createApiClient(options: ApiClientOptions) {
   const fetchImpl: typeof globalThis.fetch = options.fetch ?? ((...args) => runtimeFetch(...args));
   const client = createClient<paths>({
     baseUrl: options.baseUrl,
-    credentials: "omit",
+    // `same-origin` (not `omit`): the refresh cookie must be *stored*, and a
+    // request made with `credentials: "omit"` makes the browser discard the
+    // response's Set-Cookie entirely — every reload then refreshed without a
+    // cookie and signed the user out (D26).
+    credentials: options.credentials ?? "same-origin",
     fetch: fetchImpl,
   });
   const middleware: Middleware = {
