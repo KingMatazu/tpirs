@@ -55,7 +55,9 @@ If a step fails, fix that step and re-run `pnpm setup`; it is safe to repeat.
 pnpm dev
 ```
 
-This runs every `dev` task through turbo in one terminal:
+This starts the four dev servers in one terminal through `scripts/dev.mjs`
+(prefixing each line with the app name). One Ctrl+C stops all of them, including
+the compiler processes `tsx watch` spawns:
 
 | Service         | URL                     | Notes                                                          |
 | --------------- | ----------------------- | -------------------------------------------------------------- |
@@ -196,6 +198,24 @@ pnpm ci:migration-check
 | Port already in use                                             | Stop the conflicting process, or change `API_PORT` in `.env` and the Vite `server.port` in `apps/admin/vite.config.ts` / `apps/field/vite.config.ts`.         |
 | A migration check fails                                         | A migration's `down()` is not reversible; fix it before merging.                                                                                              |
 | `pnpm install` warns about blocked build scripts                | Only `esbuild` is allowed by pnpm 11; the warning is expected.                                                                                                |
+| Ctrl+C does not stop the dev servers                            | Use `pnpm dev` (the supervisor), not `pnpm dev:turbo`: see [Stopping the dev servers](#stopping-the-dev-servers).                                             |
+
+### Stopping the dev servers
+
+`pnpm dev` runs `scripts/dev.mjs`, which spawns the four dev servers directly
+(`node` + `tsx`/`vite`, no shell and no package-manager shim) and kills their
+process trees on the first Ctrl+C. A second Ctrl+C exits immediately.
+
+`pnpm dev:turbo` still runs the turbo pipeline. On Windows that needs two
+Ctrl+C presses: turbo 2.10+ forwards the signal and waits for each task, and the
+`cmd.exe` batch wrapper pnpm uses does not exit on the first one, so turbo keeps
+printing "4 tasks shutting down…". If you forced it, check for orphans holding
+the ports before restarting:
+
+```sh
+netstat -ano | grep LISTENING | grep -E ":3000|:5173|:5174"
+taskkill //PID <pid> //T //F
+```
 
 ### Signed out on every reload
 

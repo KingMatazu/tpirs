@@ -56,7 +56,7 @@ scripts             setup and CI entrypoints
 ```sh
 pnpm install
 pnpm setup        # copies .env, starts containers, migrates, seeds
-pnpm dev          # run all dev servers via turbo
+pnpm dev          # run all dev servers (scripts/dev.mjs); Ctrl+C stops them all
 ```
 
 Then open <http://localhost:5173> and sign in with tenant `alpha-state`,

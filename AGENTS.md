@@ -6,16 +6,16 @@
 
 **Commands** (repo root, all in `package.json`):
 
-| Command                                                        | What it does                                                    |
-| -------------------------------------------------------------- | --------------------------------------------------------------- |
-| `pnpm install`                                                 | install workspace dependencies                                  |
-| `pnpm setup`                                                   | copy `.env`, start containers, migrate, seed (first run)        |
-| `pnpm dev`                                                     | all dev servers via turbo; API on :3000                         |
-| `pnpm dev:infra`                                               | Postgres/Redis/SeaweedFS containers only                        |
-| `pnpm lint` / `typecheck` / `test` / `build`                   | turbo runs that task in every package (all `dependsOn: ^build`) |
-| `pnpm format` / `format:check`                                 | Prettier write / verify; unformatted files fail lint-staged     |
-| `pnpm db:migrate` / `db:migrate:down` / `db:check` / `db:seed` | migrate, roll back, prove reversibility, seed                   |
-| `pnpm ci:verify` / `ci:migration-check` / `smoke`              | the CI shell scripts directly (same commands CI runs)           |
+| Command                                                        | What it does                                                                |
+| -------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| `pnpm install`                                                 | install workspace dependencies                                              |
+| `pnpm setup`                                                   | copy `.env`, start containers, migrate, seed (first run)                    |
+| `pnpm dev`                                                     | all dev servers via `scripts/dev.mjs` (one Ctrl+C stops them); API on :3000 |
+| `pnpm dev:infra`                                               | Postgres/Redis/SeaweedFS containers only                                    |
+| `pnpm lint` / `typecheck` / `test` / `build`                   | turbo runs that task in every package (all `dependsOn: ^build`)             |
+| `pnpm format` / `format:check`                                 | Prettier write / verify; unformatted files fail lint-staged                 |
+| `pnpm db:migrate` / `db:migrate:down` / `db:check` / `db:seed` | migrate, roll back, prove reversibility, seed                               |
+| `pnpm ci:verify` / `ci:migration-check` / `smoke`              | the CI shell scripts directly (same commands CI runs)                       |
 
 **Order before finishing a change:** `pnpm format` → `pnpm lint` → `pnpm typecheck` → `pnpm test`. CI (`scripts/ci/verify.sh`) runs install → lint → typecheck → build, then `scripts/ci/integration.sh` (scratch Postgres + full suite) and `scripts/ci/migration-check.sh` (every migration must roll back to zero). Husky hooks: pre-commit = `pnpm lint-staged` (root ESLint `--fix --max-warnings 0` + prettier over staged files); pre-push = `pnpm typecheck` + `pnpm test` for the **whole repo**, so one red package anywhere blocks the push — run the affected `--filter` task first.
 
