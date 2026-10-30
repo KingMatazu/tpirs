@@ -185,16 +185,17 @@ pnpm ci:migration-check
 
 ## 8. Troubleshooting
 
-| Symptom                                          | Fix                                                                                                                                                   |
-| ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `docker compose` fails or `--wait` hangs         | Docker Desktop is not running, or ports `5433`/`6380`/`9000` are taken.                                                                               |
-| `pnpm dev` cannot reach the database             | `.env` is missing or containers are down: run `pnpm setup` or `pnpm dev:infra`.                                                                       |
-| Login fails                                      | Use the exact slug (`alpha-state`), and confirm `pnpm setup`/`pnpm db:seed` ran.                                                                      |
-| Dashboard requests fail with 404/502             | The API is not on `:3000`; start it with `pnpm dev` or the API filter command above.                                                                  |
-| No reconciliation runs yet                       | The worker schedules them from the tenant cron; Reports and Audit show data already.                                                                  |
-| Port already in use                              | Stop the conflicting process, or change `API_PORT` in `.env` and the Vite `server.port` in `apps/admin/vite.config.ts` / `apps/field/vite.config.ts`. |
-| A migration check fails                          | A migration's `down()` is not reversible; fix it before merging.                                                                                      |
-| `pnpm install` warns about blocked build scripts | Only `esbuild` is allowed by pnpm 11; the warning is expected.                                                                                        |
+| Symptom                                                         | Fix                                                                                                                                                           |
+| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `docker compose` fails or `--wait` hangs                        | Docker Desktop is not running, or ports `5433`/`6380`/`9000` are taken.                                                                                       |
+| `pnpm dev` cannot reach the database                            | `.env` is missing or containers are down: run `pnpm setup` or `pnpm dev:infra`.                                                                               |
+| API logs "registry services unavailable; asset routes disabled" | `SECRET_QR_TOKEN_SIGNING_KEY` is unset. Copy the dev value from `.env.example` into `.env` and restart; the QR signer is required for registry/verify routes. |
+| Login fails                                                     | Use the exact slug (`alpha-state`), and confirm `pnpm setup`/`pnpm db:seed` ran.                                                                              |
+| Dashboard requests fail with 404/502                            | The API is not on `:3000`; start it with `pnpm dev` or the API filter command above.                                                                          |
+| No reconciliation runs yet                                      | The worker schedules them from the tenant cron; Reports and Audit show data already.                                                                          |
+| Port already in use                                             | Stop the conflicting process, or change `API_PORT` in `.env` and the Vite `server.port` in `apps/admin/vite.config.ts` / `apps/field/vite.config.ts`.         |
+| A migration check fails                                         | A migration's `down()` is not reversible; fix it before merging.                                                                                              |
+| `pnpm install` warns about blocked build scripts                | Only `esbuild` is allowed by pnpm 11; the warning is expected.                                                                                                |
 
 ## 9. What runs where (and why)
 
