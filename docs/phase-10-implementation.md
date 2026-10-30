@@ -237,7 +237,7 @@ Recorded in ADR 0041 (D50): Node + `undici`, no new dependency, budgets as code.
   tests; this file is the completeness guard, not a duplicate.
 - Commit: `test(api): prove the route and role access matrix`.
 
-## Step 6: RLS coverage guard and cross-tenant sweep (pending)
+## Step 6: RLS coverage guard and cross-tenant sweep (completed)
 
 - `packages/db/src/rls-coverage.test.ts`: read `information_schema` for every
   table with a `tenant_id` column and assert `relrowsecurity` is on, at least one
@@ -249,6 +249,17 @@ Recorded in ADR 0041 (D50): Node + `undici`, no new dependency, budgets as code.
 - Assert the worker's cross-tenant access is confined to the two documented
   drains (`pending-sms.ts`, `pending-channel-messages.ts`) and that both filter
   by tenant after reading.
+- Delivered as `packages/db/src/rls-coverage.test.ts` (integration-gated like the
+  other DB suites). It reads `information_schema` and fails when a table with a
+  `tenant_id` column has no RLS, or has RLS but no policy without being on the
+  documented system-only list. It also proves the mechanism on real rows: the
+  app role has `rolbypassrls = false`, a scoped read cannot see another tenant
+  even with an explicit `where tenant_id = <other>`, a scoped insert under
+  another tenant is refused by the policy, and the system scope still sees both.
+- The guard immediately found a real state: `webhook_endpoints` has RLS enabled
+  with no policy. That is correct (it is read under the system scope before a
+  tenant is known, ADR 0017) and is now an explicit, documented exception rather
+  than an accident.
 - Commit: `test(db): guard row-level security coverage`.
 
 ## Step 7: API surface hardening (pending)
