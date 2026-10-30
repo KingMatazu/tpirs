@@ -35,7 +35,7 @@ branding:
   receiptFooter: "Thank you"
 assetTypes:
   - key: "bike"
-    label: "Bicycle"
+    label: "Motorbike"
     attributes:
       - key: "plate_number"
         label: "Plate number"
@@ -47,7 +47,12 @@ assetTypes:
     stickerSpec: "60x60mm vinyl"
   - key: "tuktuk"
     label: "Tuk-tuk"
-    attributes: []
+    attributes:
+      - key: "plate_number"
+        label: "Plate number"
+        type: "string"
+        required: true
+        pattern: "^[A-Z0-9]{5,8}$"
     qrFormat: "EX-K{id}"
     shortCodeFormat: "K{id}"
     stickerSpec: "60x60mm vinyl"

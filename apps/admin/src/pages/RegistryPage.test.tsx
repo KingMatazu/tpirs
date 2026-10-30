@@ -193,7 +193,7 @@ describe("RegistryPage", () => {
     renderPage();
 
     expect(await screen.findByText("B123")).toBeTruthy();
-    expect(screen.getByRole("cell", { name: "Bicycle" })).toBeTruthy();
+    expect(screen.getByRole("cell", { name: "Motorbike" })).toBeTruthy();
     expect(screen.getByRole("cell", { name: "Active" })).toBeTruthy();
     expect(screen.getByText("zone-a")).toBeTruthy();
     // The unfiltered list sends the page size only.

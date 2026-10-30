@@ -137,7 +137,7 @@ function baseConfig(overrides: {
     assetTypes: [
       {
         key: "bike",
-        label: "Bicycle",
+        label: "Motorbike",
         attributes: [
           {
             key: "plate_number",
@@ -154,7 +154,15 @@ function baseConfig(overrides: {
       {
         key: "tuktuk",
         label: "Tuk-tuk",
-        attributes: [],
+        attributes: [
+          {
+            key: "plate_number",
+            label: "Plate number",
+            type: "string",
+            required: true,
+            pattern: "^[A-Z0-9]{5,8}$",
+          },
+        ],
         qrFormat: "QR-K{id}",
         shortCodeFormat: "K{id}",
         stickerSpec: "60x60mm vinyl",
@@ -427,6 +435,11 @@ export const seed: SeedFn = async (db) => {
           legalEntity: config.identity.legalEntity,
           config,
         }));
+      // The seed owns the demo tenants' config: re-running it refreshes their
+      // labels, asset schemas and rules instead of leaving a stale copy behind.
+      if (existing !== undefined) {
+        await repos.tenants.updateConfig(existing.id, config);
+      }
 
       const roleIds = new Map<string, string>();
       for (const role of SYSTEM_ROLES) {

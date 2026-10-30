@@ -8,7 +8,7 @@ const baseInput = {
   primaryColor: "#0a5a4a",
   secondaryColor: "#053b33",
   accentColor: "#f2c200",
-  assetTypeLabel: "Bicycle",
+  assetTypeLabel: "Motorbike",
   stickerSpec: "60x60mm vinyl, weatherproof",
 };
 
@@ -39,7 +39,7 @@ describe("renderAssetSticker", () => {
     expect(svg).toContain('width="60mm"');
     expect(svg).toContain("Example Levy");
     expect(svg).toContain("B42");
-    expect(svg).toContain("Bicycle");
+    expect(svg).toContain("Motorbike");
     expect(svg).toContain("#0a5a4a");
   });
 

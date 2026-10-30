@@ -141,7 +141,7 @@ describe("status labels and tones", () => {
   });
 
   it("labels an asset type from config and falls back to the key", () => {
-    expect(assetTypeLabel(assetTypes, "bike")).toBe("Bicycle");
+    expect(assetTypeLabel(assetTypes, "bike")).toBe("Motorbike");
     expect(assetTypeLabel(assetTypes, "tuk-tuk")).toBe("tuk-tuk");
   });
 });

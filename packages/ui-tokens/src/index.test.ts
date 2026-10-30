@@ -34,7 +34,7 @@ branding:
   receiptFooter: "Thank you"
 assetTypes:
   - key: "bike"
-    label: "Bicycle"
+    label: "Motorbike"
     attributes: []
     qrFormat: "EX-{id}"
     shortCodeFormat: "B{id}"
