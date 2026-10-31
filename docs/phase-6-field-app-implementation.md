@@ -1,6 +1,7 @@
 # Field app (officer PWA) — implementation plan
 
-**Status:** planned, not started. Reopens Phase 6 Step 5.
+**Status:** in progress — steps 1 and 2 delivered; steps 3–10 next.
+Reopens Phase 6 Step 5.
 **Supersedes:** the Step 5 section of `docs/phase-6-implementation.md` (the plan was
 written; the app was not built).
 **Scope:** `apps/field` only. No backend behaviour changes except the two noted in
@@ -86,12 +87,14 @@ later i18n pass mechanical (replace `copy.x` with `t("field.x")`).
 Options: (a) native `BarcodeDetector`, (b) `jsqr` on canvas frames, (c) both, (d) manual
 entry only.
 
-**Recommendation: (c) behind one module.** `BarcodeDetector` is present on Chrome
-Android and costs nothing; `jsqr` (~40 KB, pure JS, MIT) covers browsers without it.
-Manual entry is always available and is the fallback when the camera is denied or the
-sticker is damaged. This adds a runtime dependency, so it needs
-`docs/adr/00NN-field-qr-scanning.md` recording the alternatives considered
-(`@zxing/browser` is larger; `BarcodeDetector` alone fails on iOS Safari).
+**Decided: (c) behind one module, shipped in v1.** The scanner is part of the first
+release, not a later addition: a real camera QR scanner plus manual entry of the short
+code or plate number. `BarcodeDetector` is present on Chrome Android and costs nothing;
+`jsqr` (~40 KB, pure JS, MIT) covers browsers without it. Manual entry is always
+available and is the fallback when the camera is denied or the sticker is damaged. This
+adds a runtime dependency, so it needs `docs/adr/00NN-field-qr-scanning.md` recording
+the alternatives considered (`@zxing/browser` is larger; `BarcodeDetector` alone fails
+on iOS Safari).
 
 ### D-F3 — Offline photo cache
 
@@ -179,7 +182,7 @@ implementations; copy the shape, not the code, so the two apps can diverge.
 Each step ends green (`format → lint → typecheck → test` for `@tpirs/field`) and is one
 commit.
 
-### Step 1 — Config: make the field settings real (D-F4)
+### Step 1 — Config: make the field settings real (D-F4) — done
 
 - Add `TenantFieldSettings` to `packages/config/src/schema.ts`, validation in
   `validate.ts`, defaults in the two seeded tenants and `tenants/_template/tenant.config.yaml`.
@@ -192,7 +195,7 @@ commit.
 
 _Effort: S._
 
-### Step 2 — Shell, session, branding
+### Step 2 — Shell, session, branding — done
 
 - `session.ts` mirroring the collector: bearer in memory only, refresh via cookie,
   `deviceId` generated once and persisted in `fieldSession`, sent as
