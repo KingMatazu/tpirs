@@ -1,6 +1,6 @@
 # Field app (officer PWA) — implementation plan
 
-**Status:** in progress — steps 1 and 2 delivered; steps 3–10 next.
+**Status:** in progress — steps 1–4 delivered; steps 5–10 next.
 Reopens Phase 6 Step 5.
 **Supersedes:** the Step 5 section of `docs/phase-6-implementation.md` (the plan was
 written; the app was not built).
@@ -210,7 +210,7 @@ session survives a reload only through the refresh cookie.
 
 _Effort: M._
 
-### Step 3 — Paid-set sync
+### Step 3 — Paid-set sync — done
 
 - `sync.ts`: no cursor → snapshot; cursor → follow `nextCursor` until `hasMore` is false;
   persist `{businessDate, cursor, lastSyncedAt}` after **each** page so a crash mid-page
@@ -227,7 +227,7 @@ the cursor advances.
 
 _Effort: M._
 
-### Step 4 — Scanner (D-F2)
+### Step 4 — Scanner (D-F2) — done
 
 - `scanner/index.ts`: `start()` returns a stream + a callback of decoded tokens;
   prefers `BarcodeDetector`, falls back to `jsqr`, exposes `available: boolean`.

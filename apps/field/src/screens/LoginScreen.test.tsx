@@ -1,6 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { ApiError } from "@tpirs/api-client";
 import { LoginScreen } from "./LoginScreen.js";
 
@@ -16,12 +15,23 @@ function apiError(status: number): ApiError {
   return new ApiError({ status, code: "unauthorized", message: "no" });
 }
 
-async function fillAndSubmit(): Promise<void> {
-  const user = userEvent.setup();
-  await user.type(screen.getByLabelText(/state/i), "alpha-state");
-  await user.type(screen.getByLabelText(/username/i), "alpha.officer");
-  await user.type(screen.getByLabelText(/^password/i), "alpha-officer-password");
-  await user.click(screen.getByRole("button", { name: /sign in/i }));
+/**
+ * Fills and submits with `fireEvent` rather than `userEvent.type`: typing four
+ * fields character by character takes ~800 ms per test, and under a full-repo
+ * run that is enough to trip the default timeout.
+ */
+function signIn(options: { totp?: string } = {}): void {
+  fireEvent.change(screen.getByLabelText(/state/i), { target: { value: "alpha-state" } });
+  fireEvent.change(screen.getByLabelText(/username/i), { target: { value: "alpha.officer" } });
+  fireEvent.change(screen.getByLabelText(/^password/i), {
+    target: { value: "alpha-officer-password" },
+  });
+  if (options.totp !== undefined) {
+    fireEvent.change(screen.getByLabelText(/authenticator code/i), {
+      target: { value: options.totp },
+    });
+  }
+  fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
 }
 
 describe("LoginScreen", () => {
@@ -33,22 +43,24 @@ describe("LoginScreen", () => {
   it("signs in with the tenant, username, password and authenticator code", async () => {
     login.mockResolvedValue(undefined);
     render(<LoginScreen />);
-    const user = userEvent.setup();
-    await user.type(screen.getByLabelText(/authenticator code/i), "123456");
-    await fillAndSubmit();
-    expect(login).toHaveBeenCalledWith({
-      tenantSlug: "alpha-state",
-      username: "alpha.officer",
-      password: "alpha-officer-password",
-      totpCode: "123456",
+    signIn({ totp: "123456" });
+    await waitFor(() => {
+      expect(login).toHaveBeenCalledWith({
+        tenantSlug: "alpha-state",
+        username: "alpha.officer",
+        password: "alpha-officer-password",
+        totpCode: "123456",
+      });
     });
   });
 
   it("remembers the tenant slug on this handset but never the username", async () => {
     login.mockResolvedValue(undefined);
     render(<LoginScreen />);
-    await fillAndSubmit();
-    expect(globalThis.localStorage.getItem("tpirs.field.tenant")).toBe("alpha-state");
+    signIn();
+    await waitFor(() => {
+      expect(globalThis.localStorage.getItem("tpirs.field.tenant")).toBe("alpha-state");
+    });
     const stored = Object.keys(globalThis.localStorage).map(
       (key) => globalThis.localStorage.getItem(key) ?? "",
     );
@@ -58,14 +70,23 @@ describe("LoginScreen", () => {
   it("says the details were rejected rather than blaming the network", async () => {
     login.mockRejectedValue(apiError(401));
     render(<LoginScreen />);
-    await fillAndSubmit();
+    signIn();
     expect(await screen.findByText(/check the state, username and password/i)).toBeTruthy();
   });
 
   it("reports a throttle as a throttle", async () => {
     login.mockRejectedValue(apiError(429));
     render(<LoginScreen />);
-    await fillAndSubmit();
+    signIn();
     expect(await screen.findByText(/too many attempts/i)).toBeTruthy();
+  });
+
+  it("sends no authenticator code when the field is left empty", async () => {
+    login.mockResolvedValue(undefined);
+    render(<LoginScreen />);
+    signIn();
+    await waitFor(() => {
+      expect(login).toHaveBeenCalledWith(expect.objectContaining({ totpCode: "" }));
+    });
   });
 });

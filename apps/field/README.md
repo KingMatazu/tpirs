@@ -18,12 +18,26 @@ offline; a cache miss is never reported as a debt.
 - **Theme** — `@tpirs/ui-tokens` turns the tenant's branding into CSS custom
   properties. No component branches on a tenant.
 
+- **Paid-set sync** (`src/offline/sync.ts`) — a snapshot on the first sync of the
+  day, a delta after that, following the server's cursor page by page and saving
+  it after each page so a phone that dies mid-sync resumes. The cache is cleared
+  when the business date changes: yesterday's payments say nothing about today.
+  A 429, a dead zone or the page cap stops the sync and says so; queued work is
+  never dropped.
+- **Scanning** (`src/scanner/index.ts`) — a real QR scanner: native
+  `BarcodeDetector` where the browser has it, `jsqr` loaded lazily where it does
+  not, and manual entry of the short code or plate number as a first-class tab.
+- **Result card** (`src/screens/ResultScreen.tsx`) — `paid`, `not in the offline
+list`, or `code not recognised`. Never "unpaid": the cache can confirm a
+  payment but cannot prove a negative, and the card hands the officer the SMS
+  check instead of a verdict.
+
 ## What is not built yet
 
-Scan, result card, offline paid-set sync, the outbox, disputes and the scan log.
-The plan and the acceptance checks are in
+Recording the scan on the server (online verification and the outbox), disputes,
+and the scan log. The plan and the acceptance checks are in
 `docs/phase-6-field-app-implementation.md`; the API those steps call already
-exists (`/v1/verify/:token`, `/v1/sync/paid`, `/v1/scans`, `/v1/disputes`).
+exists (`/v1/scans`, `/v1/disputes`).
 
 ## Rules this app must keep
 
