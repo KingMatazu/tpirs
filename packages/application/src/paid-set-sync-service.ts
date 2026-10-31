@@ -27,7 +27,12 @@ export interface PaidSetDelta {
   readonly mode: "snapshot" | "delta";
   readonly businessDate: string;
   readonly entries: readonly PaidSetEntry[];
-  readonly nextCursor: PaidSetCursor | null;
+  /**
+   * Opaque cursor for the last row of this page, or null when the page is empty.
+   * It is returned even when `hasMore` is false so the client can keep it and ask
+   * for a *delta* next time instead of downloading the whole day again.
+   */
+  readonly nextCursor: string | null;
   readonly hasMore: boolean;
   readonly serverTime: string;
 }
@@ -124,16 +129,18 @@ export class PaidSetSyncService {
     }
 
     const last = page[page.length - 1];
+    // Encoded here, not by the route: the wire type is a string (the client sends
+    // it back as `?since=`), and a raw object would serialize as "[object Object]"
+    // — every delta would then decode to nothing and silently become a snapshot.
     const nextCursor =
-      last === undefined ? null : { updatedAt: last.updatedAt.toISOString(), id: last.id };
+      last === undefined
+        ? null
+        : encodeCursor({ updatedAt: last.updatedAt.toISOString(), id: last.id });
     return {
       mode,
       businessDate,
       entries,
-      nextCursor:
-        hasMore && nextCursor !== null
-          ? { updatedAt: nextCursor.updatedAt, id: nextCursor.id }
-          : null,
+      nextCursor,
       hasMore,
       serverTime: now.toISOString(),
     };
