@@ -5,6 +5,7 @@ import {
   qrPayload,
   tenantId as asTenantId,
 } from "@tpirs/domain";
+import { sql } from "kysely";
 import type { AssetStatus, QrTokenSigner } from "@tpirs/domain";
 import type { AssetSchemaRegistry, ObjectStorage } from "@tpirs/ports";
 import { PortError } from "@tpirs/ports";
@@ -119,10 +120,18 @@ export function createAssetService(deps: AssetServiceDeps) {
 
     const payload = randomOpaqueId();
     const token = buildQrToken(payload, deps.qrSigner);
-    const shortCode = formatStickerCode(type.shortCodeFormat, payload);
 
     return withTenant(deps.db, input.tenantId, async (tx) => {
       const repos = repositories(tx);
+      // `{id}` is a short, typable number from a sequence, not the 32-character
+      // opaque QR payload: a driver has to quote this over USSD and SMS.
+      const sequence = await sql<{ next: string }>`
+        select nextval('asset_short_code_seq')::text as next
+      `.execute(tx);
+      const shortCode = formatStickerCode(
+        type.shortCodeFormat,
+        (sequence.rows[0]?.next ?? "").padStart(6, "0"),
+      );
       let ownerId = input.ownerId ?? null;
       if (input.owner !== undefined) {
         const created = await repos.owners.create({

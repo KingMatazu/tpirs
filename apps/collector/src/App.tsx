@@ -6,13 +6,15 @@ import { FindScreen, type FoundAsset } from "./screens/FindScreen.js";
 import { ConfirmScreen } from "./screens/ConfirmScreen.js";
 import { DoneScreen } from "./screens/DoneScreen.js";
 import { DepositScreen } from "./screens/DepositScreen.js";
+import { RegisterScreen } from "./screens/RegisterScreen.js";
 
 type Screen =
   | { readonly name: "home" }
   | { readonly name: "find" }
   | { readonly name: "confirm"; readonly asset: FoundAsset }
   | { readonly name: "done"; readonly receiptNumber: string; readonly replayed: boolean }
-  | { readonly name: "deposit" };
+  | { readonly name: "deposit" }
+  | { readonly name: "register" };
 
 /**
  * The collector flow: home → find → confirm → done, with deposit reachable from
@@ -36,7 +38,9 @@ export function App(): ReactElement {
   }
   if (status === "anonymous") return <LoginScreen />;
 
-  const goHome = (): void => { setScreen({ name: "home" }); };
+  const goHome = (): void => {
+    setScreen({ name: "home" });
+  };
 
   switch (screen.name) {
     case "home":
@@ -44,6 +48,9 @@ export function App(): ReactElement {
         <HomeScreen
           onCollect={() => {
             setScreen({ name: "find" });
+          }}
+          onRegister={() => {
+            setScreen({ name: "register" });
           }}
           onDeposit={() => {
             setScreen({ name: "deposit" });
@@ -93,5 +100,7 @@ export function App(): ReactElement {
       );
     case "deposit":
       return <DepositScreen onBack={goHome} />;
+    case "register":
+      return <RegisterScreen onBack={goHome} />;
   }
 }

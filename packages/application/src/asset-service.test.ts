@@ -147,6 +147,10 @@ describeIntegration("createAssetService (integration)", () => {
     expect(asset.status).toBe("active");
     expect(asset.ownerId).not.toBeNull();
     expect(asset.shortCode.startsWith("A")).toBe(true);
+    // A driver quotes this over USSD and SMS, so it must be short and typable:
+    // the format's {id} comes from a sequence, never the 32-character QR payload.
+    expect(asset.shortCode).toMatch(/^A\d{6}$/);
+    expect(asset.shortCode.length).toBeLessThanOrEqual(10);
     const payload = parseQrToken(asset.qrToken, signer);
     expect(payload).toBe(asset.qrPayload);
 
