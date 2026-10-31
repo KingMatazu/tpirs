@@ -5,12 +5,19 @@ import { LoginScreen } from "./screens/LoginScreen.js";
 import { ResultScreen } from "./screens/ResultScreen.js";
 import { ScanScreen } from "./screens/ScanScreen.js";
 import { resolveScanOffline } from "./lib/scan.js";
-import type { ScanOutcome } from "./lib/scan.js";
+import { recordScan } from "./lib/record.js";
+import {
+  viewFromQueueFull,
+  viewFromQueued,
+  viewFromRejected,
+  viewFromServer,
+} from "./lib/scan-result.js";
+import type { ScanView } from "./lib/scan-result.js";
 
 type Screen =
   | { readonly name: "home" }
   | { readonly name: "scan" }
-  | { readonly name: "result"; readonly outcome: ScanOutcome };
+  | { readonly name: "result"; readonly view: ScanView };
 
 /**
  * The officer app shell. No router: an officer is either signing in, scanning, or
@@ -26,10 +33,50 @@ export function App(): ReactElement {
     void useSession.getState().initialize();
   }, []);
 
-  const onScanned = useCallback(async (input: { token?: string; reference?: string }) => {
-    const outcome = await resolveScanOffline(input);
-    setScreen({ name: "result", outcome });
-  }, []);
+  const onScanned = useCallback(
+    async (input: { token?: string; reference?: string }) => {
+      // The id is generated once, here, and travels with the scan through the
+      // queue: the server deduplicates on it, so a retry cannot count twice.
+      const clientScanId = globalThis.crypto.randomUUID();
+      const scannedAt = new Date().toISOString();
+
+      const offline = await resolveScanOffline(input);
+      if (offline.kind === "unreadable") {
+        // Nothing to record: the sticker is not ours, so posting it would only
+        // produce a 404 (or queue a scan that can never succeed).
+        setScreen({ name: "result", view: viewFromQueued(offline) });
+        return;
+      }
+
+      const attempt = {
+        clientScanId,
+        scannedAt,
+        source: input.token === undefined ? ("manual" as const) : ("qr" as const),
+        ...(input.token === undefined ? {} : { token: input.token }),
+        ...(input.reference === undefined ? {} : { reference: input.reference }),
+        // What the cache said, so the ledger's answer can be compared to it.
+        observed: offline.kind,
+        ...(config === undefined ? {} : { maxQueueItems: config.field.maxQueueItems }),
+      };
+
+      const outcome = await recordScan(attempt);
+      switch (outcome.status) {
+        case "recorded":
+          setScreen({ name: "result", view: viewFromServer(outcome.result, offline.kind) });
+          return;
+        case "rejected":
+          setScreen({ name: "result", view: viewFromRejected(offline) });
+          return;
+        case "queue_full":
+          setScreen({ name: "result", view: viewFromQueueFull(offline) });
+          return;
+        case "queued":
+          setScreen({ name: "result", view: viewFromQueued(offline) });
+          return;
+      }
+    },
+    [config],
+  );
 
   if (status === "unknown") {
     return (
@@ -56,7 +103,7 @@ export function App(): ReactElement {
     case "result":
       return (
         <ResultScreen
-          outcome={screen.outcome}
+          view={screen.view}
           smsKeyword={config?.channels.smsKeyword}
           smsSenderId={config?.branding.smsSenderId}
           onScanAgain={() => {

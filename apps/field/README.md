@@ -32,12 +32,19 @@ list`, or `code not recognised`. Never "unpaid": the cache can confirm a
   payment but cannot prove a negative, and the card hands the officer the SMS
   check instead of a verdict.
 
+- **Recording** (`src/lib/record.ts`) — a scan is posted to `/v1/scans` when the
+  phone is online, and queued in the outbox when it is not. The `clientScanId` is
+  generated once, when the scan happens, so a retry cannot count the same scan
+  twice. A dead zone, a throttle or a server error queues it; a 404 does not,
+  because the sticker is not ours and retrying forever would only delay the
+  truth. A full queue (`field.maxQueueItems`) is reported, never silently
+  dropped.
+
 ## What is not built yet
 
-Recording the scan on the server (online verification and the outbox), disputes,
-and the scan log. The plan and the acceptance checks are in
-`docs/phase-6-field-app-implementation.md`; the API those steps call already
-exists (`/v1/scans`, `/v1/disputes`).
+Flushing the outbox (retry, backoff, ordering), disputes, and the scan log. The
+plan and the acceptance checks are in
+`docs/phase-6-field-app-implementation.md`; `/v1/disputes` already exists.
 
 ## Rules this app must keep
 

@@ -187,3 +187,49 @@ export async function findPaidByReference(reference: string): Promise<PaidSetRec
     );
   });
 }
+
+/**
+ * Appends a scan or dispute to the outbox.
+ *
+ * The item id is the `clientScanId`, so re-queueing the same attempt after a
+ * timeout overwrites rather than duplicates it. The cap comes from the tenant
+ * (`field.maxQueueItems`): when the phone is full, the officer is told instead of
+ * silently losing the scan.
+ */
+export async function enqueueOutbox(
+  item: {
+    readonly id: string;
+    readonly kind: "scan" | "dispute";
+    readonly payload: unknown;
+    readonly createdAt: string;
+  },
+  maxItems: number | undefined,
+): Promise<"queued" | "full"> {
+  const db = await getDb();
+  const existing = await db.get("outbox", item.id);
+  if (existing !== undefined) return "queued";
+  if (maxItems !== undefined) {
+    const count = await db.count("outbox");
+    if (count >= maxItems) return "full";
+  }
+  await db.put("outbox", {
+    id: item.id,
+    kind: item.kind,
+    payload: item.payload,
+    createdAt: item.createdAt,
+    attempts: 0,
+    nextAttemptAt: item.createdAt,
+  });
+  return "queued";
+}
+
+export async function countOutbox(): Promise<number> {
+  const db = await getDb();
+  return db.count("outbox");
+}
+
+export async function listOutbox(): Promise<OutboxItem[]> {
+  const db = await getDb();
+  const items = await db.getAll("outbox");
+  return items.sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+}

@@ -1,6 +1,6 @@
 # Field app (officer PWA) — implementation plan
 
-**Status:** in progress — steps 1–4 delivered; steps 5–10 next.
+**Status:** in progress — steps 1–6 delivered; steps 7–10 next.
 Reopens Phase 6 Step 5.
 **Supersedes:** the Step 5 section of `docs/phase-6-implementation.md` (the plan was
 written; the app was not built).
@@ -244,7 +244,7 @@ and in the manual tab.
 
 _Effort: M._
 
-### Step 5 — Result card
+### Step 5 — Result card — done
 
 - `lib/scan-result.ts` maps everything to one view model:
   `paid` (green, "Paid for {date}"), `no_payment_recorded` (neutral, "No payment recorded
@@ -265,7 +265,7 @@ unpaid, unknown short code, offline with a warm cache, offline with a cold cache
 
 _Effort: M._
 
-### Step 6 — Record the scan (online and offline)
+### Step 6 — Record the scan (online and offline) — done
 
 - Online: `POST /v1/scans` with `clientScanId` (UUID v4, generated per scan attempt),
   `source: "qr" | "manual"`, `token | reference`, `scannedAt` (ISO, device clock),

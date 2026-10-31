@@ -3,7 +3,7 @@ import { formatBusinessDate } from "@tpirs/ui-tokens";
 import { useSession } from "../session.js";
 import { copy } from "../copy.js";
 import { Banner, Card, PrimaryButton, Screen, SecondaryButton } from "../components/ui.js";
-import { countPaid, readSyncState } from "../offline/store.js";
+import { countOutbox, countPaid, readSyncState } from "../offline/store.js";
 import type { SyncState } from "../offline/store.js";
 import { isStale } from "../lib/paid-set.js";
 import { syncPaidSet } from "../offline/sync.js";
@@ -23,12 +23,14 @@ export function HomeScreen(props: Readonly<{ onScan: () => void }>): ReactElemen
 
   const [sync, setSync] = useState<SyncState | undefined>(undefined);
   const [paidCount, setPaidCount] = useState(0);
+  const [pending, setPending] = useState(0);
   const [syncing, setSyncing] = useState(false);
   const [outcome, setOutcome] = useState<SyncOutcome | undefined>(undefined);
 
   const refresh = useCallback(async (): Promise<void> => {
     setSync(await readSyncState());
     setPaidCount(await countPaid());
+    setPending(await countOutbox());
   }, []);
 
   const runSync = useCallback(async (): Promise<void> => {
@@ -95,6 +97,8 @@ export function HomeScreen(props: Readonly<{ onScan: () => void }>): ReactElemen
           <dd className="text-right font-medium text-slate-900">
             {sync?.lastSyncedAt === undefined ? copy.home.syncNever : timeOf(sync.lastSyncedAt)}
           </dd>
+          <dt className="text-slate-600">{copy.home.waitingToSync}</dt>
+          <dd className="text-right font-medium text-slate-900">{String(pending)}</dd>
         </dl>
       </Card>
 
