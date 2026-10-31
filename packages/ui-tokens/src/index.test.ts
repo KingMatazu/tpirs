@@ -129,6 +129,12 @@ featureFlags:
   prepay: false
   offlineMode: true
   anomalyAlerts: true
+field:
+  offlineGraceHours: 8
+  maxQueueItems: 1000
+  disputeReasons:
+    - code: "other"
+      label: "Other"
 reconciliation:
   schedule: "0 2 * * *"
   toleranceMinor: 100

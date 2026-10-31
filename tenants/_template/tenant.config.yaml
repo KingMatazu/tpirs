@@ -187,6 +187,23 @@ featureFlags:
   offlineMode: true
   anomalyAlerts: true
 
+field:
+  # Hours of dead-zone work before the cached paid set is announced as stale.
+  offlineGraceHours: 8
+  # Maximum queued offline scans and disputes held on one device.
+  maxQueueItems: 1000
+  # Reasons offered on the officer's dispute form. `other` is required as a
+  # fallback so an officer never has to pick a wrong reason.
+  disputeReasons:
+    - code: "wrong_location"
+      label: "Wrong location"
+    - code: "already_paid"
+      label: "Already paid"
+    - code: "technical_issue"
+      label: "Technical issue"
+    - code: "other"
+      label: "Other"
+
 # Nightly reconciliation and anomaly evaluation (Phase 8).
 #
 # enabled: whether the worker runs the nightly reconciliation. Default: true.

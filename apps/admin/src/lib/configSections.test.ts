@@ -18,6 +18,7 @@ describe("configSections", () => {
       "cash-rules",
       "payments",
       "feature-flags",
+      "field-app",
       "reconciliation",
       "compliance",
     ]);

@@ -102,6 +102,11 @@ function testConfig(
     payments: { underpaymentPolicy: "wallet" },
     featureFlags: { disputes: true, prepay: false, offlineMode: true, anomalyAlerts: true },
     reconciliation: { schedule: "0 2 * * *", toleranceMinor: 0, notifyRole: "finance_admin" },
+    field: {
+      offlineGraceHours: 8,
+      maxQueueItems: 1000,
+      disputeReasons: [{ code: "other", label: "Other" }],
+    },
     compliance: { retentionDays: 1, dataResidency: "ng", consentTextKey: "c" },
   });
 }

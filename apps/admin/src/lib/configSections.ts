@@ -245,6 +245,22 @@ export function configSections(config: TenantConfig): readonly ConfigSection[] {
       subGroups: [],
     },
     {
+      id: "field-app",
+      title: "Officer field app",
+      entries: [
+        {
+          label: "Offline grace",
+          value: `${String(config.field.offlineGraceHours)} hours`,
+        },
+        { label: "Offline queue cap", value: `${String(config.field.maxQueueItems)} items` },
+        {
+          label: "Dispute reasons",
+          value: config.field.disputeReasons.map((reason) => reason.label).join(", "),
+        },
+      ],
+      subGroups: [],
+    },
+    {
       id: "reconciliation",
       title: "Reconciliation",
       entries: [

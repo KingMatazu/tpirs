@@ -256,6 +256,18 @@ function baseConfig(overrides: {
     },
     payments: { underpaymentPolicy: overrides.underpaymentPolicy },
     featureFlags: { disputes: true, prepay: false, offlineMode: true, anomalyAlerts: true },
+    // Officer field app: eight hours of dead-zone work before the cached paid
+    // set is announced as stale, and a queue deep enough for a full shift.
+    field: {
+      offlineGraceHours: 8,
+      maxQueueItems: 1000,
+      disputeReasons: [
+        { code: "wrong_location", label: "Wrong location" },
+        { code: "already_paid", label: "Already paid" },
+        { code: "technical_issue", label: "Technical issue" },
+        { code: "other", label: "Other" },
+      ],
+    },
     reconciliation: {
       enabled: true,
       schedule: "0 2 * * *",

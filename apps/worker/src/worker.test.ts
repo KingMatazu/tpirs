@@ -147,6 +147,11 @@ async function tenantWithReconciliationConfig(
       notifyRole: "finance_admin",
       anomalyRules: [],
     },
+    field: {
+      offlineGraceHours: 8,
+      maxQueueItems: 1000,
+      disputeReasons: [{ code: "other", label: "Other" }],
+    },
     compliance: { retentionDays: 1, dataResidency: "x", consentTextKey: "c" },
   });
   const tenant = await withSystem(db, async (tx) =>

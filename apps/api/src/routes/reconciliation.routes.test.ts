@@ -126,6 +126,11 @@ function validConfig(slug: string): TenantConfig {
         decimalSeparator: ".",
       },
     },
+    field: {
+      offlineGraceHours: 8,
+      maxQueueItems: 1000,
+      disputeReasons: [{ code: "other", label: "Other" }],
+    },
     compliance: { retentionDays: 1, dataResidency: "x", consentTextKey: "c" },
   });
 }

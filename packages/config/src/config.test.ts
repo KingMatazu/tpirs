@@ -150,6 +150,14 @@ featureFlags:
   prepay: false
   offlineMode: true
   anomalyAlerts: true
+field:
+  offlineGraceHours: 8
+  maxQueueItems: 1000
+  disputeReasons:
+    - code: "already_paid"
+      label: "Already paid"
+    - code: "other"
+      label: "Other"
 reconciliation:
   enabled: true
   schedule: "0 2 * * *"
@@ -285,6 +293,14 @@ describe("validateTenantConfig", () => {
             offlineMode: true,
             anomalyAlerts: true,
           },
+          field: {
+            offlineGraceHours: 8,
+            maxQueueItems: 1000,
+            disputeReasons: [
+              { code: "already_paid", label: "Already paid" },
+              { code: "other", label: "Other" },
+            ],
+          },
           reconciliation: { schedule: "0 2 * * *", toleranceMinor: 0, notifyRole: "finance_admin" },
           compliance: { retentionDays: 1, dataResidency: "x", consentTextKey: "c" },
         }),
@@ -300,6 +316,60 @@ describe("validateTenantConfig", () => {
     });
     expect(run).toThrow(TenantConfigValidationError);
     expect(run).toThrow(/currency/);
+  });
+
+  it("requires the officer field settings", () => {
+    const run = configWith((raw) => {
+      delete raw.field;
+    });
+    expect(run).toThrow(TenantConfigValidationError);
+    expect(run).toThrow(/field must be an object/);
+  });
+
+  it("rejects a field section without an other dispute reason", () => {
+    const run = configWith((raw) => {
+      (raw.field as Record<string, unknown>).disputeReasons = [
+        { code: "already_paid", label: "Already paid" },
+      ];
+    });
+    expect(run).toThrow(/must include an "other" reason/);
+  });
+
+  it("rejects duplicate dispute reason codes", () => {
+    const run = configWith((raw) => {
+      (raw.field as Record<string, unknown>).disputeReasons = [
+        { code: "other", label: "Other" },
+        { code: "other", label: "Other again" },
+      ];
+    });
+    expect(run).toThrow(/repeats "other"/);
+  });
+
+  it("rejects a dispute reason code that is not lower snake case", () => {
+    const run = configWith((raw) => {
+      (raw.field as Record<string, unknown>).disputeReasons = [
+        { code: "Other Reason", label: "Other" },
+      ];
+    });
+    expect(run).toThrow(/lower snake case/);
+  });
+
+  it("rejects a zero queue cap and a zero grace window", () => {
+    const run = configWith((raw) => {
+      (raw.field as Record<string, unknown>).maxQueueItems = 0;
+      (raw.field as Record<string, unknown>).offlineGraceHours = 0;
+    });
+    expect(run).toThrow(/maxQueueItems must be >= 1/);
+    expect(run).toThrow(/offlineGraceHours must be >= 1/);
+  });
+
+  it("keeps the field settings on the validated config", () => {
+    const config = configWith()();
+    expect(config.field.offlineGraceHours).toBe(8);
+    expect(config.field.disputeReasons.map((reason) => reason.code)).toEqual([
+      "already_paid",
+      "other",
+    ]);
   });
 
   it("rejects pay_per_use with accruing arrears", () => {

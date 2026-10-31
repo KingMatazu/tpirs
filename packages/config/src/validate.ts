@@ -18,8 +18,10 @@ import type {
   TenantChannels,
   TenantCompliance,
   TenantConfig,
+  TenantDisputeReason,
   TenantFeatureFlags,
   TenantFeeRule,
+  TenantFieldSettings,
   TenantIdentity,
   TenantLocale,
   TenantMenu,
@@ -981,6 +983,77 @@ function validateFeatureFlags(v: Validator, value: unknown): TenantFeatureFlags 
   return { disputes, prepay, offlineMode, anomalyAlerts };
 }
 
+/** Stored as `disputes.reason`, so the shape is fixed rather than free text. */
+const DISPUTE_REASON_CODE = /^[a-z][a-z0-9_]{1,31}$/;
+
+function validateDisputeReason(v: Validator, value: unknown): TenantDisputeReason | undefined {
+  const obj = v.object(value, "reason");
+  if (obj === undefined) return undefined;
+  const code = v.string(obj.code, "code");
+  const label = v.string(obj.label, "label");
+  if (code !== undefined && !DISPUTE_REASON_CODE.test(code)) {
+    v.issue("schema_error", `field.disputeReasons code "${code}" must be lower snake case`, "code");
+    return undefined;
+  }
+  if (code === undefined || label === undefined) return undefined;
+  return { code, label };
+}
+
+/**
+ * Officer field-app settings. The `other` reason is required because the app
+ * must never force an officer to pick a wrong reason to record what they saw.
+ */
+function validateField(v: Validator, value: unknown): TenantFieldSettings | undefined {
+  const obj = v.object(value, "field");
+  if (obj === undefined) return undefined;
+  // Scoped after the object check so an issue reads `field.offlineGraceHours`
+  // rather than `field.field.offlineGraceHours`.
+  const f = v.child("field");
+  const offlineGraceHours = f.integer(obj.offlineGraceHours, "offlineGraceHours", {
+    min: 1,
+    max: 168,
+  });
+  const maxQueueItems = f.integer(obj.maxQueueItems, "maxQueueItems", { min: 1, max: 100_000 });
+
+  const disputeReasons: TenantDisputeReason[] = [];
+  const seen = new Set<string>();
+  const items = f.array(obj.disputeReasons, "disputeReasons");
+  items?.forEach((item, index) => {
+    const reason = validateDisputeReason(f.child("disputeReasons"), item);
+    if (reason === undefined) return;
+    if (seen.has(reason.code)) {
+      f.issue(
+        "duplicate_key",
+        `field.disputeReasons repeats "${reason.code}"; a reason may appear once`,
+        `disputeReasons.${index}.code`,
+      );
+      return;
+    }
+    seen.add(reason.code);
+    disputeReasons.push(reason);
+  });
+  if (items !== undefined) {
+    if (items.length === 0) {
+      f.issue(
+        "schema_error",
+        "field.disputeReasons must offer at least one reason",
+        "disputeReasons",
+      );
+    } else if (!seen.has("other")) {
+      f.issue(
+        "schema_error",
+        'field.disputeReasons must include an "other" reason as a fallback',
+        "disputeReasons",
+      );
+    }
+  }
+
+  if (offlineGraceHours === undefined || maxQueueItems === undefined || items === undefined) {
+    return undefined;
+  }
+  return { offlineGraceHours, maxQueueItems, disputeReasons };
+}
+
 /**
  * One anomaly rule. The threshold a rule needs depends on what it measures, so
  * the error names the rule rather than a generic "invalid threshold".
@@ -1249,6 +1322,7 @@ export function validateTenantConfig(input: unknown): TenantConfig {
       ? { underpaymentPolicy: DEFAULT_UNDERPAYMENT_POLICY }
       : validatePayments(root.child("payments"), rootObj.payments);
   const featureFlags = validateFeatureFlags(root.child("featureFlags"), rootObj.featureFlags);
+  const field = validateField(root, rootObj.field);
   const reconciliation = validateReconciliation(
     root.child("reconciliation"),
     rootObj.reconciliation,
@@ -1299,6 +1373,7 @@ export function validateTenantConfig(input: unknown): TenantConfig {
     cashRules === undefined ||
     payments === undefined ||
     featureFlags === undefined ||
+    field === undefined ||
     reconciliation === undefined ||
     compliance === undefined
   ) {
@@ -1317,6 +1392,7 @@ export function validateTenantConfig(input: unknown): TenantConfig {
     cashRules,
     payments,
     featureFlags,
+    field,
     reconciliation,
     compliance,
   };

@@ -284,6 +284,27 @@ export interface TenantCompliance {
   readonly consentTextKey: string;
 }
 
+/** One reason the officer app offers when raising a dispute; `code` is stored. */
+export interface TenantDisputeReason {
+  readonly code: string;
+  readonly label: string;
+}
+
+/**
+ * Officer field-app settings. These are policy rather than code: the queue cap
+ * protects a shared handset's storage when an officer works a dead zone for
+ * hours, and the grace window decides when the cached paid set is announced as
+ * stale instead of trusted.
+ */
+export interface TenantFieldSettings {
+  /** Hours after the last successful sync before the paid set is called stale. */
+  readonly offlineGraceHours: number;
+  /** Maximum queued offline scans and disputes held on one device. */
+  readonly maxQueueItems: number;
+  /** Reasons offered on the dispute form; must include an `other` fallback. */
+  readonly disputeReasons: readonly TenantDisputeReason[];
+}
+
 export interface TenantConfig {
   readonly identity: TenantIdentity;
   readonly locale: TenantLocale;
@@ -295,6 +316,7 @@ export interface TenantConfig {
   readonly cashRules: TenantCashRules;
   readonly payments: TenantPayments;
   readonly featureFlags: TenantFeatureFlags;
+  readonly field: TenantFieldSettings;
   readonly reconciliation: TenantReconciliation;
   readonly compliance: TenantCompliance;
 }
