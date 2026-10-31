@@ -18,6 +18,8 @@ export interface ScanView {
   readonly verdict: Verdict;
   readonly recorded: RecordedState;
   readonly shortCode?: string;
+  /** What the officer typed, kept so a dispute can name the vehicle even on a miss. */
+  readonly reference?: string;
   readonly attributes?: Record<string, unknown>;
   readonly businessDate?: string;
   /** The ledger disagrees with what the cache showed before the upload. */
@@ -55,12 +57,13 @@ export function viewFromServer(result: ServerScanResult, observed: Verdict): Sca
 }
 
 /** The scan is queued; the card shows the offline answer and says it will sync. */
-export function viewFromQueued(outcome: ScanOutcome): ScanView {
+export function viewFromQueued(outcome: ScanOutcome, reference?: string): ScanView {
   return {
     verdict: outcome.kind,
     recorded: outcome.kind === "unreadable" ? "none" : "queued",
     corrected: false,
     ...(outcome.shortCode === undefined ? {} : { shortCode: outcome.shortCode }),
+    ...(reference === undefined ? {} : { reference }),
     ...(outcome.attributes === undefined ? {} : { attributes: outcome.attributes }),
     ...(outcome.businessDate === undefined ? {} : { businessDate: outcome.businessDate }),
   };
@@ -71,22 +74,24 @@ export function viewFromQueued(outcome: ScanOutcome): ScanView {
  * this sticker), so nothing is queued and the officer is told to check the
  * sticker rather than wait for a sync that would never succeed.
  */
-export function viewFromRejected(outcome: ScanOutcome): ScanView {
+export function viewFromRejected(outcome: ScanOutcome, reference?: string): ScanView {
   return {
     verdict: "unreadable",
     recorded: "none",
     corrected: false,
+    ...(reference === undefined ? {} : { reference }),
     ...(outcome.businessDate === undefined ? {} : { businessDate: outcome.businessDate }),
   };
 }
 
 /** A queued scan that could not be stored: the phone's queue is full. */
-export function viewFromQueueFull(outcome: ScanOutcome): ScanView {
+export function viewFromQueueFull(outcome: ScanOutcome, reference?: string): ScanView {
   return {
     verdict: outcome.kind,
     recorded: "none",
     corrected: false,
     ...(outcome.shortCode === undefined ? {} : { shortCode: outcome.shortCode }),
+    ...(reference === undefined ? {} : { reference }),
     ...(outcome.attributes === undefined ? {} : { attributes: outcome.attributes }),
     ...(outcome.businessDate === undefined ? {} : { businessDate: outcome.businessDate }),
   };

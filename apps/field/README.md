@@ -48,10 +48,18 @@ list`, or `code not recognised`. Never "unpaid": the cache can confirm a
   exponential with jitter, capped at 30 minutes, so a fleet that lost signal
   together does not come back together.
 
+- **Disputes** (`src/screens/DisputeScreen.tsx`, `src/lib/dispute.ts`) — raised
+  from a result: the reasons are the tenant's (`field.disputeReasons`), the note
+  is the officer's, the photo is optional and downscaled before it leaves the
+  phone (1024 px, then 800 px, and dropped with a warning rather than blocking the
+  dispute if it still will not fit). Same id discipline as a scan: generated once,
+  queued offline, never doubled by a retry, and a refusal is reported instead of
+  claimed as success. The button only exists when `featureFlags.disputes` is on.
+
 ## What is not built yet
 
-Disputes and the scan log. The plan and the acceptance checks are in
-`docs/phase-6-field-app-implementation.md`; `/v1/disputes` already exists.
+The scan log (pending / synced / failed in one list). The plan and acceptance
+checks are in `docs/phase-6-field-app-implementation.md`.
 
 ## Rules this app must keep
 

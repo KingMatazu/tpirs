@@ -1,6 +1,6 @@
 import type { ReactElement } from "react";
 import { copy } from "../copy.js";
-import { Banner, Card, PrimaryButton, Screen } from "../components/ui.js";
+import { Banner, Card, PrimaryButton, Screen, SecondaryButton } from "../components/ui.js";
 import type { ScanView, Verdict } from "../lib/scan-result.js";
 
 /**
@@ -19,6 +19,8 @@ export function ResultScreen(
     smsSenderId: string | undefined;
     onScanAgain: () => void;
     onBack: () => void;
+    /** Absent when the tenant has disputes switched off, or there is no vehicle. */
+    onDispute?: (() => void) | undefined;
   }>,
 ): ReactElement {
   const { view } = props;
@@ -72,6 +74,10 @@ export function ResultScreen(
       {view.verdict === "unreadable" ? (
         <Banner tone="warning">{copy.result.unreadableHint}</Banner>
       ) : null}
+
+      {props.onDispute === undefined ? null : (
+        <SecondaryButton onClick={props.onDispute}>{copy.result.dispute}</SecondaryButton>
+      )}
     </Screen>
   );
 }

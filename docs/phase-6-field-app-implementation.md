@@ -1,6 +1,6 @@
 # Field app (officer PWA) — implementation plan
 
-**Status:** in progress — steps 1–7 delivered; steps 8–10 next.
+**Status:** in progress — steps 1–8 delivered; steps 9–10 next.
 Reopens Phase 6 Step 5.
 **Supersedes:** the Step 5 section of `docs/phase-6-implementation.md` (the plan was
 written; the app was not built).
@@ -302,7 +302,7 @@ none are lost.
 
 _Effort: M._
 
-### Step 8 — Disputes
+### Step 8 — Disputes — done
 
 - From the result card: reason (from `field.disputeReasons`), note, optional photo
   (downscaled to ≤ 1024 px JPEG), location, `occurredAt`.
