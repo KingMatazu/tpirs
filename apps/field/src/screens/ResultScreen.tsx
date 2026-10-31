@@ -123,7 +123,7 @@ function describe(verdict: Verdict): {
       return {
         heading: copy.result.paidHeading,
         detail: copy.result.paidDetail,
-        background: "bg-emerald-600",
+        background: "bg-emerald-700",
         text: "text-white",
       };
     case "no_payment_recorded":

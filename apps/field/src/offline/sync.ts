@@ -5,6 +5,7 @@ import {
   applyPaidSetEntries,
   clearPaidSetForRollover,
   countPaid,
+  pruneScanLog,
   readSyncState,
   saveSyncState,
 } from "./store.js";
@@ -108,6 +109,9 @@ export async function syncPaidSet(
       (delta.mode === "snapshot" || isRollover(businessDate, delta.businessDate))
     ) {
       await clearPaidSetForRollover();
+      // The scan log is a day's work, not an archive: yesterday's scans are on the
+      // server by now, and keeping them on the phone is data we do not need.
+      await pruneScanLog(delta.businessDate);
       since = undefined;
     }
 

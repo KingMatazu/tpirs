@@ -1,13 +1,13 @@
 import { api } from "../api/client.js";
 import { FLUSH_BUDGET, afterFailure, afterRejection, planFlush } from "../lib/outbox.js";
 import type { OutboxItem } from "./store.js";
-import { listOutbox, removeOutbox, updateOutboxItem } from "./store.js";
+import { listOutbox, removeOutbox, updateOutboxItem, updateScanLog } from "./store.js";
 
 /** Why a flush stopped before the queue was empty. */
 export type FlushStopReason = "offline" | "rate_limited" | "auth" | "error";
 
 export type PostResult =
-  | { readonly status: "ok" }
+  | { readonly status: "ok"; readonly body?: unknown }
   /** The server refused it for good (404, 422): retrying cannot help. */
   | { readonly status: "rejected"; readonly reason: string }
   /** Worth another attempt: a dead zone, a 5xx, a throttle. */
@@ -77,10 +77,14 @@ export async function flushOutbox(deps: FlushDeps = {}): Promise<FlushOutcome> {
     switch (result.status) {
       case "ok":
         await removeOutbox(item.id);
+        await markSynced(item, result.body, now);
         sent += 1;
         continue;
       case "rejected":
         await updateOutboxItem(afterRejection(item, result.reason));
+        if (item.kind === "scan") {
+          await updateScanLog(item.id, { recorded: "failed", updatedAt: now().toISOString() });
+        }
         rejected += 1;
         continue;
       case "auth":
@@ -113,6 +117,24 @@ export async function flushOutbox(deps: FlushDeps = {}): Promise<FlushOutcome> {
 }
 
 /**
+ * The log entry follows the ledger: a scan that uploaded is `server`, and its
+ * verdict becomes the authoritative one. That is where a correction finally
+ * lands — the card told the officer at the time, and the log keeps it.
+ */
+async function markSynced(item: OutboxItem, body: unknown, now: () => Date): Promise<void> {
+  if (item.kind !== "scan") return;
+  const result = body as
+    { authoritativeStatus?: string; businessDate?: string; shortCode?: string } | undefined;
+  await updateScanLog(item.id, {
+    recorded: "server",
+    ...(result?.authoritativeStatus === undefined ? {} : { verdict: result.authoritativeStatus }),
+    ...(result?.businessDate === undefined ? {} : { businessDate: result.businessDate }),
+    ...(result?.shortCode === undefined ? {} : { shortCode: result.shortCode }),
+    updatedAt: now().toISOString(),
+  });
+}
+
+/**
  * The real transport. The endpoint depends on what is being uploaded, and the
  * status codes are read as *policy* rather than as errors: a 404 is final, a 429
  * is a delay, a 401 is a session that needs renewing.
@@ -138,7 +160,9 @@ async function postOutboxItem(item: OutboxItem): Promise<PostResult> {
       return { status: "rejected", reason: `http_${String(status)}` };
     }
     if (!response.response.ok) return { status: "retry" };
-    return { status: "ok" };
+    // The body carries the ledger's answer, which is what the scan log shows and
+    // what can contradict the cached verdict.
+    return { status: "ok", body: response.data };
   } catch {
     // A rejected fetch is a dead zone: every further attempt is another radio
     // wake-up for nothing.

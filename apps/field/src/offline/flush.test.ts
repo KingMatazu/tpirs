@@ -2,7 +2,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import "fake-indexeddb/auto";
 import { flushOutbox } from "./flush.js";
 import type { PostResult } from "./flush.js";
-import { enqueueOutbox, getDb, listFailedOutbox, listOutbox } from "./store.js";
+import {
+  appendScanLog,
+  enqueueOutbox,
+  getDb,
+  listFailedOutbox,
+  listOutbox,
+  listScanLog,
+} from "./store.js";
 
 const NOW = new Date("2026-06-15T09:00:00.000Z");
 
@@ -148,5 +155,76 @@ describe("flushOutbox", () => {
     const outcome = await flushOutbox({ now: () => NOW, post });
     expect(post).not.toHaveBeenCalled();
     expect(outcome.remaining).toBe(0);
+  });
+});
+
+describe("flushOutbox and the scan log", () => {
+  beforeEach(async () => {
+    await reset();
+    const db = await getDb();
+    await db.clear("scanLog");
+  });
+
+  it("marks a scan synced and takes the ledger's verdict", async () => {
+    await queue("scan-1", "2026-06-15T08:00:00.000Z");
+    await appendScanLog({
+      id: "scan-1",
+      scannedAt: "2026-06-15T08:00:00.000Z",
+      verdict: "not_in_offline_list",
+      recorded: "queued",
+      updatedAt: "2026-06-15T08:00:00.000Z",
+    });
+
+    await flushOutbox({
+      now: () => NOW,
+      post: () =>
+        Promise.resolve({
+          status: "ok",
+          body: { authoritativeStatus: "paid", shortCode: "A000001", businessDate: "2026-06-15" },
+        }),
+    });
+
+    const [row] = await listScanLog();
+    expect(row?.recorded).toBe("server");
+    expect(row?.verdict).toBe("paid");
+    expect(row?.shortCode).toBe("A000001");
+  });
+
+  it("marks a refused scan as not sent so the officer can find it", async () => {
+    await queue("scan-1", "2026-06-15T08:00:00.000Z");
+    await appendScanLog({
+      id: "scan-1",
+      scannedAt: "2026-06-15T08:00:00.000Z",
+      verdict: "paid",
+      recorded: "queued",
+      updatedAt: "2026-06-15T08:00:00.000Z",
+    });
+
+    await flushOutbox({
+      now: () => NOW,
+      post: () => Promise.resolve({ status: "rejected", reason: "http_404" }),
+    });
+
+    const [row] = await listScanLog();
+    expect(row?.recorded).toBe("failed");
+  });
+
+  it("leaves a scan marked as waiting while it is still retrying", async () => {
+    await queue("scan-1", "2026-06-15T08:00:00.000Z");
+    await appendScanLog({
+      id: "scan-1",
+      scannedAt: "2026-06-15T08:00:00.000Z",
+      verdict: "paid",
+      recorded: "queued",
+      updatedAt: "2026-06-15T08:00:00.000Z",
+    });
+
+    await flushOutbox({
+      now: () => NOW,
+      post: () => Promise.resolve({ status: "retry", offline: true }),
+    });
+
+    const [row] = await listScanLog();
+    expect(row?.recorded).toBe("queued");
   });
 });

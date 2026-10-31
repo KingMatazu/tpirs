@@ -1,75 +1,67 @@
 # @tpirs/field
 
-Officer PWA: scan a sticker, see today's payment status, raise a dispute. Works
-offline; a cache miss is never reported as a debt.
+Officer PWA: scan a sticker, see today's payment status, raise a dispute, and
+work a dead zone without ever accusing a driver of something the phone cannot
+know.
 
-## What is built
+## What it does
 
-- **Sign-in** (`src/screens/LoginScreen.tsx`, `src/session.ts`) — tenant slug,
-  username, password and an optional authenticator code. The bearer lives in
-  memory only and the refresh cookie is httpOnly; nothing about the session is
-  persisted, because handsets are shared. Login registers the device
-  (`deviceId` + platform), which the server records as a binding.
-- **Tenant config** (`src/lib/tenant.ts`) — fetched from
-  `GET /v1/tenants/current/config` after sign-in and cached in `localStorage`,
-  because the app has to draw its branding and dispute reasons on first paint
-  while offline. A cache that no longer validates is dropped rather than crashing
-  the app at launch.
-- **Theme** — `@tpirs/ui-tokens` turns the tenant's branding into CSS custom
-  properties. No component branches on a tenant.
-
-- **Paid-set sync** (`src/offline/sync.ts`) — a snapshot on the first sync of the
-  day, a delta after that, following the server's cursor page by page and saving
-  it after each page so a phone that dies mid-sync resumes. The cache is cleared
-  when the business date changes: yesterday's payments say nothing about today.
-  A 429, a dead zone or the page cap stops the sync and says so; queued work is
-  never dropped.
-- **Scanning** (`src/scanner/index.ts`) — a real QR scanner: native
+- **Sign-in** (`screens/LoginScreen.tsx`, `session.ts`) — tenant slug, username,
+  password and an optional authenticator code. The bearer lives in memory and the
+  refresh cookie is httpOnly; nothing about the session is persisted, because
+  handsets are shared. Login registers the device (`deviceId` + platform), which
+  the server records as a binding.
+- **Tenant config** (`lib/tenant.ts`) — fetched from
+  `GET /v1/tenants/current/config` after sign-in and cached in `localStorage`, so
+  branding, the SMS fallback and the dispute reasons render on first paint while
+  offline. A cache that no longer validates is dropped rather than crashing the
+  app at launch.
+- **Paid-set sync** (`offline/sync.ts`) — a snapshot on the first sync of the day,
+  a delta afterwards, following the server's cursor page by page and saving it
+  after each page so a phone that dies mid-sync resumes. The cache is cleared when
+  the business date changes: yesterday's payments say nothing about today.
+- **Scanning** (`scanner/index.ts`) — a real QR scanner: native
   `BarcodeDetector` where the browser has it, `jsqr` loaded lazily where it does
-  not, and manual entry of the short code or plate number as a first-class tab.
-- **Result card** (`src/screens/ResultScreen.tsx`) — `paid`, `not in the offline
-list`, or `code not recognised`. Never "unpaid": the cache can confirm a
-  payment but cannot prove a negative, and the card hands the officer the SMS
-  check instead of a verdict.
-
-- **Recording** (`src/lib/record.ts`) — a scan is posted to `/v1/scans` when the
-  phone is online, and queued in the outbox when it is not. The `clientScanId` is
-  generated once, when the scan happens, so a retry cannot count the same scan
-  twice. A dead zone, a throttle or a server error queues it; a 404 does not,
-  because the sticker is not ours and retrying forever would only delay the
-  truth. A full queue (`field.maxQueueItems`) is reported, never silently
-  dropped.
-
-- **Outbox flush** (`src/offline/flush.ts`) — drains the queue oldest first, on
+  not, and manual entry of the short code or plate as a first-class tab.
+- **Result card** (`screens/ResultScreen.tsx`) — paid, no payment recorded, not in
+  the offline list, could not confirm, or code not recognised. Never "unpaid": the
+  cache can confirm a payment but cannot prove a negative, so the card offers the
+  SMS check instead of a verdict.
+- **Recording** (`lib/record.ts`) — posted to `/v1/scans` when online, queued when
+  not. The `clientScanId` is generated once, when the scan happens, so a retry
+  cannot count the same scan twice.
+- **Outbox flush** (`offline/flush.ts`) — drains the queue oldest first, on
   sign-in, when the radio returns, on a 30 s timer and on demand. At most 25 items
   per pass; a 429 stops the pass and its `Retry-After` is honoured; a dead zone
-  ends it rather than retrying every item; a refused scan (404/422) is kept,
-  marked failed and never retried; a 401 renews the session once. Backoff is
-  exponential with jitter, capped at 30 minutes, so a fleet that lost signal
-  together does not come back together.
-
-- **Disputes** (`src/screens/DisputeScreen.tsx`, `src/lib/dispute.ts`) — raised
-  from a result: the reasons are the tenant's (`field.disputeReasons`), the note
-  is the officer's, the photo is optional and downscaled before it leaves the
-  phone (1024 px, then 800 px, and dropped with a warning rather than blocking the
-  dispute if it still will not fit). Same id discipline as a scan: generated once,
-  queued offline, never doubled by a retry, and a refusal is reported instead of
-  claimed as success. The button only exists when `featureFlags.disputes` is on.
-
-## What is not built yet
-
-The scan log (pending / synced / failed in one list). The plan and acceptance
-checks are in `docs/phase-6-field-app-implementation.md`.
+  ends it; a refused scan is kept, marked failed and never retried; a 401 renews
+  the session once.
+- **Disputes** (`screens/DisputeScreen.tsx`, `lib/dispute.ts`) — reasons from the
+  tenant config, a note, an optional photo downscaled before it leaves the phone,
+  queued offline with the same id discipline as a scan.
+- **Scan log** (`screens/ScanLogScreen.tsx`) — the shift's scans with sent /
+  waiting / not-sent, and what the cache said next to what the ledger said.
+- **Settings** (`screens/SettingsScreen.tsx`) — cache age, list size, queue depth,
+  and a sync button, so a support call starts with numbers.
 
 ## Rules this app must keep
 
 - Never render `UNPAID`. Offline answers are `paid` or `not_in_offline_list`
-  (`resolveOfflineScan` in `@tpirs/domain`).
+  (`resolveOfflineScan` in `@tpirs/domain`), and `copy.test.ts` fails if any
+  officer-facing string uses the vocabulary of accusation.
 - Cash is never recorded here; the collector app owns it.
 - No API response is cached by the service worker — the paid set lives in
   IndexedDB so it can be cleared on business-date rollover.
+- A queued scan is never dropped: it is uploaded, refused in a way a person can
+  see, or still waiting.
+
+## Icons
+
+`public/*.png` are generated, not designed: `node scripts/generate-icons.mjs`
+writes them from a described shape (a lens: ring plus dot) using nothing but
+`node:zlib`. Re-run it after changing the mark; the output is committed so a build
+never depends on the script.
 
 ## Commands
 
-`pnpm dev` (port 5174, from the repo root `pnpm dev` starts all apps),
+`pnpm dev` (port 5174, or `pnpm dev` from the repo root for everything),
 `pnpm test`, `pnpm typecheck`, `pnpm build`.

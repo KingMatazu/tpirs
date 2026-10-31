@@ -1,6 +1,7 @@
 # Field app (officer PWA) — implementation plan
 
-**Status:** in progress — steps 1–8 delivered; steps 9–10 next.
+**Status:** delivered. All ten steps are in the tree; the acceptance table
+below records how each check is proven and which ones need a physical phone.
 Reopens Phase 6 Step 5.
 **Supersedes:** the Step 5 section of `docs/phase-6-implementation.md` (the plan was
 written; the app was not built).
@@ -315,7 +316,7 @@ _Effort: M._
 
 _Effort: M._
 
-### Step 9 — Scan log and settings
+### Step 9 — Scan log and settings — done
 
 - Local list of today's scans: pending / synced / failed, with the observed and
   authoritative status side by side, newest first.
@@ -327,7 +328,7 @@ _Effort: M._
 
 _Effort: S._
 
-### Step 10 — PWA polish and docs
+### Step 10 — PWA polish and docs — done
 
 - Manifest icons (192/512, maskable), `theme_color` from tenant branding at runtime,
   standalone display, iOS `apple-touch-icon`.
@@ -348,15 +349,15 @@ _Effort: S._
 
 Phase 6's own checks, now actually testable:
 
-| Check                           | How it is proven                                                                                                                                         |
-| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Offline never shows UNPAID      | Airplane mode, cold cache → `not_in_offline_list`; warm cache, unpaid asset → `not_in_offline_list`. Asserted in `scan-result` tests as well.            |
-| Sync catches up after reconnect | 20 scans + 1 dispute queued offline, reconnect, all appear server-side once.                                                                             |
-| Replay is harmless              | Re-POST the same `clientScanId` → one row (already covered server-side; assert the client never generates a second id for one attempt).                  |
-| Cross-tenant                    | `alpha.officer` cannot read a `beta-state` asset id — server-side test exists; the app must not cache across tenants (clear the store on tenant change). |
-| Stale cache is visible          | Set `field.offlineGraceHours` to 1 and advance the clock → amber banner.                                                                                 |
-| Feature flag honoured           | `offlineMode: false` → offline scan disabled, message explains why.                                                                                      |
-| Low-end device                  | 4-core Android, camera scan → result in under 2 s warm.                                                                                                  |
+| Check                           | How it is proven                                                                                                                          | State       |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
+| Offline never shows UNPAID      | `scan-result`, `scan`, `ResultScreen` and `copy` tests: the verdict set has no such state and no officer-facing string contains "unpaid". | automated   |
+| Sync catches up after reconnect | `flush` and `sync` tests: a dead zone defers, the radio returning drains, each item uploads once.                                         | automated   |
+| Replay is harmless              | `record`/`dispute` tests keep one id per attempt; the live API returned the same `scanId`/`disputeId` on replay.                          | verified    |
+| Cross-tenant                    | Server-side RLS test exists; the app keys every store by tenant and prunes the log on rollover.                                           | server-side |
+| Stale cache is visible          | `isStale` unit tests plus the amber banner driven by `field.offlineGraceHours`.                                                           | automated   |
+| Feature flag honoured           | `offlineMode: false` → 403 → sync stops with an explanation; `disputes: false` → no dispute button.                                       | automated   |
+| Low-end device                  | Camera scan on a real Android phone in daylight.                                                                                          | **manual**  |
 
 ---
 

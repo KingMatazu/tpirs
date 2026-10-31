@@ -28,7 +28,9 @@ const FLUSH_INTERVAL_MS = 30_000;
  * day-old list is being lied to by their own phone, and an officer whose scans
  * never leave the device is being lied to about their shift.
  */
-export function HomeScreen(props: Readonly<{ onScan: () => void }>): ReactElement {
+export function HomeScreen(
+  props: Readonly<{ onScan: () => void; onLog: () => void; onSettings: () => void }>,
+): ReactElement {
   const user = useSession((state) => state.user);
   const config = useSession((state) => state.config);
 
@@ -94,18 +96,7 @@ export function HomeScreen(props: Readonly<{ onScan: () => void }>): ReactElemen
       : formatBusinessDate(new Date(), config.locale.numberFormat, "yyyy-MM-dd");
 
   return (
-    <Screen
-      title={config?.branding.appName ?? copy.app.title}
-      footer={
-        <SecondaryButton
-          onClick={() => {
-            void useSession.getState().logout();
-          }}
-        >
-          {copy.app.signOut}
-        </SecondaryButton>
-      }
-    >
+    <Screen title={config?.branding.appName ?? copy.app.title}>
       {stale ? (
         <Banner tone="warning">
           {sync?.lastSyncedAt === undefined
@@ -158,6 +149,14 @@ export function HomeScreen(props: Readonly<{ onScan: () => void }>): ReactElemen
       >
         {busy ? copy.home.syncing : copy.home.sync}
       </SecondaryButton>
+
+      <SecondaryButton onClick={props.onLog}>
+        {pending > 0
+          ? `${copy.home.scanLog} · ${String(pending)} ${copy.home.waiting}`
+          : copy.home.scanLog}
+      </SecondaryButton>
+
+      <SecondaryButton onClick={props.onSettings}>{copy.home.settings}</SecondaryButton>
     </Screen>
   );
 }

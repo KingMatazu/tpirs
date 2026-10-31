@@ -41,6 +41,27 @@ export interface SyncState {
   lastSyncedAt?: string;
 }
 
+/**
+ * One scan the officer took, as this phone remembers it.
+ *
+ * The outbox only holds work that has not uploaded; the log holds everything the
+ * officer did today, including what the server confirmed, so the scan list can
+ * show pending, synced and failed side by side. `observed` is what the cache said
+ * before the upload and `verdict` is what the ledger said after — keeping both is
+ * how a correction stays visible instead of silently overwriting the past.
+ */
+export interface ScanLogEntry {
+  id: string;
+  scannedAt: string;
+  businessDate?: string;
+  shortCode?: string;
+  reference?: string;
+  observed?: string;
+  verdict: string;
+  recorded: "server" | "queued" | "failed";
+  updatedAt: string;
+}
+
 export interface FieldSession {
   id: string;
   lastLoginAt?: string;
@@ -70,6 +91,10 @@ interface FieldDB extends DBSchema {
     key: string;
     value: FieldSession;
   };
+  scanLog: {
+    key: string;
+    value: ScanLogEntry;
+  };
 }
 
 const SYNC_STATE_ID = "paid";
@@ -77,14 +102,21 @@ const SYNC_STATE_ID = "paid";
 let dbPromise: Promise<IDBPDatabase<FieldDB>> | undefined;
 
 export function getDb() {
-  dbPromise ??= openDB<FieldDB>("tpirs-field", 1, {
-    upgrade(db) {
-      const paidSet = db.createObjectStore("paidSet", { keyPath: "qrPayload" });
-      paidSet.createIndex("shortCode", "shortCode");
-      db.createObjectStore("assetCache", { keyPath: "assetId" });
-      db.createObjectStore("outbox", { keyPath: "id" });
-      db.createObjectStore("syncState", { keyPath: "id" });
-      db.createObjectStore("fieldSession", { keyPath: "id" });
+  dbPromise ??= openDB<FieldDB>("tpirs-field", 2, {
+    upgrade(db, oldVersion) {
+      // Version 1 shipped first; a handset that already has it must not lose its
+      // queued scans, so each version only adds what it introduced.
+      if (oldVersion < 1) {
+        const paidSet = db.createObjectStore("paidSet", { keyPath: "qrPayload" });
+        paidSet.createIndex("shortCode", "shortCode");
+        db.createObjectStore("assetCache", { keyPath: "assetId" });
+        db.createObjectStore("outbox", { keyPath: "id" });
+        db.createObjectStore("syncState", { keyPath: "id" });
+        db.createObjectStore("fieldSession", { keyPath: "id" });
+      }
+      if (oldVersion < 2) {
+        db.createObjectStore("scanLog", { keyPath: "id" });
+      }
     },
   });
   return dbPromise;
@@ -259,4 +291,46 @@ export async function listFailedOutbox(): Promise<OutboxItem[]> {
   const db = await getDb();
   const items = await db.getAll("outbox");
   return items.filter((item) => item.state === "failed");
+}
+
+/**
+ * Records a scan in the day's log. Called once per attempt, whatever the outcome:
+ * a scan the server refused is exactly the one an officer needs to be able to
+ * find again.
+ */
+export async function appendScanLog(entry: ScanLogEntry): Promise<void> {
+  const db = await getDb();
+  await db.put("scanLog", entry);
+}
+
+export async function updateScanLog(
+  id: string,
+  patch: Partial<Omit<ScanLogEntry, "id">>,
+): Promise<void> {
+  const db = await getDb();
+  const existing = await db.get("scanLog", id);
+  if (existing === undefined) return;
+  await db.put("scanLog", { ...existing, ...patch });
+}
+
+/** Today's scans, newest first. */
+export async function listScanLog(limit = 100): Promise<ScanLogEntry[]> {
+  const db = await getDb();
+  const entries = await db.getAll("scanLog");
+  return entries
+    .sort((left, right) => right.scannedAt.localeCompare(left.scannedAt))
+    .slice(0, limit);
+}
+
+/** Drops entries from before the given business date; the log is a day's work, not an archive. */
+export async function pruneScanLog(beforeBusinessDate: string): Promise<void> {
+  const db = await getDb();
+  const entries = await db.getAll("scanLog");
+  const tx = db.transaction("scanLog", "readwrite");
+  for (const entry of entries) {
+    if (entry.businessDate !== undefined && entry.businessDate < beforeBusinessDate) {
+      await tx.store.delete(entry.id);
+    }
+  }
+  await tx.done;
 }

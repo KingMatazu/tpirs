@@ -4,7 +4,10 @@ import { HomeScreen } from "./screens/HomeScreen.js";
 import { LoginScreen } from "./screens/LoginScreen.js";
 import { DisputeScreen } from "./screens/DisputeScreen.js";
 import { ResultScreen } from "./screens/ResultScreen.js";
+import { ScanLogScreen } from "./screens/ScanLogScreen.js";
 import { ScanScreen } from "./screens/ScanScreen.js";
+import { SettingsScreen } from "./screens/SettingsScreen.js";
+import { appendScanLog } from "./offline/store.js";
 import { resolveScanOffline } from "./lib/scan.js";
 import { recordScan } from "./lib/record.js";
 import {
@@ -15,6 +18,23 @@ import {
 } from "./lib/scan-result.js";
 import type { ScanView } from "./lib/scan-result.js";
 
+function viewFor(
+  outcome: Awaited<ReturnType<typeof recordScan>>,
+  offline: Awaited<ReturnType<typeof resolveScanOffline>>,
+  reference: string | undefined,
+): ScanView {
+  switch (outcome.status) {
+    case "recorded":
+      return viewFromServer(outcome.result, offline.kind);
+    case "rejected":
+      return viewFromRejected(offline, reference);
+    case "queue_full":
+      return viewFromQueueFull(offline, reference);
+    case "queued":
+      return viewFromQueued(offline, reference);
+  }
+}
+
 /** The vehicle a dispute is about: the resolved short code, or what was typed. */
 function disputeTarget(view: ScanView): string | undefined {
   return view.shortCode ?? view.reference;
@@ -24,7 +44,9 @@ type Screen =
   | { readonly name: "home" }
   | { readonly name: "scan" }
   | { readonly name: "result"; readonly view: ScanView }
-  | { readonly name: "dispute"; readonly view: ScanView };
+  | { readonly name: "dispute"; readonly view: ScanView }
+  | { readonly name: "log" }
+  | { readonly name: "settings" };
 
 /**
  * The officer app shell. No router: an officer is either signing in, scanning, or
@@ -67,20 +89,21 @@ export function App(): ReactElement {
       };
 
       const outcome = await recordScan(attempt);
-      switch (outcome.status) {
-        case "recorded":
-          setScreen({ name: "result", view: viewFromServer(outcome.result, offline.kind) });
-          return;
-        case "rejected":
-          setScreen({ name: "result", view: viewFromRejected(offline, input.reference) });
-          return;
-        case "queue_full":
-          setScreen({ name: "result", view: viewFromQueueFull(offline, input.reference) });
-          return;
-        case "queued":
-          setScreen({ name: "result", view: viewFromQueued(offline, input.reference) });
-          return;
-      }
+      const view = viewFor(outcome, offline, input.reference);
+      // Every attempt is logged, including the ones that failed: the scan an
+      // officer cannot find again is the one they need to show a supervisor.
+      await appendScanLog({
+        id: clientScanId,
+        scannedAt,
+        observed: offline.kind,
+        verdict: view.verdict,
+        recorded: view.recorded === "none" ? "failed" : view.recorded,
+        updatedAt: new Date().toISOString(),
+        ...(view.businessDate === undefined ? {} : { businessDate: view.businessDate }),
+        ...(view.shortCode === undefined ? {} : { shortCode: view.shortCode }),
+        ...(input.reference === undefined ? {} : { reference: input.reference }),
+      });
+      setScreen({ name: "result", view });
     },
     [config],
   );
@@ -147,11 +170,33 @@ export function App(): ReactElement {
           }}
         />
       );
+    case "log":
+      return (
+        <ScanLogScreen
+          onBack={() => {
+            setScreen({ name: "home" });
+          }}
+        />
+      );
+    case "settings":
+      return (
+        <SettingsScreen
+          onBack={() => {
+            setScreen({ name: "home" });
+          }}
+        />
+      );
     case "home":
       return (
         <HomeScreen
           onScan={() => {
             setScreen({ name: "scan" });
+          }}
+          onLog={() => {
+            setScreen({ name: "log" });
+          }}
+          onSettings={() => {
+            setScreen({ name: "settings" });
           }}
         />
       );
