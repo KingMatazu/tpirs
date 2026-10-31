@@ -16,6 +16,15 @@ import type { FastifySchema } from "fastify";
  * field.
  */
 
+/**
+ * The same rule as a JSON Schema pattern, for ids that arrive in a request body.
+ * A field client generates a UUID, but an older app build or a hand-written
+ * script can send anything, and a Postgres cast error is a 500 that both lies
+ * about whose fault it is and echoes the database's message (finding F-08).
+ */
+const UUID_SCHEMA_PATTERN =
+  "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$";
+
 const staffUser = {
   $id: "StaffUser",
   type: "object",
@@ -974,7 +983,7 @@ export const createScanSchema: FastifySchema = {
     type: "object",
     required: ["clientScanId", "source", "scannedAt"],
     properties: {
-      clientScanId: { type: "string" },
+      clientScanId: { type: "string", pattern: UUID_SCHEMA_PATTERN },
       source: { type: "string", enum: ["qr", "manual", "offline_queue"] },
       token: { type: "string" },
       reference: { type: "string" },
@@ -1037,7 +1046,7 @@ export const createDisputeSchema: FastifySchema = {
     type: "object",
     required: ["clientDisputeId", "reason", "description", "occurredAt"],
     properties: {
-      clientDisputeId: { type: "string" },
+      clientDisputeId: { type: "string", pattern: UUID_SCHEMA_PATTERN },
       assetId: { type: "string" },
       reference: { type: "string" },
       reason: { type: "string" },

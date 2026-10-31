@@ -4178,7 +4178,8 @@
                 ],
                 "properties": {
                   "clientScanId": {
-                    "type": "string"
+                    "type": "string",
+                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
                   },
                   "source": {
                     "type": "string",
@@ -4350,7 +4351,8 @@
                 ],
                 "properties": {
                   "clientDisputeId": {
-                    "type": "string"
+                    "type": "string",
+                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
                   },
                   "assetId": {
                     "type": "string"

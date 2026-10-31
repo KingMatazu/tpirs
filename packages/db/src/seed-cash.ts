@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { todayInTimeZone } from "@tpirs/domain";
+import { createQrTokenSigner } from "@tpirs/crypto";
+import { buildQrToken, todayInTimeZone } from "@tpirs/domain";
 import type { TenantConfig } from "@tpirs/config";
 import type { repositories } from "./repositories/index.js";
 
@@ -86,6 +87,17 @@ export async function seedCollectorCashDay(params: {
     }));
 
   const zone = (await repos.zones.list())[0];
+  // The API signs and verifies with the key behind
+  // `SECRET_QR_TOKEN_SIGNING_KEY` (ref `qr-token-signing-key`); the seed uses the
+  // same value so the demo sticker is one a real scanner can read. The fallback
+  // is the dev-only key from `.env.example`, never a production secret.
+  const demoSigner = createQrTokenSigner(
+    process.env["SECRET_QR_TOKEN_SIGNING_KEY"] ?? "dev-only-qr-signing-key-change-me",
+  );
+  const demoPayload = createHash("sha256")
+    .update(`seed:${demo.shortCode}`)
+    .digest("hex")
+    .slice(0, 32);
   const asset =
     (await repos.assets.findByShortCode(demo.shortCode)) ??
     (await repos.assets.create({
@@ -97,8 +109,12 @@ export async function seedCollectorCashDay(params: {
       // A QR payload must be 16-64 URL-safe characters (ADR 0007); the sticker's
       // display format ("QR-{id}") is not one. Derived from the short code so a
       // re-seed keeps the same sticker.
-      qrPayload: createHash("sha256").update(`seed:${demo.shortCode}`).digest("hex").slice(0, 32),
-      qrToken: `seed-${demo.shortCode.toLowerCase()}`,
+      qrPayload: demoPayload,
+      // A real token, signed with the same key the API reads from the secrets
+      // provider: the demo sticker has to *scan*, and a placeholder like
+      // `seed-b000001` fails the HMAC check, so `POST /v1/scans` and
+      // `GET /v1/verify/:token` both answered 404 for every seeded vehicle.
+      qrToken: buildQrToken(demoPayload, demoSigner),
       shortCode: demo.shortCode,
       createdByUserId: null,
     }));
