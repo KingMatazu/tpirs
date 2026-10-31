@@ -52,6 +52,9 @@ export const copy = {
     syncRateLimited: "The server asked us to slow down. Try again in a minute.",
     syncDisabled: "This state has switched offline checking off. Sync is not available.",
     syncFailed: "The sync did not finish. Try again before relying on the list.",
+    flushAuth: "Your session has expired, so scans cannot upload. Sign in again.",
+    flushFailed:
+      "{count} scan(s) could not be uploaded and will not be retried. Show them to your supervisor.",
     settings: "Settings",
   },
   scan: {

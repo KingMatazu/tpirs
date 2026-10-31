@@ -40,10 +40,17 @@ list`, or `code not recognised`. Never "unpaid": the cache can confirm a
   truth. A full queue (`field.maxQueueItems`) is reported, never silently
   dropped.
 
+- **Outbox flush** (`src/offline/flush.ts`) — drains the queue oldest first, on
+  sign-in, when the radio returns, on a 30 s timer and on demand. At most 25 items
+  per pass; a 429 stops the pass and its `Retry-After` is honoured; a dead zone
+  ends it rather than retrying every item; a refused scan (404/422) is kept,
+  marked failed and never retried; a 401 renews the session once. Backoff is
+  exponential with jitter, capped at 30 minutes, so a fleet that lost signal
+  together does not come back together.
+
 ## What is not built yet
 
-Flushing the outbox (retry, backoff, ordering), disputes, and the scan log. The
-plan and the acceptance checks are in
+Disputes and the scan log. The plan and the acceptance checks are in
 `docs/phase-6-field-app-implementation.md`; `/v1/disputes` already exists.
 
 ## Rules this app must keep

@@ -1,6 +1,6 @@
 # Field app (officer PWA) — implementation plan
 
-**Status:** in progress — steps 1–6 delivered; steps 7–10 next.
+**Status:** in progress — steps 1–7 delivered; steps 8–10 next.
 Reopens Phase 6 Step 5.
 **Supersedes:** the Step 5 section of `docs/phase-6-implementation.md` (the plan was
 written; the app was not built).
@@ -283,7 +283,7 @@ after reconnect.
 
 _Effort: M._
 
-### Step 7 — Outbox flush (D-F5)
+### Step 7 — Outbox flush (D-F5) — done
 
 - `lib/outbox.ts` (pure): `planFlush(items, now, budget)` → ordered ids;
   `applyAttempt(item, outcome)` → next attempt time with exponential backoff + jitter;

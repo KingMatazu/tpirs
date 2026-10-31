@@ -28,6 +28,8 @@ interface SessionState {
   }): Promise<void>;
   logout(): Promise<void>;
   initialize(): Promise<void>;
+  /** Renews the bearer from the refresh cookie. False when the session is gone. */
+  refresh(): Promise<boolean>;
   hasPermission(permission: string): boolean;
 }
 
@@ -99,6 +101,18 @@ export const useSession = create<SessionState>()((set, get) => ({
     if (effective !== undefined) applyTheme(effective);
 
     set({ status: "authenticated", user, config: effective, configError });
+  },
+
+  async refresh() {
+    try {
+      const refreshed = await api.POST("/v1/auth/refresh", { credentials: "same-origin" });
+      const token = refreshed.data?.token;
+      if (typeof token !== "string" || token === "") return false;
+      setFieldToken(token);
+      return true;
+    } catch {
+      return false;
+    }
   },
 
   async logout() {

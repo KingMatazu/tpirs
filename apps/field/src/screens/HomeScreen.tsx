@@ -3,19 +3,30 @@ import { formatBusinessDate } from "@tpirs/ui-tokens";
 import { useSession } from "../session.js";
 import { copy } from "../copy.js";
 import { Banner, Card, PrimaryButton, Screen, SecondaryButton } from "../components/ui.js";
-import { countOutbox, countPaid, readSyncState } from "../offline/store.js";
+import {
+  countPaid,
+  countPendingOutbox,
+  listFailedOutbox,
+  readSyncState,
+} from "../offline/store.js";
 import type { SyncState } from "../offline/store.js";
 import { isStale } from "../lib/paid-set.js";
 import { syncPaidSet } from "../offline/sync.js";
+import { flushOutbox } from "../offline/flush.js";
+import type { FlushOutcome } from "../offline/flush.js";
 import type { SyncOutcome } from "../offline/sync.js";
+
+/** How often a mounted home screen tries to drain the queue. */
+const FLUSH_INTERVAL_MS = 30_000;
 
 /**
  * The officer's start screen: who they are, whether the phone has today's list,
- * and the one action that matters.
+ * and what is still waiting to leave it.
  *
- * The sync line is not decoration. An officer who scans against a day-old list
- * is being lied to by their own phone, so the age of the cache is always visible
- * and a stale one is called out.
+ * Two counters, two different meanings: the paid set is what the phone *knows*,
+ * the outbox is what it has not *told* the server. An officer who scans against a
+ * day-old list is being lied to by their own phone, and an officer whose scans
+ * never leave the device is being lied to about their shift.
  */
 export function HomeScreen(props: Readonly<{ onScan: () => void }>): ReactElement {
   const user = useSession((state) => state.user);
@@ -24,39 +35,63 @@ export function HomeScreen(props: Readonly<{ onScan: () => void }>): ReactElemen
   const [sync, setSync] = useState<SyncState | undefined>(undefined);
   const [paidCount, setPaidCount] = useState(0);
   const [pending, setPending] = useState(0);
-  const [syncing, setSyncing] = useState(false);
-  const [outcome, setOutcome] = useState<SyncOutcome | undefined>(undefined);
+  const [failed, setFailed] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [syncOutcome, setSyncOutcome] = useState<SyncOutcome | undefined>(undefined);
+  const [flushOutcome, setFlushOutcome] = useState<FlushOutcome | undefined>(undefined);
 
-  const refresh = useCallback(async (): Promise<void> => {
+  const refreshCounts = useCallback(async (): Promise<void> => {
     setSync(await readSyncState());
     setPaidCount(await countPaid());
-    setPending(await countOutbox());
+    setPending(await countPendingOutbox());
+    setFailed((await listFailedOutbox()).length);
   }, []);
 
+  const drain = useCallback(async (): Promise<void> => {
+    const outcome = await flushOutbox({
+      refresh: () => useSession.getState().refresh(),
+    });
+    setFlushOutcome(outcome);
+    await refreshCounts();
+  }, [refreshCounts]);
+
   const runSync = useCallback(async (): Promise<void> => {
-    setSyncing(true);
+    setBusy(true);
     try {
-      setOutcome(await syncPaidSet());
-      await refresh();
+      setSyncOutcome(await syncPaidSet());
+      await drain();
     } finally {
-      setSyncing(false);
+      setBusy(false);
     }
-  }, [refresh]);
+  }, [drain]);
 
   useEffect(() => {
-    void refresh();
-    // The first sync of a shift happens on its own; the officer can still press
-    // the button, and a failure is reported rather than retried in a loop.
+    void refreshCounts();
+    void drain();
     void runSync();
-  }, [refresh, runSync]);
+
+    // The queue drains itself: when the radio comes back, and on a slow timer
+    // while the screen is open. Both are cheap; a dead zone costs one failed
+    // request per interval, and the backoff keeps even that rare.
+    const onOnline = (): void => {
+      void drain();
+    };
+    globalThis.addEventListener("online", onOnline);
+    const timer = setInterval(() => {
+      void drain();
+    }, FLUSH_INTERVAL_MS);
+    return () => {
+      globalThis.removeEventListener("online", onOnline);
+      clearInterval(timer);
+    };
+  }, [drain, refreshCounts, runSync]);
 
   const graceHours = config?.field.offlineGraceHours ?? 8;
   const stale = isStale(sync?.lastSyncedAt, graceHours);
-  const now = new Date();
   const today =
     config === undefined
       ? undefined
-      : formatBusinessDate(now, config.locale.numberFormat, "yyyy-MM-dd");
+      : formatBusinessDate(new Date(), config.locale.numberFormat, "yyyy-MM-dd");
 
   return (
     <Screen
@@ -79,7 +114,17 @@ export function HomeScreen(props: Readonly<{ onScan: () => void }>): ReactElemen
         </Banner>
       ) : null}
 
-      {outcome?.complete === false ? <Banner tone="warning">{describeStop(outcome)}</Banner> : null}
+      {syncOutcome?.complete === false ? (
+        <Banner tone="warning">{describeStop(syncOutcome)}</Banner>
+      ) : null}
+
+      {flushOutcome?.stopReason === "auth" ? (
+        <Banner tone="warning">{copy.home.flushAuth}</Banner>
+      ) : null}
+
+      {failed > 0 ? (
+        <Banner tone="warning">{copy.home.flushFailed.replace("{count}", String(failed))}</Banner>
+      ) : null}
 
       <Card>
         <p className="text-base text-slate-600">{copy.home.greeting}</p>
@@ -106,12 +151,12 @@ export function HomeScreen(props: Readonly<{ onScan: () => void }>): ReactElemen
       <p className="-mt-1 text-center text-sm text-slate-600">{copy.home.scanHint}</p>
 
       <SecondaryButton
-        disabled={syncing}
+        disabled={busy}
         onClick={() => {
           void runSync();
         }}
       >
-        {syncing ? copy.home.syncing : copy.home.sync}
+        {busy ? copy.home.syncing : copy.home.sync}
       </SecondaryButton>
     </Screen>
   );

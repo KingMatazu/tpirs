@@ -1,4 +1,4 @@
-import type { FastifyInstance, FastifyRequest } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { InvalidQrTokenError, paymentStatusFromPeriod, todayInTimeZone } from "@tpirs/domain";
 import type { PaymentStatus } from "@tpirs/domain";
 import { AssetNotFoundError } from "@tpirs/application";
@@ -145,17 +145,32 @@ function parseObservedStatus(value: string | undefined): ObservedScanStatus {
     : "not_in_offline_list";
 }
 
+interface RateDecision {
+  readonly allowed: boolean;
+  readonly retryAfterSeconds: number;
+}
+
 async function enforceRouteRateLimit(
   services: Services,
   request: FastifyRequest,
   key: string,
   rule: (typeof ROUTE_RATE_LIMITS)[keyof typeof ROUTE_RATE_LIMITS],
-): Promise<boolean> {
+): Promise<RateDecision> {
   const decision = await services.rateLimiter.consume(
     `${key}:${request.ip}:${request.principal?.tenantId ?? "anon"}`,
     rule,
   );
-  return decision.allowed;
+  return { allowed: decision.allowed, retryAfterSeconds: decision.retryAfterSeconds };
+}
+
+/**
+ * A 429 carries `Retry-After`, like the verify route does. Without it a client
+ * can only guess, and a field app that guesses floods the API when the window
+ * reopens — the officer's phone has a queue to drain and no idea how long to wait.
+ */
+function tooManyRequests(reply: FastifyReply, request: FastifyRequest, decision: RateDecision) {
+  void reply.header("Retry-After", String(decision.retryAfterSeconds));
+  return reply.code(429).send(rateLimited(request));
 }
 
 function parseLimit(value: string | undefined): number | undefined {
@@ -179,14 +194,14 @@ export function registerVerificationAndSyncRoutes(
     { schema: verificationSearchSchema },
     async (request, reply) => {
       const principal = requirePermission(request, "asset:read");
-      const allowed = await enforceRouteRateLimit(
+      const rate = await enforceRouteRateLimit(
         services,
         request,
         "field-verification-search",
         ROUTE_RATE_LIMITS.verificationSearch,
       );
-      if (!allowed) {
-        return reply.code(429).send(rateLimited(request));
+      if (!rate.allowed) {
+        return tooManyRequests(reply, request, rate);
       }
 
       const tenantId = principal.tenantId;
@@ -234,14 +249,14 @@ export function registerVerificationAndSyncRoutes(
     { schema: syncPaidSchema },
     async (request, reply) => {
       const principal = requirePermission(request, "asset:read");
-      const allowed = await enforceRouteRateLimit(
+      const rate = await enforceRouteRateLimit(
         services,
         request,
         "field-sync-paid",
         ROUTE_RATE_LIMITS.syncPaid,
       );
-      if (!allowed) {
-        return reply.code(429).send(rateLimited(request));
+      if (!rate.allowed) {
+        return tooManyRequests(reply, request, rate);
       }
 
       const tenantId = principal.tenantId;
@@ -277,14 +292,14 @@ export function registerVerificationAndSyncRoutes(
     { schema: createScanSchema },
     async (request, reply) => {
       const principal = requirePermission(request, "scan:record");
-      const allowed = await enforceRouteRateLimit(
+      const rate = await enforceRouteRateLimit(
         services,
         request,
         "field-scan",
         ROUTE_RATE_LIMITS.scan,
       );
-      if (!allowed) {
-        return reply.code(429).send(rateLimited(request));
+      if (!rate.allowed) {
+        return tooManyRequests(reply, request, rate);
       }
 
       const body = request.body;
@@ -332,14 +347,14 @@ export function registerVerificationAndSyncRoutes(
     { schema: listScansSchema },
     async (request, reply) => {
       const principal = requirePermission(request, "scan:read");
-      const allowed = await enforceRouteRateLimit(
+      const rate = await enforceRouteRateLimit(
         services,
         request,
         "field-list-scans",
         ROUTE_RATE_LIMITS.scan,
       );
-      if (!allowed) {
-        return reply.code(429).send(rateLimited(request));
+      if (!rate.allowed) {
+        return tooManyRequests(reply, request, rate);
       }
 
       const tenantId = principal.tenantId;
@@ -361,14 +376,14 @@ export function registerVerificationAndSyncRoutes(
     { schema: createDisputeSchema },
     async (request, reply) => {
       const principal = requirePermission(request, "dispute:create");
-      const allowed = await enforceRouteRateLimit(
+      const rate = await enforceRouteRateLimit(
         services,
         request,
         "field-dispute",
         ROUTE_RATE_LIMITS.dispute,
       );
-      if (!allowed) {
-        return reply.code(429).send(rateLimited(request));
+      if (!rate.allowed) {
+        return tooManyRequests(reply, request, rate);
       }
 
       const body = request.body;
@@ -417,14 +432,14 @@ export function registerVerificationAndSyncRoutes(
     { schema: listDisputesSchema },
     async (request, reply) => {
       const principal = requirePermission(request, "dispute:read");
-      const allowed = await enforceRouteRateLimit(
+      const rate = await enforceRouteRateLimit(
         services,
         request,
         "field-list-disputes",
         ROUTE_RATE_LIMITS.dispute,
       );
-      if (!allowed) {
-        return reply.code(429).send(rateLimited(request));
+      if (!rate.allowed) {
+        return tooManyRequests(reply, request, rate);
       }
 
       const tenantId = principal.tenantId;
@@ -452,14 +467,14 @@ export function registerVerificationAndSyncRoutes(
     { schema: getDisputeSchema },
     async (request, reply) => {
       const principal = requirePermission(request, "dispute:read");
-      const allowed = await enforceRouteRateLimit(
+      const rate = await enforceRouteRateLimit(
         services,
         request,
         "field-get-dispute",
         ROUTE_RATE_LIMITS.dispute,
       );
-      if (!allowed) {
-        return reply.code(429).send(rateLimited(request));
+      if (!rate.allowed) {
+        return tooManyRequests(reply, request, rate);
       }
 
       const tenantId = principal.tenantId;

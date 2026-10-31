@@ -29,6 +29,9 @@ export interface OutboxItem {
   createdAt: string;
   attempts: number;
   nextAttemptAt: string;
+  /** Absent means pending; `failed` means the server refused it for good. */
+  state?: "pending" | "failed";
+  lastError?: string;
 }
 
 export interface SyncState {
@@ -232,4 +235,28 @@ export async function listOutbox(): Promise<OutboxItem[]> {
   const db = await getDb();
   const items = await db.getAll("outbox");
   return items.sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+}
+
+/** Replaces an item in place (attempt count, backoff, or a terminal failure). */
+export async function updateOutboxItem(item: OutboxItem): Promise<void> {
+  const db = await getDb();
+  await db.put("outbox", item);
+}
+
+export async function removeOutbox(id: string): Promise<void> {
+  const db = await getDb();
+  await db.delete("outbox", id);
+}
+
+/** Items still waiting to upload; a failed item is not waiting, it needs a person. */
+export async function countPendingOutbox(): Promise<number> {
+  const db = await getDb();
+  const items = await db.getAll("outbox");
+  return items.filter((item) => item.state !== "failed").length;
+}
+
+export async function listFailedOutbox(): Promise<OutboxItem[]> {
+  const db = await getDb();
+  const items = await db.getAll("outbox");
+  return items.filter((item) => item.state === "failed");
 }
