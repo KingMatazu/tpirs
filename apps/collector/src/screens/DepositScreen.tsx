@@ -23,7 +23,11 @@ export function DepositScreen(props: Readonly<{ onBack: () => void }>): ReactEle
     oldest === null ? undefined : new Date(new Date(oldest).getTime() + deadlineHours * 3_600_000);
 
   return (
-    <Screen title="Deposit cash" onBack={props.onBack} footer={<SecondaryButton onClick={props.onBack}>Done</SecondaryButton>}>
+    <Screen
+      title="Deposit cash"
+      onBack={props.onBack}
+      footer={<SecondaryButton onClick={props.onBack}>Done</SecondaryButton>}
+    >
       <Card>
         <p className="text-sm text-slate-500">Open cash to deposit</p>
         <p className="text-2xl font-semibold text-slate-900">

@@ -48,9 +48,7 @@ export function SecondaryButton(
   );
 }
 
-export function Card(
-  props: Readonly<{ children: ReactNode; className?: string }>,
-): ReactElement {
+export function Card(props: Readonly<{ children: ReactNode; className?: string }>): ReactElement {
   return (
     <section className={`rounded-xl border border-slate-200 bg-white p-4 ${props.className ?? ""}`}>
       {props.children}
@@ -83,7 +81,9 @@ export function Screen(
         <h1 className="flex-1 text-center text-base font-semibold text-slate-900">{props.title}</h1>
         <span className="w-16" />
       </header>
-      <main className="mx-auto flex w-full max-w-md flex-1 flex-col gap-3 p-3">{props.children}</main>
+      <main className="mx-auto flex w-full max-w-md flex-1 flex-col gap-3 p-3">
+        {props.children}
+      </main>
       {props.footer === undefined ? null : (
         <footer className="sticky bottom-0 border-t border-slate-200 bg-white p-3">
           <div className="mx-auto w-full max-w-md">{props.footer}</div>

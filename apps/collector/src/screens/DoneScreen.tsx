@@ -25,9 +25,7 @@ export function DoneScreen(
 
       <Card className="text-center">
         <p className="text-sm text-slate-500">Receipt</p>
-        <p className="text-xl font-semibold tracking-wide text-slate-900">
-          {props.receiptNumber}
-        </p>
+        <p className="text-xl font-semibold tracking-wide text-slate-900">{props.receiptNumber}</p>
         <p className="mt-1 text-xs text-slate-500">
           {props.replayed
             ? "This intake was already on the server, so no second receipt was issued."

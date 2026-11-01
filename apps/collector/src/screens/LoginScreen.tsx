@@ -47,7 +47,9 @@ export function LoginScreen(): ReactElement {
           <input
             className={inputClass}
             value={tenantSlug}
-            onChange={(event) => { setTenantSlug(event.currentTarget.value); }}
+            onChange={(event) => {
+              setTenantSlug(event.currentTarget.value);
+            }}
             autoComplete="organization"
             placeholder="alpha-state"
           />
@@ -56,7 +58,9 @@ export function LoginScreen(): ReactElement {
           <input
             className={inputClass}
             value={username}
-            onChange={(event) => { setUsername(event.currentTarget.value); }}
+            onChange={(event) => {
+              setUsername(event.currentTarget.value);
+            }}
             autoComplete="username"
           />
         </Field>
@@ -65,7 +69,9 @@ export function LoginScreen(): ReactElement {
             className={inputClass}
             type="password"
             value={password}
-            onChange={(event) => { setPassword(event.currentTarget.value); }}
+            onChange={(event) => {
+              setPassword(event.currentTarget.value);
+            }}
             autoComplete="current-password"
           />
         </Field>

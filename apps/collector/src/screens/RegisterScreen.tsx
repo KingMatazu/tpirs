@@ -4,6 +4,11 @@ import { api } from "../api/client.js";
 import { Banner, Card, Field, PrimaryButton, Screen, inputClass } from "../components/ui.js";
 import { useTenantConfig } from "../lib/data.js";
 
+interface Issue {
+  readonly path: string;
+  readonly message: string;
+}
+
 interface RegisteredAsset {
   readonly id: string;
   readonly shortCode: string;
@@ -66,15 +71,28 @@ export function RegisterScreen(props: Readonly<{ onBack: () => void }>): ReactEl
         },
       });
       if (!result.response.ok) {
-        // The server returns per-attribute issues (a plate that fails its
-        // pattern, a missing required field); show them, not just "invalid".
-        const body = result.data as
-          | { error?: { message?: string; issues?: { path: string; message: string }[] } }
-          | undefined;
+        // openapi-fetch puts a non-2xx body in `error`, not `data` — reading
+        // `data` here meant every refusal showed the fallback sentence instead of
+        // the server's reason, which is exactly the message an officer needs.
+        // The generated types only describe the 200 branch, so `error` is typed
+        // as never here; at runtime it is where openapi-fetch put the body.
+        const payload = result as unknown as {
+          readonly error?: { error?: { message?: string; issues?: Issue[] } };
+          readonly data?: { error?: { message?: string; issues?: Issue[] } };
+        };
+        const body = payload.error ?? payload.data;
         const issues = body?.error?.issues ?? [];
         setError(
           issues.length > 0
-            ? issues.map((issue) => `${issue.path}: ${issue.message}`).join(" · ")
+            ? // The issue paths are attribute keys; the officer typed labels.
+              issues
+                .map((issue) => {
+                  const label =
+                    attributes.find((attribute) => attribute.key === issue.path)?.label ??
+                    issue.path;
+                  return `${label}: ${issue.message}`;
+                })
+                .join(" · ")
             : (body?.error?.message ?? "The server refused the registration."),
         );
         return;
@@ -158,6 +176,9 @@ export function RegisterScreen(props: Readonly<{ onBack: () => void }>): ReactEl
             <Field
               key={attribute.key}
               label={attribute.label + (attribute.required ? "" : " (optional)")}
+              {...(patternHint(attribute.pattern) === undefined
+                ? {}
+                : { hint: patternHint(attribute.pattern) ?? "" })}
             >
               {attribute.type === "enum" ? (
                 <select
@@ -180,6 +201,8 @@ export function RegisterScreen(props: Readonly<{ onBack: () => void }>): ReactEl
                   className={inputClass}
                   type={attribute.type === "date" ? "date" : "text"}
                   inputMode={attribute.type === "number" ? "numeric" : "text"}
+                  autoCapitalize="characters"
+                  autoCorrect="off"
                   value={values[attribute.key] ?? ""}
                   onChange={(event) => {
                     const next = event.currentTarget.value;
@@ -225,6 +248,21 @@ export function RegisterScreen(props: Readonly<{ onBack: () => void }>): ReactEl
       </PrimaryButton>
     </Screen>
   );
+}
+
+/**
+ * Turns the tenant's pattern into something an officer can act on before the
+ * server refuses them. Only the common shape is translated — a plate or code that
+ * is "5 to 8 capital letters or digits" — because inventing words for an
+ * arbitrary regex would be worse than saying nothing.
+ */
+function patternHint(pattern: string | undefined): string | undefined {
+  if (pattern === undefined) return undefined;
+  const simple = /^\^?\[A-Z0-9\]\{(\d+),(\d+)\}\$?$/.exec(pattern);
+  if (simple !== null) {
+    return `${simple[1] ?? ""}–${simple[2] ?? ""} capital letters or digits, no spaces or dashes.`;
+  }
+  return undefined;
 }
 
 /**

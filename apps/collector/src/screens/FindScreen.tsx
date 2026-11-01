@@ -45,7 +45,8 @@ export function FindScreen(
         setResults([]);
         return;
       }
-      const found = (response.data as { results?: readonly FoundAsset[] } | undefined)?.results ?? [];
+      const found =
+        (response.data as { results?: readonly FoundAsset[] } | undefined)?.results ?? [];
       setResults(found);
       if (found.length === 0) setError("No vehicle matches that code or plate.");
     } catch {
@@ -68,7 +69,9 @@ export function FindScreen(
           <input
             className={inputClass}
             value={query}
-            onChange={(event) => { setQuery(event.currentTarget.value); }}
+            onChange={(event) => {
+              setQuery(event.currentTarget.value);
+            }}
             placeholder="B000001 or MTZ56AA"
             autoFocus
           />
@@ -84,7 +87,9 @@ export function FindScreen(
             <li key={asset.assetId}>
               <button
                 type="button"
-                onClick={() => { props.onFound(asset); }}
+                onClick={() => {
+                  props.onFound(asset);
+                }}
                 className="w-full rounded-xl border border-slate-200 bg-white p-3 text-left active:bg-slate-100"
               >
                 <span className="block text-base font-medium text-slate-900">

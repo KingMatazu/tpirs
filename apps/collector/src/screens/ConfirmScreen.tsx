@@ -19,6 +19,29 @@ import { plateOf, type FoundAsset } from "./FindScreen.js";
  * decision comes from `decideCollect` so the same rules drive the tests; the
  * server enforces them again on the intake.
  */
+/**
+ * Cash refusals the collector can act on. The API's message is written for an
+ * operator ("collector wallet is frozen: unspecified"), so the codes a collector
+ * will actually meet get plain words; anything else falls back to the server's
+ * sentence rather than hiding it.
+ */
+function cashMessage(code: string | undefined, message: string | undefined): string {
+  switch (code) {
+    case "wallet_frozen":
+      return "Your wallet is frozen. Speak to your supervisor before taking more cash.";
+    case "ceiling_exceeded":
+      return "That would take you over your float ceiling. Deposit before taking more cash.";
+    case "already_paid":
+      return "This vehicle is already paid for today.";
+    case "cash_disabled":
+      return "Cash intake is switched off for this state.";
+    case "amount_mismatch":
+      return "The amount does not match today's fee.";
+    default:
+      return message ?? "The server refused the intake. Check the amount and try again.";
+  }
+}
+
 export function ConfirmScreen(
   props: Readonly<{
     readonly asset: FoundAsset;
@@ -97,7 +120,12 @@ export function ConfirmScreen(
         },
       });
       if (!result.response.ok) {
-        setError("The server refused the intake. Check the amount and try again.");
+        // openapi-fetch puts a non-2xx body in `error`. The cash service explains
+        // itself with a code ("wallet_frozen", "ceiling_exceeded", "already_paid"),
+        // and a collector needs that reason, not "the server refused".
+        const body = (result.error ?? result.data) as
+          { error?: { code?: string; message?: string } } | undefined;
+        setError(cashMessage(body?.error?.code, body?.error?.message));
         return;
       }
       const body = result.data as { receiptNumber?: string; replayed?: boolean } | undefined;
@@ -138,7 +166,9 @@ export function ConfirmScreen(
             <p className="text-sm text-slate-500">{props.asset.assetTypeKey}</p>
             <p className="mt-1 text-xs">
               {props.asset.paymentStatus === "paid" ? (
-                <span className="rounded bg-emerald-50 px-2 py-0.5 text-emerald-800">Paid today</span>
+                <span className="rounded bg-emerald-50 px-2 py-0.5 text-emerald-800">
+                  Paid today
+                </span>
               ) : (
                 <span className="rounded bg-amber-50 px-2 py-0.5 text-amber-900">
                   No payment recorded today
@@ -159,7 +189,9 @@ export function ConfirmScreen(
             className={inputClass}
             inputMode="text"
             value={amount}
-            onChange={(event) => { setAmount(event.currentTarget.value); }}
+            onChange={(event) => {
+              setAmount(event.currentTarget.value);
+            }}
           />
         </Field>
         {feeMinor === undefined ? (
