@@ -1,11 +1,13 @@
 # Runbook: running TPIRS locally
 
-Everything needed to run the platform on one machine and click through the
-dashboard: Docker for the data services, the API and UIs on the host.
+Everything needed to run the platform on one machine and click through every
+app: Docker for the data services, the API and the UIs on the host.
 
 - **Docker** runs Postgres, Redis and the S3-compatible object store.
-- **Host** runs the API, the admin dashboard, the field PWA and the worker.
-- The dashboard proxies `/v1` to the API, so the browser sees one origin.
+- **Host** runs the API, the worker, and three browser UIs: the admin dashboard,
+  the officer PWA and the collector PWA.
+- Each UI proxies `/v1` to the API, so every app talks to one origin and the
+  httpOnly refresh cookie works the same way in all of them.
 
 ## 1. Prerequisites
 
@@ -55,25 +57,42 @@ If a step fails, fix that step and re-run `pnpm setup`; it is safe to repeat.
 pnpm dev
 ```
 
-This starts the five dev servers in one terminal through `scripts/dev.mjs`
+This starts all five dev servers in one terminal through `scripts/dev.mjs`
 (prefixing each line with the app name). One Ctrl+C stops all of them, including
 the compiler processes `tsx watch` spawns:
 
 | Service         | URL                     | Notes                                                              |
 | --------------- | ----------------------- | ------------------------------------------------------------------ |
-| Admin dashboard | <http://localhost:5173> | the interface to test                                              |
 | API             | <http://localhost:3000> | `/v1/health`, `/v1/ready`, `/v1/openapi.json`, `/metrics` (opt-in) |
-| Field PWA       | <http://localhost:5174> | officer app, offline-capable                                       |
+| Admin dashboard | <http://localhost:5173> | back office: registry, payments, finance, audit, config            |
+| Officer PWA     | <http://localhost:5174> | scan a sticker, offline-capable, disputes and a scan log           |
+| Collector PWA   | <http://localhost:5175> | register a vehicle, take cash, deposit the float                   |
 | Worker          | —                       | outbox sweepers, SMS/channel delivery, reconciliation schedule     |
 | Postgres        | `localhost:5433`        | user `tpirs`, password `tpirs`, database `tpirs`                   |
 | Redis           | `localhost:6380`        |                                                                    |
 | Object storage  | `localhost:9000`        | SeaweedFS S3 API (`tpirs-uploads`, `tpirs-exports`)                |
 
-If you only need the dashboard and API:
+### Which app for which role
+
+The same person does not use the same app for everything, and a role that signs
+into the wrong one sees an honest, mostly empty shell:
+
+| Role                                            | App           | URL                     |
+| ----------------------------------------------- | ------------- | ----------------------- |
+| system admin, finance, auditor, zone supervisor | Dashboard     | <http://localhost:5173> |
+| officer                                         | Officer PWA   | <http://localhost:5174> |
+| collector                                       | Collector PWA | <http://localhost:5175> |
+
+Every app accepts the same seeded credentials (§4) — the role decides what is
+visible, not which login form you use.
+
+If you only need one app and the API, filter it:
 
 ```sh
 pnpm --filter @tpirs/api dev
-pnpm --filter @tpirs/admin dev
+pnpm --filter @tpirs/admin dev      # :5173
+pnpm --filter @tpirs/field dev      # :5174
+pnpm --filter @tpirs/collector dev  # :5175
 ```
 
 Add `pnpm --filter @tpirs/worker dev` in a third terminal if you want the
@@ -97,6 +116,10 @@ Use `alpha.admin` to see everything, `beta.finance` for the finance and
 reconciliation screens, and `alpha.collector` to check the restricted view.
 TOTP is off locally (`REQUIRE_STAFF_TOTP=false`).
 
+`alpha.officer` belongs in the officer PWA (<http://localhost:5174>) and
+`alpha.collector` in the collector PWA (<http://localhost:5175>); both also sign
+into the dashboard, where they see only the pages their permissions allow.
+
 The two tenants differ in currency, timezone, fee rules, languages and
 reconciliation tolerances — switching tenants re-themes and re-labels the
 dashboard with no code change.
@@ -116,8 +139,18 @@ dashboard with no code change.
   reconciliation keys (tolerances, anomaly rules, statement mapping).
 - **Audit** — every state-changing request with actor, request id and before/after.
 - **USSD simulator** and **Channels** — driver-channel behaviour without a phone.
+- **Officer PWA** (<http://localhost:5174>) — sign in as `alpha.officer`, sync the
+  paid list, then scan a sticker or type `B000001`. To see a green result, pay
+  that vehicle first through the dashboard's USSD simulator, sync again, and
+  scan. Turn the network off (DevTools → Network → Offline) and scan again: the
+  card says "not in the offline list", never "unpaid", and the scan waits in the
+  outbox until the connection returns. The dispute form and the scan log are on
+  the same screens.
+- **Collector PWA** (<http://localhost:5175>) — sign in as `alpha.collector` to
+  register a vehicle at the roadside, take cash against a short code, and see the
+  float against its ceiling before depositing.
 
-The field PWA at <http://localhost:5174> uses the same API and tenants.
+All three UIs use the same API and the same two tenants.
 
 ## 6. Everyday commands
 
@@ -195,7 +228,7 @@ pnpm ci:migration-check
 | Login fails                                                     | Use the exact slug (`alpha-state`), and confirm `pnpm setup`/`pnpm db:seed` ran.                                                                              |
 | Dashboard requests fail with 404/502                            | The API is not on `:3000`; start it with `pnpm dev` or the API filter command above.                                                                          |
 | No reconciliation runs yet                                      | The worker schedules them from the tenant cron; Reports and Audit show data already.                                                                          |
-| Port already in use                                             | Stop the conflicting process, or change `API_PORT` in `.env` and the Vite `server.port` in `apps/admin/vite.config.ts` / `apps/field/vite.config.ts`.         |
+| Port already in use                                             | Stop the conflicting process, or change `API_PORT` in `.env` and the Vite `server.port` in `apps/{admin,field,collector}/vite.config.ts`.                     |
 | A migration check fails                                         | A migration's `down()` is not reversible; fix it before merging.                                                                                              |
 | `pnpm install` warns about blocked build scripts                | Only `esbuild` is allowed by pnpm 11; the warning is expected.                                                                                                |
 | Ctrl+C does not stop the dev servers                            | Use `pnpm dev` (the supervisor), not `pnpm dev:turbo`: see [Stopping the dev servers](#stopping-the-dev-servers).                                             |
@@ -213,7 +246,7 @@ printing "4 tasks shutting down…". If you forced it, check for orphans holding
 the ports before restarting:
 
 ```sh
-netstat -ano | grep LISTENING | grep -E ":3000|:5173|:5174"
+netstat -ano | grep LISTENING | grep -E ":3000|:5173|:5174|:5175"
 taskkill //PID <pid> //T //F
 ```
 
@@ -245,8 +278,8 @@ at all.
 ## 9. What runs where (and why)
 
 The dev compose file (`infra/docker-compose.yml`) contains only infrastructure:
-Postgres, Redis, SeaweedFS and a one-shot bucket initialiser. The API, worker
-and both UIs run on the host so edits hot-reload.
+Postgres, Redis, SeaweedFS and a one-shot bucket initialiser. The API, the worker
+and all three UIs run on the host so edits hot-reload.
 
 There is no dashboard container in the dev profile. The staging compose
 (`infra/docker-compose.staging.yml`) builds the API image from
