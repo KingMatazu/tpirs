@@ -8,6 +8,8 @@
  * reaching a driver's phone as a literal `{brace}`.
  */
 
+export * from "./channel-catalogs.js";
+
 export type MessageCatalog = Readonly<Record<string, string>>;
 
 /** Language code to catalogue, for example `{ en: { "ussd.main.prompt": "..." } }`. */

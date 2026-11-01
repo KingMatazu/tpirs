@@ -1111,6 +1111,9 @@ importers:
       '@tpirs/domain':
         specifier: workspace:*
         version: link:../domain
+      '@tpirs/i18n':
+        specifier: workspace:*
+        version: link:../i18n
       yaml:
         specifier: ^2.9.1
         version: 2.9.1
