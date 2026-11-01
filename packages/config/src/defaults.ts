@@ -42,6 +42,8 @@ export interface TenantConfigDefaultsInput {
   readonly ussdCode: string;
   /** SMS sender id approved by the regulator; also the default inbound keyword. */
   readonly smsSenderId: string;
+  /** Keyword drivers text to the gateway; defaults to the sender id. */
+  readonly smsKeyword?: string;
   /** Daily levy for a motorbike, in minor units. */
   readonly bikeFeeMinor: number;
   /** Daily levy for a tuk-tuk, in minor units. */
@@ -61,6 +63,10 @@ export interface TenantConfigDefaultsInput {
   readonly underpaymentPolicy?: UnderpaymentPolicy;
   readonly cashFloatCeilingMinor?: number;
   readonly depositDeadlineHours?: number;
+  /** Gateway fee the reconciliation may absorb before raising an exception. */
+  readonly feeToleranceMinor?: number;
+  /** Days a suspense balance may age before it is flagged. */
+  readonly suspenseAgeingDays?: number;
   readonly receiptFooter?: string;
 }
 
@@ -237,7 +243,7 @@ export function defaultTenantConfig(input: TenantConfigDefaultsInput): TenantCon
     ],
     channels: {
       ussdCode: input.ussdCode,
-      smsKeyword: input.smsSenderId,
+      smsKeyword: input.smsKeyword ?? input.smsSenderId,
       otpMessageTemplate: `${appName}: your verification code is {code}.`,
       smsReceiptTemplate: `${appName} receipt {receiptNo}: {amount} paid for {assetRef} on {date}.`,
       startMenu: "main",
@@ -266,8 +272,8 @@ export function defaultTenantConfig(input: TenantConfigDefaultsInput): TenantCon
       enabled: true,
       schedule: "0 2 * * *",
       toleranceMinor: 100,
-      feeToleranceMinor: 0,
-      suspenseAgeingDays: 7,
+      feeToleranceMinor: input.feeToleranceMinor ?? 0,
+      suspenseAgeingDays: input.suspenseAgeingDays ?? 7,
       notifyRole: "finance_admin",
       // Every rule ships disabled until the tenant has baselines to compare
       // against (D46); enabling one without a threshold fails the next load.
