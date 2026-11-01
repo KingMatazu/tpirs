@@ -14,6 +14,9 @@ export function LoginScreen(): ReactElement {
   const [tenantSlug, setTenantSlug] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  // Typing a long password on a shared handset is where sign-ins fail; showing
+  // what was typed is the fix, and it never leaves the tab.
+  const [showPassword, setShowPassword] = useState(false);
   const [totpCode, setTotpCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
@@ -98,7 +101,7 @@ export function LoginScreen(): ReactElement {
         <Field label={copy.login.password} {...(error === undefined ? {} : { error })}>
           <input
             className={inputClass}
-            type="password"
+            type={showPassword ? "text" : "password"}
             value={password}
             onChange={(event) => {
               setPassword(event.currentTarget.value);
@@ -106,6 +109,16 @@ export function LoginScreen(): ReactElement {
             autoComplete="current-password"
           />
         </Field>
+        <button
+          type="button"
+          className="-mt-1 self-end text-sm font-medium text-slate-700 underline"
+          onClick={() => {
+            setShowPassword((current) => !current);
+          }}
+          aria-pressed={showPassword}
+        >
+          {showPassword ? copy.login.hidePassword : copy.login.showPassword}
+        </button>
         <Field label={copy.login.totp} hint={copy.login.totpHint}>
           <input
             className={inputClass}

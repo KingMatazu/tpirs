@@ -210,7 +210,12 @@ export function registerAuthRoutes(app: FastifyInstance, context: AuthContext): 
       return await sessionReply(reply, rotated, secureCookies);
     } catch (error) {
       if (error instanceof PortError && error.code === "unauthorized") {
-        reply.clearCookie(REFRESH_COOKIE, { path: "/v1/auth/refresh" });
+        // The cookie is deliberately *not* cleared here. Refresh tokens rotate,
+        // so two clients refreshing at once (two tabs, or React StrictMode
+        // mounting an effect twice) race: the winner sets a fresh cookie and the
+        // loser's clear can arrive after it and wipe it, signing the user out on
+        // the next load. A dead cookie is harmless — it fails again and the user
+        // signs in — while clearing a live one is not.
         return reply.code(401).send({
           error: {
             code: "unauthorized",

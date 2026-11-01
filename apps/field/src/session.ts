@@ -45,6 +45,15 @@ interface MeResponse {
  * cookie in the browser. Nothing about the session is persisted — a handset that
  * is lost or handed over must not still be signed in.
  */
+/**
+ * The in-flight bootstrap, so concurrent callers share one refresh.
+ *
+ * React StrictMode mounts an effect twice in development, and two concurrent
+ * refreshes rotate the refresh token twice: the loser gets a 401 and the officer
+ * lands back on the login form on every reload.
+ */
+let bootstrapping: Promise<void> | undefined;
+
 export const useSession = create<SessionState>()((set, get) => ({
   status: "unknown",
   user: undefined,
@@ -127,27 +136,38 @@ export const useSession = create<SessionState>()((set, get) => ({
 
   async initialize() {
     if (get().status !== "unknown") return;
-    const cached = readCachedConfig();
-    if (cached !== undefined) applyTheme(cached);
+    if (bootstrapping !== undefined) {
+      await bootstrapping;
+      return;
+    }
+    bootstrapping = (async () => {
+      const cached = readCachedConfig();
+      if (cached !== undefined) applyTheme(cached);
+      try {
+        const refreshed = await api.POST("/v1/auth/refresh", { credentials: "same-origin" });
+        const token = refreshed.data?.token;
+        if (typeof token !== "string" || token === "") {
+          set({ status: "anonymous", config: cached });
+          return;
+        }
+        setFieldToken(token);
+        const user = await loadMe();
+        if (user === undefined) {
+          setFieldToken(undefined);
+          set({ status: "anonymous", config: cached });
+          return;
+        }
+        set({ status: "authenticated", user, config: cached });
+      } catch {
+        // Offline at launch is normal in the field: the cached config still
+        // renders the sign-in screen, and the officer signs in when back online.
+        set({ status: "anonymous", config: cached });
+      }
+    })();
     try {
-      const refreshed = await api.POST("/v1/auth/refresh", { credentials: "same-origin" });
-      const token = refreshed.data?.token;
-      if (typeof token !== "string" || token === "") {
-        set({ status: "anonymous", config: cached });
-        return;
-      }
-      setFieldToken(token);
-      const user = await loadMe();
-      if (user === undefined) {
-        setFieldToken(undefined);
-        set({ status: "anonymous", config: cached });
-        return;
-      }
-      set({ status: "authenticated", user, config: cached });
-    } catch {
-      // Offline at launch is normal in the field: the cached config still
-      // renders the sign-in screen, and the officer signs in when back online.
-      set({ status: "anonymous", config: cached });
+      await bootstrapping;
+    } finally {
+      bootstrapping = undefined;
     }
   },
 

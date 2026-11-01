@@ -89,4 +89,13 @@ describe("LoginScreen", () => {
       expect(login).toHaveBeenCalledWith(expect.objectContaining({ totpCode: "" }));
     });
   });
+
+  it("shows the password only when the officer asks", () => {
+    render(<LoginScreen />);
+    const password = screen.getByLabelText(/^password/i);
+    expect(password.getAttribute("type")).toBe("password");
+
+    fireEvent.click(screen.getByRole("button", { name: /show password/i }));
+    expect(password.getAttribute("type")).toBe("text");
+  });
 });

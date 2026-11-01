@@ -57,6 +57,15 @@ interface MeResponse {
  * refresh token in an httpOnly cookie scoped to /v1/auth/refresh. Replay-on-401
  * for GETs is handled by the refreshOnUnauthorized middleware.
  */
+/**
+ * The in-flight refresh, shared by every caller.
+ *
+ * Refresh tokens rotate, so two refreshes at once (React StrictMode mounting an
+ * effect twice, or the 401 middleware racing the boot) means the loser gets a 401
+ * and the user is signed out on the next load. One promise, one rotation.
+ */
+let refreshing: Promise<void> | undefined;
+
 export const useSession = create<SessionState>()((set, get) => ({
   status: "unknown",
   accessToken: undefined,
@@ -91,20 +100,31 @@ export const useSession = create<SessionState>()((set, get) => ({
   },
 
   async silentRefresh() {
-    try {
-      const result = await api.POST("/v1/auth/refresh", {
-        credentials: "same-origin",
-      });
-      const data = await unwrap<{ readonly token?: string }>(result);
-      const token = data.token;
-      if (typeof token !== "string" || token === "") {
+    if (refreshing !== undefined) {
+      await refreshing;
+      return;
+    }
+    refreshing = (async () => {
+      try {
+        const result = await api.POST("/v1/auth/refresh", {
+          credentials: "same-origin",
+        });
+        const data = await unwrap<{ readonly token?: string }>(result);
+        const token = data.token;
+        if (typeof token !== "string" || token === "") {
+          set({ status: "anonymous", accessToken: undefined, user: undefined });
+          return;
+        }
+        set({ status: "authenticated", accessToken: token, user: undefined });
+        await applyMe(set);
+      } catch {
         set({ status: "anonymous", accessToken: undefined, user: undefined });
-        return;
       }
-      set({ status: "authenticated", accessToken: token, user: undefined });
-      await applyMe(set);
-    } catch {
-      set({ status: "anonymous", accessToken: undefined, user: undefined });
+    })();
+    try {
+      await refreshing;
+    } finally {
+      refreshing = undefined;
     }
   },
 

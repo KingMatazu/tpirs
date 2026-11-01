@@ -21,6 +21,9 @@ type LoginForm = z.infer<typeof loginSchema>;
 /** Step 1: staff sign-in. Sends credentials once; code + password never cached. */
 export function LoginPage(): ReactElement {
   const [submitting, setSubmitting] = useState(false);
+  // Typing a long password on a keyboard you do not trust is a real source of
+  // failed sign-ins; showing it is the fix, and it never leaves the tab.
+  const [showPassword, setShowPassword] = useState(false);
   const {
     register,
     handleSubmit,
@@ -80,12 +83,25 @@ export function LoginPage(): ReactElement {
           label="Password"
           {...(errors.password?.message === undefined ? {} : { error: errors.password.message })}
         >
-          <input
-            className={inputClass}
-            {...register("password")}
-            type="password"
-            autoComplete="current-password"
-          />
+          <div className="flex gap-2">
+            <input
+              className={inputClass}
+              {...register("password")}
+              type={showPassword ? "text" : "password"}
+              autoComplete="current-password"
+            />
+            <button
+              type="button"
+              onClick={() => {
+                setShowPassword((current) => !current);
+              }}
+              aria-pressed={showPassword}
+              aria-label={showPassword ? "Hide password" : "Show password"}
+              className="rounded-md border border-slate-300 px-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              {showPassword ? "Hide" : "Show"}
+            </button>
+          </div>
         </Field>
         <Field
           label="Two-factor code"

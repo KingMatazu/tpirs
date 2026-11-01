@@ -32,6 +32,15 @@ interface MeResponse {
  * cookie in the browser. Nothing is persisted to localStorage — a shared handset
  * must not keep a session after the app is closed.
  */
+/**
+ * The in-flight bootstrap, so concurrent callers share one refresh.
+ *
+ * React StrictMode mounts an effect twice in development, and two concurrent
+ * refreshes rotate the refresh token twice: the loser gets a 401 and the officer
+ * lands back on the login form on every reload.
+ */
+let bootstrapping: Promise<void> | undefined;
+
 export const useSession = create<SessionState>()((set, get) => ({
   status: "unknown",
   user: undefined,
@@ -74,23 +83,34 @@ export const useSession = create<SessionState>()((set, get) => ({
 
   async initialize() {
     if (get().status !== "unknown") return;
+    if (bootstrapping !== undefined) {
+      await bootstrapping;
+      return;
+    }
+    bootstrapping = (async () => {
+      try {
+        const refreshed = await api.POST("/v1/auth/refresh", { credentials: "same-origin" });
+        const token = refreshed.data?.token;
+        if (typeof token !== "string" || token === "") {
+          set({ status: "anonymous" });
+          return;
+        }
+        setCollectorToken(token);
+        const user = await loadMe();
+        if (user === undefined) {
+          setCollectorToken(undefined);
+          set({ status: "anonymous" });
+          return;
+        }
+        set({ status: "authenticated", user });
+      } catch {
+        set({ status: "anonymous" });
+      }
+    })();
     try {
-      const refreshed = await api.POST("/v1/auth/refresh", { credentials: "same-origin" });
-      const token = refreshed.data?.token;
-      if (typeof token !== "string" || token === "") {
-        set({ status: "anonymous" });
-        return;
-      }
-      setCollectorToken(token);
-      const user = await loadMe();
-      if (user === undefined) {
-        setCollectorToken(undefined);
-        set({ status: "anonymous" });
-        return;
-      }
-      set({ status: "authenticated", user });
-    } catch {
-      set({ status: "anonymous" });
+      await bootstrapping;
+    } finally {
+      bootstrapping = undefined;
     }
   },
 
