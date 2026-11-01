@@ -378,6 +378,7 @@ export async function runMonthActivity(deps: MonthActivityDeps): Promise<MonthEx
           displayName: "Finance",
           roles: ["finance_admin"],
           permissions: ["reconciliation:run"],
+          mustChangeCredentials: false,
         },
       });
     }

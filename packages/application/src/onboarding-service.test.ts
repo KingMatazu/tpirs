@@ -173,4 +173,23 @@ describeIntegration("onboarding (integration)", () => {
     expect(thrown).toBeInstanceOf(OnboardingValidationError);
     expect((thrown as OnboardingValidationError).issues[0]?.path).toBe("adminEmail");
   });
+
+  it("reports the configuration and the account email in one pass", async () => {
+    // A form that returns one problem per round trip is a form people abandon,
+    // so the answers and the email are checked together rather than in sequence.
+    const base = answers(`katsina-e-${stamp}`);
+    let thrown: unknown;
+    try {
+      await startOnboarding(db, {
+        adminEmail: "not-an-email",
+        config: { ...base.config, currency: "ngn" },
+      });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(OnboardingValidationError);
+    const paths = (thrown as OnboardingValidationError).issues.map((issue) => issue.path);
+    expect(paths).toContain("locale.currency");
+    expect(paths).toContain("adminEmail");
+  });
 });

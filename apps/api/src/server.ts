@@ -6,10 +6,11 @@ import swagger from "@fastify/swagger";
 import type { FastifyInstance } from "fastify";
 import type { BuildAppOptions } from "./config.js";
 import { clientErrorMessage, defaultErrorCode, errorEnvelope } from "./errors.js";
-import { authenticate, UnauthorizedError } from "./auth.js";
+import { authenticate, enforceCredentialRotation, UnauthorizedError } from "./auth.js";
 import { auditOnSuccess } from "./audit.js";
 import { sharedSchemas, healthSchema, readySchema } from "./schemas.js";
 import { registerAuthRoutes } from "./routes/auth.js";
+import { registerSetupRoutes } from "./routes/setup.js";
 import { registerConfigRoutes } from "./routes/config.js";
 import { registerAssetRoutes } from "./routes/assets.js";
 import { registerVerifyRoutes } from "./routes/verify.js";
@@ -142,7 +143,16 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
 
   if (options.identity !== undefined && options.db !== undefined) {
     app.addHook("onRequest", authenticate({ identity: options.identity, db: options.db }));
+    // After authentication, before any route: an account that still holds its
+    // provisioning credentials reaches only the routes that replace them.
+    app.addHook("onRequest", enforceCredentialRotation());
     app.addHook("onSend", auditOnSuccess(options.db));
+    // First-run setup is unauthenticated by necessity and closes itself once a
+    // tenant exists; it is registered here so it shares the auth routes' limiter.
+    registerSetupRoutes(app, {
+      db: options.db,
+      ...(options.rateLimiter === undefined ? {} : { rateLimiter: options.rateLimiter }),
+    });
     registerAuthRoutes(app, {
       identity: options.identity,
       db: options.db,

@@ -147,10 +147,9 @@ export async function isSetupRequired(db: AnyDb): Promise<boolean> {
   return tenants.length === 0;
 }
 
-function assertAdminEmail(email: string): void {
-  if (!EMAIL_PATTERN.test(email.trim())) {
-    throw new OnboardingValidationError([{ path: "adminEmail", message: "Enter a valid email" }]);
-  }
+function adminEmailIssues(email: string): readonly OnboardingIssue[] {
+  if (EMAIL_PATTERN.test(email.trim())) return [];
+  return [{ path: "adminEmail", message: "Enter a valid email" }];
 }
 
 /** Turns wizard answers into a validated config, reporting every problem at once. */
@@ -167,13 +166,34 @@ export function buildTenantConfig(answers: TenantConfigDefaultsInput): TenantCon
   }
 }
 
+/**
+ * Every problem with a submission, in one list.
+ *
+ * The email is checked in the same pass as the configuration: a form that says
+ * "fix this" three times, once per round trip, is a form people abandon. This is
+ * also why `buildTenantConfig` is not simply called first — its throw would end
+ * the pass before the email was looked at.
+ */
+function submissionIssues(input: StartOnboardingInput): readonly OnboardingIssue[] {
+  const issues: OnboardingIssue[] = [];
+  try {
+    buildTenantConfig(input.config);
+  } catch (error) {
+    if (!(error instanceof OnboardingValidationError)) throw error;
+    issues.push(...error.issues);
+  }
+  issues.push(...adminEmailIssues(input.adminEmail));
+  return issues;
+}
+
 export async function startOnboarding(
   db: AnyDb,
   input: StartOnboardingInput,
 ): Promise<StartOnboardingResult> {
-  const email = input.adminEmail.trim();
-  assertAdminEmail(email);
+  const issues = submissionIssues(input);
+  if (issues.length > 0) throw new OnboardingValidationError(issues);
 
+  const email = input.adminEmail.trim();
   const config = buildTenantConfig(input.config);
   // The factory already validates; this is the guard for anyone who later builds
   // a config by hand and passes it down this path.

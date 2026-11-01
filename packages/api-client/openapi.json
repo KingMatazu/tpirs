@@ -13,7 +13,8 @@
           "userId",
           "tenantId",
           "displayName",
-          "roles"
+          "roles",
+          "mustChangeCredentials"
         ],
         "properties": {
           "userId": {
@@ -30,6 +31,9 @@
             "items": {
               "type": "string"
             }
+          },
+          "mustChangeCredentials": {
+            "type": "boolean"
           }
         },
         "title": "StaffUser"
@@ -889,6 +893,141 @@
     }
   },
   "paths": {
+    "/v1/setup/status": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "needsSetup"
+                  ],
+                  "properties": {
+                    "needsSetup": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/setup/tenant": {
+      "post": {
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "slug",
+                  "legalEntity",
+                  "supportEmail",
+                  "supportPhone",
+                  "timezone",
+                  "currency",
+                  "ussdCode",
+                  "smsSenderId",
+                  "bikeFeeMinor",
+                  "tuktukFeeMinor",
+                  "adminEmail"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "slug": {
+                    "type": "string"
+                  },
+                  "legalEntity": {
+                    "type": "string"
+                  },
+                  "supportEmail": {
+                    "type": "string"
+                  },
+                  "supportPhone": {
+                    "type": "string"
+                  },
+                  "timezone": {
+                    "type": "string"
+                  },
+                  "currency": {
+                    "type": "string"
+                  },
+                  "ussdCode": {
+                    "type": "string"
+                  },
+                  "smsSenderId": {
+                    "type": "string"
+                  },
+                  "bikeFeeMinor": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "tuktukFeeMinor": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "adminEmail": {
+                    "type": "string"
+                  },
+                  "languages": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "minItems": 1
+                  },
+                  "defaultLanguage": {
+                    "type": "string"
+                  },
+                  "appName": {
+                    "type": "string"
+                  },
+                  "numberFormat": {
+                    "type": "string"
+                  },
+                  "dateFormat": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "tenantSlug",
+                    "temporaryUsername"
+                  ],
+                  "properties": {
+                    "tenantSlug": {
+                      "type": "string"
+                    },
+                    "temporaryUsername": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/auth/login": {
       "post": {
         "requestBody": {
@@ -1036,7 +1175,8 @@
                     "tenantId",
                     "displayName",
                     "roles",
-                    "permissions"
+                    "permissions",
+                    "mustChangeCredentials"
                   ],
                   "properties": {
                     "userId": {
@@ -1059,6 +1199,71 @@
                       "items": {
                         "type": "string"
                       }
+                    },
+                    "mustChangeCredentials": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/auth/complete-onboarding": {
+      "post": {
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "username",
+                  "password"
+                ],
+                "properties": {
+                  "username": {
+                    "type": "string"
+                  },
+                  "password": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "token",
+                    "expiresAt",
+                    "user",
+                    "refreshToken",
+                    "refreshExpiresAt"
+                  ],
+                  "properties": {
+                    "token": {
+                      "type": "string"
+                    },
+                    "expiresAt": {
+                      "type": "string"
+                    },
+                    "user": {
+                      "$ref": "#/components/schemas/def-0"
+                    },
+                    "refreshToken": {
+                      "type": "string"
+                    },
+                    "refreshExpiresAt": {
+                      "type": "string"
                     }
                   }
                 }

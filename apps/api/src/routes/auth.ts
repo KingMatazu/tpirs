@@ -1,10 +1,18 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { PortError } from "@tpirs/ports";
 import type { DeviceRegistration } from "@tpirs/ports";
-import { requirePrincipal, UnauthorizedError } from "../auth.js";
+import { OnboardingValidationError, completeOnboarding } from "@tpirs/application";
+import { repositories, withTenant } from "@tpirs/db";
+import { bearerToken, requirePrincipal, UnauthorizedError } from "../auth.js";
 import { resolveTenantIdBySlug } from "../tenants.js";
 import type { AuthContext } from "../auth.js";
-import { authLoginSchema, authLogoutSchema, authMeSchema, authRefreshSchema } from "../schemas.js";
+import {
+  authCompleteOnboardingSchema,
+  authLoginSchema,
+  authLogoutSchema,
+  authMeSchema,
+  authRefreshSchema,
+} from "../schemas.js";
 
 interface LoginBody {
   readonly tenantSlug?: unknown;
@@ -66,6 +74,7 @@ async function sessionReply(
     user: { userId: string; tenantId: string; displayName: string; roles: readonly string[] };
   },
   secure: boolean,
+  mustChangeCredentials: boolean,
 ): Promise<unknown> {
   setRefreshCookie(reply, session.refreshToken, session.refreshExpiresAt, secure);
   return reply.send({
@@ -76,10 +85,32 @@ async function sessionReply(
       tenantId: session.user.tenantId,
       displayName: session.user.displayName,
       roles: session.user.roles,
+      mustChangeCredentials,
     },
     refreshToken: session.refreshToken,
     refreshExpiresAt: session.refreshExpiresAt.toISOString(),
   });
+}
+
+/**
+ * Whether the account that just authenticated still holds its provisioning
+ * credentials.
+ *
+ * The identity port cannot answer this: it authenticates, it does not decide what
+ * an authenticated account may do. Reading the row here keeps that decision in
+ * one place — the same flag the request gate consults on every later call — so a
+ * client is never told "you are free to go" by a response the server would then
+ * refuse.
+ */
+async function mustChangeCredentials(
+  context: AuthContext,
+  tenantId: string,
+  userId: string,
+): Promise<boolean> {
+  const user = await withTenant(context.db, tenantId, (tx) =>
+    repositories(tx).users.findById(userId),
+  );
+  return user?.mustChangeCredentials ?? false;
 }
 
 /**
@@ -169,7 +200,12 @@ export function registerAuthRoutes(app: FastifyInstance, context: AuthContext): 
         entityType: "user",
         entityId: session.user.userId,
       };
-      return await sessionReply(reply, session, secureCookies);
+      return await sessionReply(
+        reply,
+        session,
+        secureCookies,
+        await mustChangeCredentials(context, session.user.tenantId, session.user.userId),
+      );
     } catch (error) {
       if (error instanceof PortError && error.code === "unauthorized") {
         return reply.code(401).send({
@@ -207,7 +243,12 @@ export function registerAuthRoutes(app: FastifyInstance, context: AuthContext): 
         entityType: "user",
         entityId: rotated.user.userId,
       };
-      return await sessionReply(reply, rotated, secureCookies);
+      return await sessionReply(
+        reply,
+        rotated,
+        secureCookies,
+        await mustChangeCredentials(context, rotated.user.tenantId, rotated.user.userId),
+      );
     } catch (error) {
       if (error instanceof PortError && error.code === "unauthorized") {
         // The cookie is deliberately *not* cleared here. Refresh tokens rotate,
@@ -266,6 +307,85 @@ export function registerAuthRoutes(app: FastifyInstance, context: AuthContext): 
       displayName: principal.displayName,
       roles: principal.roles,
       permissions: principal.permissions,
+      mustChangeCredentials: principal.mustChangeCredentials,
     });
   });
+
+  /**
+   * The one thing an account holding provisioning credentials may do.
+   *
+   * Everything about this route is defined by that: it is authenticated (the
+   * caller is the temporary account, no one else), it replaces the credentials on
+   * the account it is called with, it clears the flag in the same statement, and
+   * it hands back a working session so the person who just set a password is not
+   * asked to type it again into a login form on the next screen.
+   */
+  app.post(
+    "/v1/auth/complete-onboarding",
+    { schema: authCompleteOnboardingSchema },
+    async (request, reply) => {
+      let principal;
+      try {
+        principal = requirePrincipal(request);
+      } catch (error) {
+        if (error instanceof UnauthorizedError) {
+          return reply.code(401).send({
+            error: { code: "unauthorized", message: error.message, requestId: request.id },
+          });
+        }
+        throw error;
+      }
+
+      const body = (request.body ?? {}) as { username?: unknown; password?: unknown };
+      const username = asString(body.username);
+      const password = asString(body.password);
+      if (username === undefined || password === undefined) {
+        return reply.code(400).send({
+          error: {
+            code: "bad_request",
+            message: "username and password are required",
+            requestId: request.id,
+          },
+        });
+      }
+
+      let completed;
+      try {
+        completed = await completeOnboarding(context.db, {
+          tenantId: principal.tenantId,
+          userId: principal.userId,
+          username,
+          password,
+        });
+      } catch (error) {
+        if (error instanceof OnboardingValidationError) {
+          return reply.code(422).send({
+            error: {
+              code: "unprocessable_entity",
+              message: "The new credentials were not accepted",
+              requestId: request.id,
+              issues: error.issues,
+            },
+          });
+        }
+        throw error;
+      }
+
+      // The session that made this call was authorised by the temporary
+      // credentials; it ends with them. Revoking first means a failure to mint
+      // the replacement leaves the account signable-in with the password just
+      // set, rather than leaving a token around that was issued to a password
+      // nobody knows any more.
+      const previous = bearerToken(request);
+      if (previous !== undefined) await context.identity.revokeSession(previous);
+      const session = await context.identity.authenticate({
+        tenantId: principal.tenantId,
+        username: completed.username,
+        password,
+      });
+      // The service recorded `auth.credentials_changed` in the same transaction
+      // as the rename; a second audit row here would describe the same event.
+      return await sessionReply(reply, session, secureCookies, false);
+    },
+  );
 }

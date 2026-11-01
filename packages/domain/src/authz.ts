@@ -8,6 +8,16 @@ export interface Principal {
   readonly displayName: string;
   readonly roles: readonly string[];
   readonly permissions: readonly Permission[];
+  /**
+   * True while the account still holds the credentials it was provisioned with.
+   *
+   * Onboarding has to create an account before anyone has chosen a username and
+   * password for it, so the first account exists briefly with a known temporary
+   * pair. The flag travels with the principal rather than living only in the
+   * session, so every request — including one made with a token obtained before
+   * the client noticed — is judged on the account's current state.
+   */
+  readonly mustChangeCredentials: boolean;
 }
 
 export class ForbiddenError extends Error {
@@ -27,6 +37,8 @@ export function principal(input: {
   displayName: string;
   roles: readonly string[];
   permissions: readonly string[];
+  /** Defaults to false: only a provisioning flow sets it, and it clears itself. */
+  mustChangeCredentials?: boolean;
 }): Principal {
   const permissions: Permission[] = [];
   for (const value of input.permissions) {
@@ -41,6 +53,7 @@ export function principal(input: {
     displayName: input.displayName,
     roles: [...input.roles],
     permissions,
+    mustChangeCredentials: input.mustChangeCredentials ?? false,
   };
 }
 

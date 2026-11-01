@@ -177,7 +177,20 @@ export async function up(db: Kysely<unknown>): Promise<void> {
   // A non-owner application role. Table owners bypass RLS by default, so the
   // app (and RLS tests) must run as this role — via `set local role tpirs_app`
   // — for row-level security to apply.
-  await sql`create role tpirs_app nologin`.execute(db);
+  //
+  // Roles are cluster-wide while everything else here is per database, so this
+  // is guarded: a second database in the same cluster must be able to migrate
+  // (a fresh-install test creates one, and so does a developer who keeps a
+  // scratch copy). `down` is `if exists` for the same reason.
+  await sql`
+    do $$
+    begin
+      if not exists (select 1 from pg_roles where rolname = 'tpirs_app') then
+        create role tpirs_app nologin;
+      end if;
+    end
+    $$
+  `.execute(db);
   await sql`grant usage on schema public to tpirs_app`.execute(db);
   await sql`
     grant select, insert, update, delete on

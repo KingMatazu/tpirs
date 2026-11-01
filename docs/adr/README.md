@@ -51,3 +51,4 @@ Format: context, decision, consequences, alternatives considered.
 - [0046](./0046-login-throttling.md) Login throttling by IP and by username, fixed window
 - [0047](./0047-tenant-config-readability.md) Tenant config readable by staff, writable by admins
 - [0048](./0048-field-qr-scanning.md) QR scanning: native detector with a jsqr fallback
+- [0049](./0049-first-run-setup-and-provisioning-gate.md) First-run setup closes permanently; the provisioning account does one thing

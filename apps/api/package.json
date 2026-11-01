@@ -59,6 +59,8 @@
     "@tpirs/payment-provider-mock": "workspace:*",
     "@tpirs/secrets-provider-mock": "workspace:*",
     "@tpirs/telemetry-mock": "workspace:*",
+    "@types/pg": "^8.15.5",
+    "pg": "^8.16.3",
     "vitest": "^3.2.4"
   }
 }

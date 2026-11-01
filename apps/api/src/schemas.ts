@@ -28,12 +28,18 @@ const UUID_SCHEMA_PATTERN =
 const staffUser = {
   $id: "StaffUser",
   type: "object",
-  required: ["userId", "tenantId", "displayName", "roles"],
+  required: ["userId", "tenantId", "displayName", "roles", "mustChangeCredentials"],
   properties: {
     userId: { type: "string" },
     tenantId: { type: "string" },
     displayName: { type: "string" },
     roles: { type: "array", items: { type: "string" } },
+    /**
+     * True while the account still holds the credentials it was provisioned
+     * with. A client must send the user to the credential step rather than the
+     * dashboard; the server enforces the same rule on every other route.
+     */
+    mustChangeCredentials: { type: "boolean" },
   },
 };
 
@@ -595,18 +601,116 @@ export const authLogoutSchema: FastifySchema = {
   // 204 sends no body; declaring one would risk serializer surprises.
 };
 
+/**
+ * Replacing the account's provisioning credentials. Deliberately separate from
+ * login: a login returns a session for whatever credentials exist, while this
+ * route is the only thing a temporary session is allowed to do.
+ */
+export const authCompleteOnboardingSchema: FastifySchema = {
+  body: {
+    type: "object",
+    required: ["username", "password"],
+    properties: {
+      username: { type: "string" },
+      password: { type: "string" },
+    },
+  },
+  response: { 200: session },
+};
+
 export const authMeSchema: FastifySchema = {
   // /me returns the session user augmented with resolved permissions.
   response: {
     200: {
       type: "object",
-      required: ["userId", "tenantId", "displayName", "roles", "permissions"],
+      required: [
+        "userId",
+        "tenantId",
+        "displayName",
+        "roles",
+        "permissions",
+        "mustChangeCredentials",
+      ],
       properties: {
         userId: { type: "string" },
         tenantId: { type: "string" },
         displayName: { type: "string" },
         roles: { type: "array", items: { type: "string" } },
         permissions: { type: "array", items: { type: "string" } },
+        mustChangeCredentials: { type: "boolean" },
+      },
+    },
+  },
+};
+
+// ---------------------------------------------------------------------------
+// First-run setup
+// ---------------------------------------------------------------------------
+
+export const setupStatusSchema: FastifySchema = {
+  response: {
+    200: {
+      type: "object",
+      required: ["needsSetup"],
+      properties: { needsSetup: { type: "boolean" } },
+    },
+  },
+};
+
+/**
+ * The answers the wizard collects.
+ *
+ * Money arrives in minor units (`amountMinor` everywhere else in this contract
+ * too); the dashboard converts to major units for display and entry. Validation
+ * of the *values* — a currency code that is not three letters, a timezone that
+ * does not exist, a fee rule with no amount — happens in the config validator,
+ * which returns every problem at once as `issues`.
+ */
+export const setupTenantSchema: FastifySchema = {
+  body: {
+    type: "object",
+    required: [
+      "name",
+      "slug",
+      "legalEntity",
+      "supportEmail",
+      "supportPhone",
+      "timezone",
+      "currency",
+      "ussdCode",
+      "smsSenderId",
+      "bikeFeeMinor",
+      "tuktukFeeMinor",
+      "adminEmail",
+    ],
+    properties: {
+      name: { type: "string" },
+      slug: { type: "string" },
+      legalEntity: { type: "string" },
+      supportEmail: { type: "string" },
+      supportPhone: { type: "string" },
+      timezone: { type: "string" },
+      currency: { type: "string" },
+      ussdCode: { type: "string" },
+      smsSenderId: { type: "string" },
+      bikeFeeMinor: { type: "integer", minimum: 0 },
+      tuktukFeeMinor: { type: "integer", minimum: 0 },
+      adminEmail: { type: "string" },
+      languages: { type: "array", items: { type: "string" }, minItems: 1 },
+      defaultLanguage: { type: "string" },
+      appName: { type: "string" },
+      /** Locale used to format numbers; defaults to the default language. */
+      numberFormat: { type: "string" },
+      dateFormat: { type: "string" },
+    },
+  },
+  response: {
+    201: {
+      type: "object",
+      required: ["tenantSlug", "temporaryUsername"],
+      properties: {
+        tenantSlug: { type: "string" },
+        temporaryUsername: { type: "string" },
       },
     },
   },

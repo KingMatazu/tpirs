@@ -149,18 +149,35 @@ Migration `0019_onboarding.ts`:
   user rows come from the shared routine. `runSeed` refuses `NODE_ENV=production`
   unless `ALLOW_DEMO_SEED=true`.
 
-## Step 5: Setup API and the credential gate (planned)
+## Step 5: Setup API and the credential gate (delivered)
 
-- `GET /v1/setup/status` — `{ needsSetup }`, unauthenticated, `404`-free but
-  rate-limited like login.
-- `POST /v1/setup/tenant` — creates the tenant; `404` once a tenant exists;
-  `422` with per-path issues when the answers fail validation.
-- `POST /v1/setup/complete` — sets the new username and password, returns the
-  session pair, and `404`s once the flag is clear or a tenant exists.
-- `apps/api/src/auth.ts`: a `must_change_credentials` principal may reach only
-  `POST /v1/auth/complete-onboarding` and logout; everything else is
-  `403 must_change_credentials`.
-- `auth/me` exposes the flag so the dashboard can redirect.
+- `GET /v1/setup/status` — `{ needsSetup }`, unauthenticated, rate limited like
+  login.
+- `POST /v1/setup/tenant` — creates the tenant from the wizard's answers;
+  `404` once a tenant exists; `422` with every failing path at once. Answers are
+  the config factory's input plus `adminEmail`; money stays in minor units on the
+  wire and the dashboard converts, as everywhere else in this contract.
+- **`POST /v1/auth/complete-onboarding` rather than `/v1/setup/complete`.** The
+  step that replaces the provisioning credentials is authenticated (by the
+  temporary session) and issues the session the person continues with, so it
+  belongs with the other session routes. A separate unauthenticated
+  `/v1/setup/complete` would have been a second way to claim a tenant, and the
+  rules it enforces — the caller is the temporary account, and only that account
+  may rotate — are auth rules.
+- `apps/api/src/auth.ts`: `enforceCredentialRotation()` runs after
+  `authenticate` and refuses every route except `complete-onboarding`, `logout`,
+  `refresh` and `me` with `403 must_change_credentials`. The flag is read from
+  the `users` row on every request, so a token minted before the flag clears
+  cannot outlive it.
+- Session and `/v1/auth/me` responses expose `mustChangeCredentials` so a client
+  routes on it instead of guessing from a `403`.
+- Recorded as ADR 0049.
+- **Tests use a database that is genuinely empty.** The shared integration
+  database carries tenants from every other suite, and a tenant cannot be deleted
+  (append-only `audit_log`), so `setup.routes.test.ts` creates and drops its own
+  database. `migrateUp` had to run there too, which is why migration `0002` now
+  creates `tpirs_app` only if it is absent — roles are cluster-wide while the
+  schema is per database, and `down` already used `if exists`.
 - Regenerate `packages/api-client` (API build, then client build).
 
 ## Step 6: Admin onboarding wizard (planned)

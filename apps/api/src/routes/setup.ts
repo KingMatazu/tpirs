@@ -1,0 +1,172 @@
+import type { FastifyInstance, FastifyReply } from "fastify";
+import {
+  OnboardingValidationError,
+  TenantAlreadyProvisionedError,
+  isSetupRequired,
+  startOnboarding,
+} from "@tpirs/application";
+import type { OnboardingIssue } from "@tpirs/application";
+import type { RateLimiter } from "@tpirs/application";
+import type { TenantConfigDefaultsInput } from "@tpirs/config";
+import type { AnyDb } from "@tpirs/db";
+import { setupStatusSchema, setupTenantSchema } from "../schemas.js";
+
+/**
+ * First-run setup: the endpoints that turn an empty deployment into one with a
+ * tenant.
+ *
+ * These exist only while the deployment has no tenant. That is the whole access
+ * control: there is no account to authenticate as yet, so the protection is
+ * that the window closes — the moment a tenant exists every route here answers
+ * `404`, which is also the answer for a deployment that is simply finished. A
+ * caller cannot distinguish "already set up" from "not a route", and neither
+ * answer helps them.
+ *
+ * The decision to keep `SETUP_TOKEN` off is recorded with the phase: a token
+ * that must be copied out of a log and into a browser is a step an operator
+ * performs once, at the moment they are least practised at it, while the
+ * alternative — finish setup before exposing the port — is a deployment
+ * instruction rather than a secret that can be lost.
+ */
+export interface SetupContext {
+  readonly db: AnyDb;
+  /** The same limiter the auth routes use; compositions without one get none. */
+  readonly rateLimiter?: RateLimiter;
+}
+
+/**
+ * Status is polled by every browser that loads the dashboard, so it is limited
+ * like a login rather than left open. Creating a tenant hashes a password and
+ * writes around twenty rows, so it is limited far more tightly.
+ */
+const STATUS_IP_LIMIT = { limit: 60, windowSeconds: 60 } as const;
+const CREATE_IP_LIMIT = { limit: 10, windowSeconds: 60 } as const;
+
+/** The wizard's answers, as they arrive. Fastify's schema has validated them. */
+interface SetupTenantBody {
+  readonly name: string;
+  readonly slug: string;
+  readonly legalEntity: string;
+  readonly supportEmail: string;
+  readonly supportPhone: string;
+  readonly timezone: string;
+  readonly currency: string;
+  readonly ussdCode: string;
+  readonly smsSenderId: string;
+  readonly bikeFeeMinor: number;
+  readonly tuktukFeeMinor: number;
+  readonly adminEmail: string;
+  readonly languages?: readonly string[];
+  readonly defaultLanguage?: string;
+  readonly appName?: string;
+  readonly numberFormat?: string;
+  readonly dateFormat?: string;
+}
+
+/**
+ * The wizard does not ask about formatting: a levy office knows its currency and
+ * its language, not its ICU locale. Number formatting follows the default
+ * language (`en`, `fr`) and dates are written day-first, the form used in every
+ * market this platform is sold into so far. Both are tenant config afterwards,
+ * so getting them wrong costs an edit rather than a reinstall.
+ */
+const DEFAULT_DATE_FORMAT = "dd/MM/yyyy";
+
+function notFound(reply: FastifyReply, request: { id: string }): FastifyReply {
+  return reply.code(404).send({
+    error: { code: "not_found", message: "Route not found", requestId: request.id },
+  });
+}
+
+function invalidSetup(
+  reply: FastifyReply,
+  request: { id: string },
+  issues: readonly OnboardingIssue[],
+): FastifyReply {
+  const message =
+    issues.length === 1
+      ? "1 answer needs attention"
+      : `${String(issues.length)} answers need attention`;
+  return reply.code(422).send({
+    error: { code: "unprocessable_entity", message, requestId: request.id, issues },
+  });
+}
+
+export function registerSetupRoutes(app: FastifyInstance, context: SetupContext): void {
+  const limiter = context.rateLimiter;
+
+  app.get("/v1/setup/status", { schema: setupStatusSchema }, async (request, reply) => {
+    if (limiter !== undefined) {
+      const byIp = await limiter.consume(`setup.status:ip:${request.ip}`, STATUS_IP_LIMIT);
+      if (!byIp.allowed) {
+        void reply.header("Retry-After", String(byIp.retryAfterSeconds));
+        return reply.code(429).send({
+          error: { code: "rate_limited", message: "Too many requests", requestId: request.id },
+        });
+      }
+    }
+    return reply.send({ needsSetup: await isSetupRequired(context.db) });
+  });
+
+  app.post("/v1/setup/tenant", { schema: setupTenantSchema }, async (request, reply) => {
+    if (limiter !== undefined) {
+      const byIp = await limiter.consume(`setup.create:ip:${request.ip}`, CREATE_IP_LIMIT);
+      if (!byIp.allowed) {
+        void reply.header("Retry-After", String(byIp.retryAfterSeconds));
+        return reply.code(429).send({
+          error: { code: "rate_limited", message: "Too many requests", requestId: request.id },
+        });
+      }
+    }
+
+    // Checked before anything else: on a configured deployment this must be
+    // indistinguishable from a route that does not exist, and it must not reveal
+    // which fields a setup body is expected to carry.
+    if (!(await isSetupRequired(context.db))) return notFound(reply, request);
+
+    const body = request.body as SetupTenantBody;
+    const languages = body.languages ?? ["en"];
+    const defaultLanguage = body.defaultLanguage ?? languages[0] ?? "en";
+
+    const answers: TenantConfigDefaultsInput = {
+      name: body.name,
+      slug: body.slug,
+      legalEntity: body.legalEntity,
+      supportEmail: body.supportEmail,
+      supportPhone: body.supportPhone,
+      timezone: body.timezone,
+      // Currency codes are upper case everywhere they are compared; a client
+      // typing "ngn" should not fail three validators down.
+      currency: body.currency.toUpperCase(),
+      ussdCode: body.ussdCode,
+      smsSenderId: body.smsSenderId,
+      bikeFeeMinor: body.bikeFeeMinor,
+      tuktukFeeMinor: body.tuktukFeeMinor,
+      languages,
+      defaultLanguage,
+      numberFormat: body.numberFormat ?? defaultLanguage,
+      dateFormat: body.dateFormat ?? DEFAULT_DATE_FORMAT,
+      ...(body.appName === undefined ? {} : { appName: body.appName }),
+    };
+
+    try {
+      const started = await startOnboarding(context.db, {
+        config: answers,
+        adminEmail: body.adminEmail,
+      });
+      return await reply.code(201).send({
+        tenantSlug: answers.slug,
+        temporaryUsername: started.temporaryUsername,
+      });
+    } catch (error) {
+      if (error instanceof OnboardingValidationError) {
+        return invalidSetup(reply, request, error.issues);
+      }
+      // Two requests raced, or the deployment was configured between the check
+      // above and this call. Either way setup is done, and as far as the caller
+      // is concerned this route no longer exists.
+      if (error instanceof TenantAlreadyProvisionedError) return notFound(reply, request);
+      throw error;
+    }
+  });
+}

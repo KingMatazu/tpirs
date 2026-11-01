@@ -194,6 +194,7 @@ describe("declared response schemas serialize complete payloads", () => {
       displayName: "Ada",
       roles: ["finance_admin"],
       permissions: ["payment:read"],
+      mustChangeCredentials: false,
     }));
     app.get("/v1/verify/:token", { schema: verifyTokenSchema }, async () => ({
       status: "active",
@@ -327,6 +328,7 @@ describe("declared response schemas serialize complete payloads", () => {
       displayName: "Ada",
       roles: ["finance_admin"],
       permissions: ["payment:read"],
+      mustChangeCredentials: false,
     });
   });
 

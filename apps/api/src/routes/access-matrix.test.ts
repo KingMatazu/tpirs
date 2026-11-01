@@ -29,6 +29,11 @@ const PUBLIC: Readonly<Record<string, string>> = {
   "POST /v1/auth/login": "sign-in, before a session exists",
   "POST /v1/auth/refresh": "cookie-only refresh (ADR 0026)",
   "POST /v1/auth/logout": "revokes whatever session the caller presents",
+  // First-run setup is unauthenticated by necessity: there is no account yet.
+  // The protection is that it closes itself — once a tenant exists both routes
+  // answer 404, indistinguishable from a route that was never registered.
+  "GET /v1/setup/status": "first-run detection, before any account exists",
+  "POST /v1/setup/tenant": "provisions the first tenant, only while none exists",
   "GET /v1/verify/:token": "public sticker verification (ADR 0007), rate limited",
   "POST /webhooks/:provider/:endpointToken": "provider callback, endpoint token (ADR 0017)",
   "POST /webhooks/ussd/:provider/:endpointToken": "USSD callback, endpoint token",
@@ -38,6 +43,9 @@ const PUBLIC: Readonly<Record<string, string>> = {
 /** Authenticated, but about the caller's own session: no permission applies. */
 const AUTHENTICATED: Readonly<Record<string, string>> = {
   "GET /v1/auth/me": "the caller's own session and permissions",
+  // The one thing a provisioning account may do; the request gate in auth.ts
+  // refuses every other route until it has been called.
+  "POST /v1/auth/complete-onboarding": "replaces the caller's own temporary credentials",
   // Every screen renders from the tenant config (branding, locale, asset
   // schemas, cash and reconciliation rules), so any staff member may read it;
   // only writing it needs tenant:configure. The config holds secret references,
