@@ -1081,3 +1081,43 @@ and an authenticated account can configure a tenant or approve a reversal.
   forces a generous limit and distributed guessing defeats it); per-username only
   (one host can try one password against every account); a CAPTCHA (an external
   dependency and an accessibility problem for staff on low-end devices).
+
+## D56: Who may write the tenant config
+
+**Status:** open (deferred to Phase 11 productization). Default in place:
+`system_admin` only.
+
+`PUT /v1/tenants/current/config` requires `tenant:configure`, and in
+`packages/domain/src/tenancy.ts` exactly one seeded role holds it:
+`system_admin`. Reading the config is unrestricted for staff (ADR 0047), so the
+asymmetry is now sharper than when the role set was designed — every role renders
+from the config, but one role writes it.
+
+The pressure point is the resale model. `system_admin` also holds `user:manage`,
+`role:manage`, `zone:manage` and `audit:read`, so a state that wants "the levy
+manager sets fees, the IT contractor installs the system" has no way to express
+that split: whoever configures fees can also create users and edit roles. Since
+we granted `system_admin` the operational reads, the role now means "sees
+everything, writes settings and identities" — a coherent default for a
+single-supplier deployment, a poor fit for a state that separates procurement
+from operations.
+
+- Options: (1) keep `system_admin` as the only writer; (2) add a `tenant_owner`
+  or `config_admin` role holding `tenant:read` + `tenant:configure` and nothing
+  else, seeded alongside the current roles; (3) split the permission further, so
+  branding/locale/channels and fee rules (`obligationRules`, `feeRules`) are
+  separate permissions, because a fee change moves money and a colour change does
+  not.
+- Recommendation: do (2) at the start of Phase 11 — it is a seed and docs change,
+  since `role_permissions` is data and no schema moves — and keep (3) as the
+  target for the first contract that separates fee authority from IT. (3) is the
+  only option that matches the real risk: a fee rule moves money, and an
+  effective-dated fee change applied to past periods is exactly what the ledger's
+  dual-approval reversal workflow exists to catch. (1) alone is acceptable only
+  while one supplier both installs and operates the deployment.
+- Safe default until decided: `system_admin` only, writes are audited with
+  before/after (`tenant.config.update`), and the dashboard exposes no write form —
+  config changes go through the API, so the path is narrow and traceable.
+- Note: the demo tenants' config is owned by `packages/db/src/seed.ts`, which
+  refreshes it on every seed run, so a hand-edited demo config does not survive
+  `pnpm db:seed`. A real tenant is unaffected.
