@@ -1,7 +1,8 @@
 import { useEffect, type ReactElement } from "react";
 import { useRoute } from "./lib/router.js";
 import { useSession } from "./session.js";
-import { Layout } from "./pages/Layout.js";
+import { Layout, firstPermittedRoute, permissionForRoute } from "./pages/Layout.js";
+import { Card, EmptyState } from "./components/ui.js";
 import { LoginPage } from "./pages/LoginPage.js";
 import { ConfigViewerPage } from "./pages/ConfigViewerPage.js";
 import { ChannelsPage } from "./pages/ChannelsPage.js";
@@ -16,10 +17,11 @@ import { PaymentsPage } from "./pages/PaymentsPage.js";
 import { DisputesPage } from "./pages/DisputesPage.js";
 import { ReversalsPage } from "./pages/ReversalsPage.js";
 
-const FALLBACK_ROUTE = "/registry";
+const NO_PERMISSIONS: readonly string[] = [];
 
 export function App(): ReactElement {
   const sessionStatus = useSession((state) => state.status);
+  const permissions = useSession((state) => state.user?.permissions ?? NO_PERMISSIONS);
   const route = useRoute();
 
   // Reach the store method directly: selecting a closure would return a new
@@ -35,8 +37,31 @@ export function App(): ReactElement {
     return <LoginPage />;
   }
 
-  const page = pageFor(route === "/" ? FALLBACK_ROUTE : route);
-  return <Layout>{page}</Layout>;
+  // Landing: the first page this role may actually open, not a hardcoded one.
+  const target = route === "/" ? firstPermittedRoute(permissions) : route;
+  if (target === undefined) {
+    return (
+      <Layout>
+        <Card>
+          <EmptyState message="This account has no pages yet. Ask an administrator to give it a role." />
+        </Card>
+      </Layout>
+    );
+  }
+
+  const required = permissionForRoute(target);
+  if (required !== undefined && !permissions.includes(required)) {
+    // The sidebar hides it, so the URL must not reach it either.
+    return (
+      <Layout>
+        <Card>
+          <EmptyState message="You do not have permission to view this page." />
+        </Card>
+      </Layout>
+    );
+  }
+
+  return <Layout>{pageFor(target)}</Layout>;
 }
 
 function pageFor(route: string): ReactElement {

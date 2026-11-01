@@ -66,6 +66,20 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
 
 const NO_PERMISSIONS: readonly string[] = [];
 
+/** The permission a route needs, from the same list the sidebar renders. */
+export function permissionForRoute(route: string): string | undefined {
+  return NAV_ENTRIES.find((entry) => entry.path === route)?.permission;
+}
+
+/**
+ * Where a role should land. The dashboard used to hardcode `/registry`, which a
+ * system admin or finance admin cannot see — they arrived on a page missing from
+ * their own sidebar.
+ */
+export function firstPermittedRoute(permissions: readonly string[]): string | undefined {
+  return NAV_ENTRIES.find((entry) => permissions.includes(entry.permission))?.path;
+}
+
 export function Layout(props: Readonly<{ readonly children: ReactElement }>): ReactElement {
   const route = useRoute();
   const user = useSession((state) => state.user);

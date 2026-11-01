@@ -6,7 +6,7 @@ import { useSession } from "../session.js";
 import { stubRelativeRequests } from "../test-support/browserStubs.js";
 import { loadFixtureConfig } from "../test-support/tenant.js";
 import { useUiLanguage } from "../lib/uiLanguage.js";
-import { Layout } from "./Layout.js";
+import { Layout, firstPermittedRoute, permissionForRoute } from "./Layout.js";
 
 const fixture = loadFixtureConfig();
 
@@ -121,5 +121,24 @@ describe("tenant-aware shell", () => {
     fireEvent.change(screen.getByLabelText("Langue"), { target: { value: "en" } });
     expect(screen.getByRole("button", { name: /Registry/ })).toBeTruthy();
     expect(screen.getByRole("button", { name: /Reconciliation/ })).toBeTruthy();
+  });
+});
+
+describe("route permissions", () => {
+  it("knows which permission a route needs", () => {
+    expect(permissionForRoute("/registry")).toBe("asset:read");
+    expect(permissionForRoute("/audit")).toBe("audit:read");
+    expect(permissionForRoute("/nope")).toBeUndefined();
+  });
+
+  it("lands a role on a page its own sidebar shows", () => {
+    // A system admin used to be dropped on /registry while holding no asset:read.
+    expect(firstPermittedRoute(["tenant:read", "audit:read"])).toBe("/channels");
+    expect(firstPermittedRoute(["asset:read"])).toBe("/registry");
+    expect(firstPermittedRoute(["report:read", "asset:read"])).toBe("/registry");
+  });
+
+  it("returns nothing for an account with no permissions at all", () => {
+    expect(firstPermittedRoute([])).toBeUndefined();
   });
 });

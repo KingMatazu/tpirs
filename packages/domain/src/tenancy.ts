@@ -195,6 +195,17 @@ export const SYSTEM_ROLES: readonly SystemRoleDefinition[] = [
       "role:read",
       "role:manage",
       "audit:read",
+      // Operational *reads*. A system admin who cannot open the registry cannot
+      // tell whether the deployment works, and the dashboard lands on a page they
+      // are not allowed to see. Reading is not touching: every money-moving and
+      // ledger permission stays out, which is the separation the brief requires.
+      "asset:read",
+      "scan:read",
+      "payment:read",
+      "cash:read",
+      "dispute:read",
+      "report:read",
+      "reconciliation:read",
     ],
   },
   {

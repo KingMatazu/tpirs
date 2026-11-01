@@ -56,3 +56,52 @@ describe("App shell", () => {
     expect(screen.getByLabelText("Password")).toBeTruthy();
   });
 });
+
+describe("route access", () => {
+  function signInWith(permissions: readonly string[]): void {
+    useSession.setState({
+      status: "authenticated",
+      accessToken: "token",
+      user: {
+        userId: "u-1",
+        tenantId: "t-1",
+        displayName: "User",
+        roles: ["test"],
+        permissions: [...permissions],
+      },
+    });
+  }
+
+  function renderApp(): void {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <App />
+      </QueryClientProvider>,
+    );
+  }
+
+  it("refuses a route the sidebar hides", async () => {
+    window.location.hash = "#/registry";
+    signInWith(["report:read"]);
+    renderApp();
+
+    expect(await screen.findByText(/do not have permission to view this page/i)).toBeTruthy();
+  });
+
+  it("lands on a page the role may open instead of a hardcoded one", async () => {
+    window.location.hash = "#/";
+    signInWith(["report:read"]);
+    renderApp();
+
+    expect(await screen.findByRole("heading", { name: "Reports" })).toBeTruthy();
+  });
+
+  it("tells an account with no role where to go", async () => {
+    window.location.hash = "#/";
+    signInWith([]);
+    renderApp();
+
+    expect(await screen.findByText(/this account has no pages yet/i)).toBeTruthy();
+  });
+});

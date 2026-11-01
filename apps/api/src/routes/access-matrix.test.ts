@@ -228,6 +228,17 @@ describe("role defaults", () => {
     }
   });
 
+  it("lets a system admin read the operational screens without touching money", () => {
+    const admin = role("system_admin");
+    for (const read of ["asset:read", "payment:read", "report:read", "dispute:read"]) {
+      expect(admin.has(read)).toBe(true);
+    }
+    // Reading is not touching: nothing that moves or writes money.
+    for (const forbidden of ["cash:intake", "cash:freeze", "ledger:reverse", "payment:manage"]) {
+      expect(admin.has(forbidden)).toBe(false);
+    }
+  });
+
   it("keeps the auditor read-only", () => {
     const writes = [...role("auditor")].filter(
       (permission) => !permission.endsWith(":read") && !permission.endsWith(":export"),
