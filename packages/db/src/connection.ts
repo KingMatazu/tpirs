@@ -60,8 +60,15 @@ export interface UserTable {
   tenantId: string;
   username: string;
   displayName: string;
+  /** Account identifier; unique per tenant where present (migration 0019). */
+  email: string | null;
   passwordHash: string;
   totpSecret: string | null;
+  /**
+   * Set while an account still holds provisioning credentials. Such a session
+   * may reach only `POST /v1/auth/complete-onboarding` and logout.
+   */
+  mustChangeCredentials: Generated<boolean>;
   status: Generated<string>;
   createdAt: Generated<Timestamp>;
   updatedAt: Generated<Timestamp>;
