@@ -20,17 +20,12 @@ function apiError(status: number): ApiError {
  * fields character by character takes ~800 ms per test, and under a full-repo
  * run that is enough to trip the default timeout.
  */
-function signIn(options: { totp?: string } = {}): void {
+function signIn(): void {
   fireEvent.change(screen.getByLabelText(/state/i), { target: { value: "alpha-state" } });
   fireEvent.change(screen.getByLabelText(/username/i), { target: { value: "alpha.officer" } });
   fireEvent.change(screen.getByLabelText(/^password/i), {
     target: { value: "alpha-officer-password" },
   });
-  if (options.totp !== undefined) {
-    fireEvent.change(screen.getByLabelText(/authenticator code/i), {
-      target: { value: options.totp },
-    });
-  }
   fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
 }
 
@@ -40,16 +35,15 @@ describe("LoginScreen", () => {
     globalThis.localStorage.clear();
   });
 
-  it("signs in with the tenant, username, password and authenticator code", async () => {
+  it("signs in with the tenant, username and password", async () => {
     login.mockResolvedValue(undefined);
     render(<LoginScreen />);
-    signIn({ totp: "123456" });
+    signIn();
     await waitFor(() => {
       expect(login).toHaveBeenCalledWith({
         tenantSlug: "alpha-state",
         username: "alpha.officer",
         password: "alpha-officer-password",
-        totpCode: "123456",
       });
     });
   });
@@ -81,13 +75,10 @@ describe("LoginScreen", () => {
     expect(await screen.findByText(/too many attempts/i)).toBeTruthy();
   });
 
-  it("sends no authenticator code when the field is left empty", async () => {
-    login.mockResolvedValue(undefined);
+  it("asks for nothing beyond the password", () => {
     render(<LoginScreen />);
-    signIn();
-    await waitFor(() => {
-      expect(login).toHaveBeenCalledWith(expect.objectContaining({ totpCode: "" }));
-    });
+    expect(screen.queryByLabelText(/authenticator code/i)).toBeNull();
+    expect(screen.queryByLabelText(/two-factor/i)).toBeNull();
   });
 
   it("shows the password only when the officer asks", () => {

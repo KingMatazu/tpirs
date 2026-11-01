@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactElement } from "react";
 import { ApiError } from "@tpirs/api-client";
 import { useSession } from "../session.js";
+import { Eye, EyeOff } from "lucide-react";
 import { copy } from "../copy.js";
 import { Banner, Field, PrimaryButton, inputClass } from "../components/ui.js";
 
@@ -17,7 +18,6 @@ export function LoginScreen(): ReactElement {
   // Typing a long password on a shared handset is where sign-ins fail; showing
   // what was typed is the fix, and it never leaves the tab.
   const [showPassword, setShowPassword] = useState(false);
-  const [totpCode, setTotpCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
   const [offline, setOffline] = useState(!globalThis.navigator.onLine);
@@ -46,7 +46,7 @@ export function LoginScreen(): ReactElement {
     setBusy(true);
     setError(undefined);
     try {
-      await useSession.getState().login({ tenantSlug, username, password, totpCode });
+      await useSession.getState().login({ tenantSlug, username, password });
       try {
         globalThis.localStorage.setItem(TENANT_KEY, tenantSlug);
       } catch {
@@ -99,38 +99,35 @@ export function LoginScreen(): ReactElement {
           />
         </Field>
         <Field label={copy.login.password} {...(error === undefined ? {} : { error })}>
-          <input
-            className={inputClass}
-            type={showPassword ? "text" : "password"}
-            value={password}
-            onChange={(event) => {
-              setPassword(event.currentTarget.value);
-            }}
-            autoComplete="current-password"
-          />
-        </Field>
-        <button
-          type="button"
-          className="-mt-1 self-end text-sm font-medium text-slate-700 underline"
-          onClick={() => {
-            setShowPassword((current) => !current);
-          }}
-          aria-pressed={showPassword}
-        >
-          {showPassword ? copy.login.hidePassword : copy.login.showPassword}
-        </button>
-        <Field label={copy.login.totp} hint={copy.login.totpHint}>
-          <input
-            className={inputClass}
-            value={totpCode}
-            onChange={(event) => {
-              setTotpCode(event.currentTarget.value);
-            }}
-            inputMode="numeric"
-            autoComplete="one-time-code"
-            maxLength={6}
-            placeholder="123456"
-          />
+          <div className="relative">
+            <input
+              className={`${inputClass} pr-12`}
+              type={showPassword ? "text" : "password"}
+              value={password}
+              onChange={(event) => {
+                setPassword(event.currentTarget.value);
+              }}
+              autoComplete="current-password"
+            />
+            <button
+              type="button"
+              onMouseDown={(event) => {
+                event.preventDefault();
+              }}
+              onClick={() => {
+                setShowPassword((current) => !current);
+              }}
+              aria-label={showPassword ? copy.login.hidePassword : copy.login.showPassword}
+              aria-pressed={showPassword}
+              className="absolute inset-y-0 right-0 flex w-12 items-center justify-center text-slate-600 active:text-slate-900"
+            >
+              {showPassword ? (
+                <EyeOff size={20} aria-hidden="true" />
+              ) : (
+                <Eye size={20} aria-hidden="true" />
+              )}
+            </button>
+          </div>
         </Field>
         <PrimaryButton type="submit" disabled={busy || offline}>
           {busy ? copy.login.submitting : copy.login.submit}

@@ -114,7 +114,10 @@ Open <http://localhost:5173>. The login form takes a **tenant slug**, a
 
 Use `alpha.admin` to see everything, `beta.finance` for the finance and
 reconciliation screens, and `alpha.collector` to check the restricted view.
-TOTP is off locally (`REQUIRE_STAFF_TOTP=false`).
+TOTP is off locally (`REQUIRE_STAFF_TOTP=false`), and the sign-in forms have no
+code field in v1 — sign-in is tenant, username, password. Do not turn that flag on
+yet: the API would demand a code no form can send, and every staff user would be
+locked out.
 
 `alpha.officer` belongs in the officer PWA (<http://localhost:5174>) and
 `alpha.collector` in the collector PWA (<http://localhost:5175>); both also sign

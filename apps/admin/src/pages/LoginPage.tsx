@@ -1,3 +1,4 @@
+import { Eye, EyeOff } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useState, type ReactElement } from "react";
@@ -13,7 +14,6 @@ const loginSchema = z.object({
   tenantSlug: z.string().min(1, "Tenant slug is required"),
   username: z.string().min(1, "Username is required"),
   password: z.string().min(1, "Password is required"),
-  totpCode: z.string().optional(),
 });
 
 type LoginForm = z.infer<typeof loginSchema>;
@@ -38,9 +38,6 @@ export function LoginPage(): ReactElement {
           tenantSlug: values.tenantSlug,
           username: values.username,
           password: values.password,
-          ...(values.totpCode === undefined || values.totpCode === ""
-            ? {}
-            : { totpCode: values.totpCode }),
         });
         navigate("/registry");
       } catch {
@@ -83,9 +80,9 @@ export function LoginPage(): ReactElement {
           label="Password"
           {...(errors.password?.message === undefined ? {} : { error: errors.password.message })}
         >
-          <div className="flex gap-2">
+          <div className="relative">
             <input
-              className={inputClass}
+              className={`${inputClass} pr-10`}
               {...register("password")}
               type={showPassword ? "text" : "password"}
               autoComplete="current-password"
@@ -97,23 +94,15 @@ export function LoginPage(): ReactElement {
               }}
               aria-pressed={showPassword}
               aria-label={showPassword ? "Hide password" : "Show password"}
-              className="rounded-md border border-slate-300 px-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              className="absolute inset-y-0 right-0 flex w-9 items-center justify-center text-slate-500 hover:text-slate-900"
             >
-              {showPassword ? "Hide" : "Show"}
+              {showPassword ? (
+                <EyeOff size={16} aria-hidden="true" />
+              ) : (
+                <Eye size={16} aria-hidden="true" />
+              )}
             </button>
           </div>
-        </Field>
-        <Field
-          label="Two-factor code"
-          hint="Optional when your account has no authenticator."
-          {...(errors.totpCode?.message === undefined ? {} : { error: errors.totpCode.message })}
-        >
-          <input
-            className={inputClass}
-            {...register("totpCode")}
-            inputMode="numeric"
-            autoComplete="one-time-code"
-          />
         </Field>
         <Button type="submit" disabled={submitting}>
           {submitting ? "Signing in…" : "Sign in"}

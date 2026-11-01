@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactElement } from "react";
 import { useSession } from "../session.js";
+import { Eye, EyeOff } from "lucide-react";
 import { Field, PrimaryButton, inputClass } from "../components/ui.js";
 
 /** Sign-in. The collector signs in once per shift; the session is not persisted. */
@@ -68,26 +69,36 @@ export function LoginScreen(): ReactElement {
           />
         </Field>
         <Field label="Password" {...(error === undefined ? {} : { error })}>
-          <input
-            className={inputClass}
-            type={showPassword ? "text" : "password"}
-            value={password}
-            onChange={(event) => {
-              setPassword(event.currentTarget.value);
-            }}
-            autoComplete="current-password"
-          />
+          <div className="relative">
+            <input
+              className={`${inputClass} pr-12`}
+              type={showPassword ? "text" : "password"}
+              value={password}
+              onChange={(event) => {
+                setPassword(event.currentTarget.value);
+              }}
+              autoComplete="current-password"
+            />
+            <button
+              type="button"
+              onMouseDown={(event) => {
+                event.preventDefault();
+              }}
+              onClick={() => {
+                setShowPassword((current) => !current);
+              }}
+              aria-label={showPassword ? "Hide password" : "Show password"}
+              aria-pressed={showPassword}
+              className="absolute inset-y-0 right-0 flex w-12 items-center justify-center text-slate-600 active:text-slate-900"
+            >
+              {showPassword ? (
+                <EyeOff size={20} aria-hidden="true" />
+              ) : (
+                <Eye size={20} aria-hidden="true" />
+              )}
+            </button>
+          </div>
         </Field>
-        <button
-          type="button"
-          className="-mt-1 self-end text-sm font-medium text-slate-700 underline"
-          onClick={() => {
-            setShowPassword((current) => !current);
-          }}
-          aria-pressed={showPassword}
-        >
-          {showPassword ? "Hide password" : "Show password"}
-        </button>
         <PrimaryButton type="submit" disabled={busy}>
           {busy ? "Signing in…" : "Sign in"}
         </PrimaryButton>

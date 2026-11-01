@@ -25,8 +25,6 @@ export const copy = {
     stateHint: "The tenant slug, for example alpha-state.",
     username: "Username",
     password: "Password",
-    totp: "Authenticator code",
-    totpHint: "Six digits from your authenticator app.",
     showPassword: "Show password",
     hidePassword: "Hide password",
     submit: "Sign in",
