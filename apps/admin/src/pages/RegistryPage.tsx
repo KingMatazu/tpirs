@@ -2,6 +2,7 @@ import { useState, type FormEvent, type ReactElement } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { TenantAssetType } from "@tpirs/config";
 import { api } from "../api/client.js";
+import { AuthenticatedImage } from "../components/AuthenticatedImage.js";
 import { unwrap } from "../api/unwrap.js";
 import {
   Badge,
@@ -360,7 +361,7 @@ function AssetDetail(props: {
           <ul className="flex flex-wrap gap-3">
             {photos.map((photo, index) => (
               <li key={photo.id}>
-                <img
+                <AuthenticatedImage
                   src={photo.url}
                   alt={`Asset photo ${String(index + 1)}`}
                   className="h-32 w-32 rounded border border-slate-200 object-cover"

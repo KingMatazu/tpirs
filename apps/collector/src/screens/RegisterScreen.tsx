@@ -1,7 +1,15 @@
-import { useMemo, useState, type ReactElement } from "react";
+import { useEffect, useMemo, useState, type ReactElement } from "react";
 import type { TenantAssetAttribute } from "@tpirs/config";
 import { api } from "../api/client.js";
-import { Banner, Card, Field, PrimaryButton, Screen, inputClass } from "../components/ui.js";
+import {
+  Banner,
+  Card,
+  Field,
+  PrimaryButton,
+  Screen,
+  SecondaryButton,
+  inputClass,
+} from "../components/ui.js";
 import { useTenantConfig } from "../lib/data.js";
 
 interface Issue {
@@ -127,14 +135,7 @@ export function RegisterScreen(props: Readonly<{ onBack: () => void }>): ReactEl
             from the dashboard.
           </p>
         </Card>
-        <a
-          className="block rounded-xl border border-slate-300 bg-white px-4 py-3 text-center text-base font-medium text-slate-900"
-          href={`/v1/assets/${registered.id}/sticker`}
-          target="_blank"
-          rel="noreferrer"
-        >
-          Open the sticker
-        </a>
+        <StickerPanel assetId={registered.id} shortCode={registered.shortCode} />
         <Banner tone="info">
           The owner&apos;s phone is recorded but not verified. Verification happens by SMS from the
           dashboard; it does not block the vehicle from paying.
@@ -247,6 +248,71 @@ export function RegisterScreen(props: Readonly<{ onBack: () => void }>): ReactEl
         {busy ? "Registering…" : "Register vehicle"}
       </PrimaryButton>
     </Screen>
+  );
+}
+
+/**
+ * The sticker, fetched with the bearer and shown from an object URL.
+ *
+ * It cannot be a plain link to `/v1/assets/:id/sticker`: the access token lives in
+ * memory, and a browser navigation in a new tab carries no `Authorization`
+ * header, so the API answered 401 and the officer saw a JSON error instead of a
+ * sticker. Fetching it here and rendering the blob keeps the token where it
+ * belongs and works on a phone, where a popup after an `await` is often blocked.
+ */
+function StickerPanel(props: Readonly<{ assetId: string; shortCode: string }>): ReactElement {
+  const [url, setUrl] = useState<string | undefined>(undefined);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | undefined>(undefined);
+
+  useEffect(() => {
+    return () => {
+      if (url !== undefined) URL.revokeObjectURL(url);
+    };
+  }, [url]);
+
+  const load = async (): Promise<void> => {
+    setBusy(true);
+    setError(undefined);
+    try {
+      const result = await api.GET("/v1/assets/{id}/sticker", {
+        params: { path: { id: props.assetId } },
+      });
+      if (!result.response.ok) {
+        setError("The sticker could not be loaded. Try again when the phone is online.");
+        return;
+      }
+      // The route answers with SVG, so the generated client hands back text.
+      const svg = result.data as unknown as string;
+      const blob = new Blob([svg], { type: "image/svg+xml" });
+      setUrl(URL.createObjectURL(blob));
+    } catch {
+      setError("The sticker could not be loaded. Try again when the phone is online.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card>
+      {url === undefined ? (
+        <SecondaryButton disabled={busy} onClick={() => void load()}>
+          {busy ? "Loading sticker…" : "Show the sticker"}
+        </SecondaryButton>
+      ) : (
+        <div className="flex flex-col gap-2">
+          <img src={url} alt={`Sticker for ${props.shortCode}`} className="mx-auto w-48" />
+          <a
+            className="block rounded-xl border border-slate-300 bg-white px-4 py-3 text-center text-base font-medium text-slate-900"
+            href={url}
+            download={`sticker-${props.shortCode}.svg`}
+          >
+            Save the sticker
+          </a>
+        </div>
+      )}
+      {error === undefined ? null : <p className="mt-2 text-sm text-red-700">{error}</p>}
+    </Card>
   );
 }
 

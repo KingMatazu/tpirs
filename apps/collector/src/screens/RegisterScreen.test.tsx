@@ -5,7 +5,7 @@ import { api } from "../api/client.js";
 import { testConfig } from "../test-support/tenant.js";
 
 vi.mock("../api/client.js", () => ({
-  api: { POST: vi.fn() },
+  api: { POST: vi.fn(), GET: vi.fn() },
 }));
 
 vi.mock("../lib/data.js", () => ({
@@ -40,6 +40,10 @@ function fillForm(): void {
 describe("RegisterScreen", () => {
   beforeEach(() => {
     vi.mocked(api.POST).mockReset();
+    vi.mocked(api.GET).mockReset();
+    // jsdom has no object URLs; the panel only needs one that round-trips.
+    URL.createObjectURL = vi.fn(() => "blob:sticker");
+    URL.revokeObjectURL = vi.fn();
   });
 
   it("shows the server's per-attribute reason, by label, when it refuses", async () => {
@@ -100,5 +104,63 @@ describe("RegisterScreen", () => {
     fillForm();
 
     expect(await screen.findByText(/no connection/i)).toBeTruthy();
+  });
+});
+
+describe("the sticker", () => {
+  beforeEach(() => {
+    vi.mocked(api.POST).mockReset();
+    vi.mocked(api.GET).mockReset();
+    URL.createObjectURL = vi.fn(() => "blob:sticker");
+    URL.revokeObjectURL = vi.fn();
+  });
+
+  async function register(): Promise<void> {
+    vi.mocked(api.POST).mockResolvedValue(
+      response(200, { asset: { id: "a-1", shortCode: "B001000", assetTypeKey: "bike" } }),
+    );
+    render(<RegisterScreen onBack={noop} />);
+    fillForm();
+    await screen.findByText("B001000");
+  }
+
+  it("fetches the sticker with the session instead of linking to it", async () => {
+    vi.mocked(api.GET).mockResolvedValue({
+      response: new Response(null, { status: 200 }),
+      data: "<svg/>",
+    });
+    await register();
+
+    fireEvent.click(screen.getByRole("button", { name: /show the sticker/i }));
+
+    // A plain link would open a new tab with no Authorization header and get a
+    // 401; the app has to fetch it itself.
+    expect(await screen.findByAltText(/sticker for B001000/i)).toBeTruthy();
+    expect(vi.mocked(api.GET)).toHaveBeenCalledWith("/v1/assets/{id}/sticker", {
+      params: { path: { id: "a-1" } },
+    });
+  });
+
+  it("offers to save the sticker once it is loaded", async () => {
+    vi.mocked(api.GET).mockResolvedValue({
+      response: new Response(null, { status: 200 }),
+      data: "<svg/>",
+    });
+    await register();
+    fireEvent.click(screen.getByRole("button", { name: /show the sticker/i }));
+
+    const save = await screen.findByText(/save the sticker/i);
+    expect(save.getAttribute("download")).toBe("sticker-B001000.svg");
+  });
+
+  it("says so when the sticker cannot be loaded", async () => {
+    vi.mocked(api.GET).mockResolvedValue({
+      response: new Response(null, { status: 401 }),
+      error: { error: { code: "unauthorized" } },
+    });
+    await register();
+    fireEvent.click(screen.getByRole("button", { name: /show the sticker/i }));
+
+    expect(await screen.findByText(/sticker could not be loaded/i)).toBeTruthy();
   });
 });
