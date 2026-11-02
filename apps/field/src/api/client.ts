@@ -6,16 +6,22 @@ export function setFieldToken(token: string | undefined): void {
   tokenReader = () => token;
 }
 
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "";
+
 /**
- * Same-origin client. `credentials: "same-origin"` is what lets the browser
- * store the httpOnly refresh cookie (ADR 0026): with `omit`, the response's
- * `Set-Cookie` is discarded and every reload signs the officer out.
+ * `same-origin` by default. A split-origin deployment (API on another site)
+ * sets `VITE_API_BASE_URL` and takes `include`, or the refresh cookie is never
+ * stored or sent (ADR 0052).
  *
  * `idempotencyKeyPrefix` namespaces the keys this app generates so a scan queued
  * on a handset can never collide with a dashboard request.
  */
+export const apiCredentials: "same-origin" | "include" =
+  apiBaseUrl === "" ? "same-origin" : "include";
+
 export const api = createApiClient({
-  baseUrl: "",
+  baseUrl: apiBaseUrl,
+  credentials: apiCredentials,
   getAccessToken: () => tokenReader(),
   idempotencyKeyPrefix: "field",
 });

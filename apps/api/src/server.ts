@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import Fastify from "fastify";
 import sensible from "@fastify/sensible";
 import cookie from "@fastify/cookie";
+import cors from "@fastify/cors";
 import swagger from "@fastify/swagger";
 import type { FastifyInstance } from "fastify";
 import type { BuildAppOptions } from "./config.js";
@@ -71,6 +72,9 @@ export const LOG_REDACT_PATHS = [
 export async function buildApp(options: BuildAppOptions): Promise<FastifyInstance> {
   const { config, telemetry } = options;
   const app = Fastify({
+    // Behind Vercel/Railway the socket peer is the proxy; trusting the forwarded
+    // address is what keeps per-IP throttling about the visitor (ADR 0052).
+    trustProxy: config.trustProxy ?? false,
     logger: {
       level: config.logLevel,
       redact: { paths: [...LOG_REDACT_PATHS], censor: "[redacted]" },
@@ -83,6 +87,25 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   });
 
   await app.register(sensible);
+  // A split-origin deployment (Vercel UIs, API elsewhere) opts in by listing
+  // the browser origins. An empty list keeps the original same-origin posture:
+  // no CORS headers at all (ADR 0052).
+  if ((config.corsOrigins ?? []).length > 0) {
+    await app.register(cors, {
+      origin: [...(config.corsOrigins ?? [])],
+      credentials: true,
+      methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+      allowedHeaders: [
+        "authorization",
+        "content-type",
+        "idempotency-key",
+        "x-request-id",
+        "x-setup-token",
+      ],
+      exposedHeaders: ["x-request-id"],
+      maxAge: 600,
+    });
+  }
   // Cookie parsing backs the D26 refresh cookie; nothing else reads cookies.
   await app.register(cookie);
 
@@ -126,7 +149,8 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
 
   app.addHook("onSend", (_request, reply, payload, done) => {
     // Security headers on every response, including errors (Phase 10, Step 7).
-    // CORS is deliberately absent: every client is same-origin (ADR 0025).
+    // CORS, when enabled, is registered above and emits its own headers; these
+    // apply to every deployment.
     void reply.header("x-content-type-options", "nosniff");
     void reply.header("x-frame-options", "DENY");
     void reply.header("referrer-policy", "no-referrer");
@@ -153,6 +177,8 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     // tenant exists; it is registered here so it shares the auth routes' limiter.
     registerSetupRoutes(app, {
       db: options.db,
+      nodeEnv: config.nodeEnv,
+      ...(config.setupToken === undefined ? {} : { setupToken: config.setupToken }),
       ...(options.rateLimiter === undefined ? {} : { rateLimiter: options.rateLimiter }),
     });
     registerAuthRoutes(app, {
@@ -160,6 +186,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       db: options.db,
       // Secure cookies need HTTPS; local development is plain http://localhost.
       secureCookies: config.nodeEnv === "production",
+      sameSiteCookies: config.refreshCookieSameSite ?? "strict",
       ...(options.rateLimiter === undefined ? {} : { rateLimiter: options.rateLimiter }),
     });
     registerConfigRoutes(app, { identity: options.identity, db: options.db });

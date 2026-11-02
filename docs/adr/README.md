@@ -54,3 +54,4 @@ Format: context, decision, consequences, alternatives considered.
 - [0049](./0049-first-run-setup-and-provisioning-gate.md) First-run setup closes permanently; the provisioning account does one thing
 - [0050](./0050-zone-management.md) Zones are created and renamed, never re-parented or deleted
 - [0051](./0051-account-management.md) Account management: administrator-only, temporary password, no self-service
+- [0052](./0052-split-origin-hosting.md) Split-origin hosting: opt-in CORS, SameSite=None, and a closed setup window in production

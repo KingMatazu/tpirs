@@ -36,6 +36,43 @@ describe("api server", () => {
     expect(response.json()).toMatchObject({ status: "ok", region: "test" });
   });
 
+  it("adds no CORS headers unless origins are configured", async () => {
+    const response = await app.inject({
+      method: "OPTIONS",
+      url: "/v1/health",
+      headers: {
+        origin: "https://admin.example.gov",
+        "access-control-request-method": "GET",
+      },
+    });
+    expect(response.headers["access-control-allow-origin"]).toBeUndefined();
+  });
+
+  it("answers preflight for a configured split-origin deployment", async () => {
+    const split = await buildApp({
+      config: { ...config, corsOrigins: ["https://admin.example.gov"] },
+      telemetry: createMockTelemetry(),
+    });
+    await split.ready();
+    try {
+      const response = await split.inject({
+        method: "OPTIONS",
+        url: "/v1/health",
+        headers: {
+          origin: "https://admin.example.gov",
+          "access-control-request-method": "GET",
+          "access-control-request-headers": "authorization,idempotency-key",
+        },
+      });
+      expect(response.statusCode).toBe(204);
+      expect(response.headers["access-control-allow-origin"]).toBe("https://admin.example.gov");
+      expect(response.headers["access-control-allow-credentials"]).toBe("true");
+      expect(response.headers["access-control-allow-headers"]).toContain("idempotency-key");
+    } finally {
+      await split.close();
+    }
+  });
+
   it("returns ready when the readiness probe passes", async () => {
     const ready = await buildApp({
       config,

@@ -60,9 +60,14 @@ Then set the deployment values in `.env` (never commit this file):
 
 | Variable                      | Deployment value                                                              |
 | ----------------------------- | ----------------------------------------------------------------------------- |
-| `DATABASE_URL`                | The state's Postgres connection string                                        |
+| `DATABASE_URL`                | The state's Postgres connection string (a pooler URL for serverless hosts)    |
+| `DB_POOL_MAX`                 | `1` on a serverless host, otherwise small                                     |
 | `SECRET_QR_TOKEN_SIGNING_KEY` | A long random secret, unique per deployment; rotating it invalidates stickers |
 | `OBJECT_STORAGE_*`            | The bucket and credentials for sticker/photo/export storage                   |
+| `SETUP_TOKEN`                 | A random secret; production refuses first-run setup without one               |
+| `CORS_ORIGINS`                | Exact frontend origins when they are not on the API's origin                  |
+| `REFRESH_COOKIE_SAMESITE`     | `strict` same-origin, `none` when the frontend is on another site             |
+| `TRUST_PROXY`                 | `true` behind Vercel/Railway/nginx so per-IP throttle sees the visitor        |
 | `DEPLOYMENT_REGION`           | A label that appears in logs and health output                                |
 | `REQUIRE_STAFF_TOTP`          | Leave `false` until the field app has a code field; see known gaps            |
 | `METRICS_ENABLED`             | `true` only behind the internal network                                       |
@@ -76,21 +81,27 @@ pnpm dev
 
 For a deployment, run the API, worker and built UIs as services instead; the
 local script is only for evaluation. Only the API and worker need to reach the
-database; the UIs are static files that call `/v1` on the same origin.
+database; the UIs are static files that call `/v1`.
+
+For a Vercel + Supabase pilot (three UI projects, the API as a Vercel Function,
+no worker, `SETUP_TOKEN`, CORS and `SameSite=None`), follow
+[`../runbooks/vercel-supabase-pilot.md`](../runbooks/vercel-supabase-pilot.md).
 
 ## 2. Onboard the tenant in the browser
 
 Open the admin dashboard (locally <http://localhost:5173>). With zero tenants the
-app shows the first-run wizard instead of a sign-in form.
+app shows the first-run wizard instead of a sign-in form. A hosted deployment
+opens it with the setup token: `https://<admin>/?setupToken=<SETUP_TOKEN>`.
 
 1. **State details** — name, slug, legal entity, support email and phone,
-   timezone, currency, primary language. The slug appears in the sign-in form and
-   URLs; choose it once.
-2. **Administrator email** — an identifier for the first account, not a channel.
-   Nothing is emailed in this phase; it exists for the password-reset flow that
-   arrives with a mail sender.
-3. **Fees and channels** — motorbike and tuk-tuk daily amount in major units,
-   USSD code, SMS sender ID. Amounts are stored in minor units.
+   timezone, currency, primary language, and the administrator email. The
+   administrator email is an identifier for the first account, not a channel:
+   nothing is emailed in this phase; it exists for the password-reset flow that
+   arrives with a mail sender. The slug appears in the sign-in form and URLs;
+   choose it once.
+2. **Daily levy and channels** — motorbike and tuk-tuk daily amount in major
+   units, USSD code, SMS sender ID. Amounts are stored in minor units.
+3. **Review** — the wizard shows the answers before writing anything.
 4. **Choose your credentials** — replaces the temporary `admin` / `password`
    pair created by provisioning. The username may not be `admin`, the password
    must be at least 6 characters, may not be `password`, and may not equal the
@@ -101,7 +112,9 @@ system roles, the first account (now with your credentials), and no zones.
 Zones are optional and are created after sign-in — see step 3.
 
 The setup endpoints return `404` from the moment the first tenant exists. There
-is no second run.
+is no second run. On a hosted deployment, `SETUP_TOKEN` is required for tenant
+creation; once a tenant exists the token is unused, and a production deployment
+that never set one answers `503` instead of opening the window.
 
 ## 3. Configure the tenant
 
@@ -277,3 +290,10 @@ State these during planning; none of them is hidden in the code.
    until the sign-in forms expose a code field.
 6. **No bulk asset import.** See step 5.
 7. **Infrastructure provisioning is manual.** See the note at the top.
+8. **A Vercel-only pilot has no background worker.** SMS/channel outbox delivery,
+   automatic cash deadlines and the nightly reconciliation schedule do not run;
+   see [`../runbooks/vercel-supabase-pilot.md`](../runbooks/vercel-supabase-pilot.md)
+   for the laptop worker workaround.
+9. **A pilot without a bucket uses the mock object store.** Uploads are
+   process-local and disappear when the instance recycles; switch
+   `OBJECT_STORAGE_ADAPTER` to `s3` for durable files.

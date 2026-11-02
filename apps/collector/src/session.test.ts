@@ -3,6 +3,7 @@ import { api } from "./api/client.js";
 
 vi.mock("./api/client.js", () => ({
   api: { POST: vi.fn(), GET: vi.fn() },
+  apiCredentials: "same-origin",
   setCollectorToken: vi.fn(),
 }));
 

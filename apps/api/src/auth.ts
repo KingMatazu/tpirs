@@ -21,6 +21,12 @@ export interface AuthContext {
    * development over plain http://localhost passes false so browsers keep it.
    */
   readonly secureCookies?: boolean;
+  /**
+   * `SameSite` for the refresh cookie. Defaults to `strict`. A deployment whose
+   * frontend is on another site passes `none` (with Secure) or the browser
+   * refuses to store/send the cookie (ADR 0052).
+   */
+  readonly sameSiteCookies?: "strict" | "lax" | "none";
 }
 
 declare module "fastify" {

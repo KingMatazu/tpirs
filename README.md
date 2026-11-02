@@ -27,7 +27,9 @@ is the deployment checklist. Provider choice is covered by
 [`docs/onboarding/provider-decision-guide.md`](docs/onboarding/provider-decision-guide.md)
 and the generated [`provider-matrix.md`](docs/onboarding/provider-matrix.md);
 release and upgrade policy is in
-[`docs/versioning-and-upgrades.md`](docs/versioning-and-upgrades.md).
+[`docs/versioning-and-upgrades.md`](docs/versioning-and-upgrades.md). For a
+team pilot on Vercel + Supabase, follow
+[`docs/runbooks/vercel-supabase-pilot.md`](docs/runbooks/vercel-supabase-pilot.md).
 
 ## Layout
 

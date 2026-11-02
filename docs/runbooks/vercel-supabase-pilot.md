@@ -1,0 +1,235 @@
+# Runbook: a Vercel + Supabase team pilot
+
+This is the fastest way to put the system in front of a team: three static UIs
+and the API on Vercel, Postgres on Supabase, no background worker. It is a
+**pilot topology**, not the production shape: there is no worker, so scheduled
+reconciliation and automatic cash freezes do not run, and object storage is
+process-local.
+
+```
+Vercel project tpirs-admin     ─┐
+Vercel project tpirs-field     ─┼─► https://tpirs-api.vercel.app ─► Supabase Postgres
+Vercel project tpirs-collector ─┘        (Fastify on Vercel Functions)
+```
+
+The frontends use `VITE_API_BASE_URL`, so the API is a different origin. That is
+why CORS and a `SameSite=None` refresh cookie are configured below (ADR 0052).
+
+## 1. Supabase
+
+1. Create a project and choose the region closest to your users. Save the
+   database password.
+2. In **Connect**, copy two connection strings:
+
+| Use                | Port | Why                                                              |
+| ------------------ | ---- | ---------------------------------------------------------------- |
+| Migrations (local) | 5432 | Session mode; DDL and `SET ROLE` need a normal session           |
+| Runtime (Vercel)   | 6543 | Transaction pooler; many short-lived function instances share it |
+
+Both need `sslmode=require`; the password must be URL-encoded if it contains
+symbols.
+
+3. Apply the schema **from your machine**, not from Vercel:
+
+```sh
+export DATABASE_URL='postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres?sslmode=require'
+pnpm --filter @tpirs/db migrate up
+```
+
+Do **not** run `pnpm setup`: it starts local Docker and is for development. Do
+not run `pnpm db:seed` either — the demo tenants contain passwords from the
+repository, and this deployment should start empty.
+
+The migrations create the `tpirs_app` role and (migration 0021) grant it to the
+role that applied them, so `SET LOCAL ROLE` works on a managed Postgres where the
+deploying role is not a superuser. If every request fails with a permission error
+on `tpirs_app`, that grant is the first thing to check.
+
+## 2. API project on Vercel
+
+Import the repository as a new Vercel project:
+
+| Setting          | Value                                            |
+| ---------------- | ------------------------------------------------ |
+| Root Directory   | `apps/api`                                       |
+| Framework Preset | Fastify (auto-detected)                          |
+| Build            | `apps/api/vercel.json` (`pnpm --filter … build`) |
+| Region           | the same region as Supabase, if offered          |
+
+Environment variables (Production, and Preview if you want previews):
+
+| Variable                      | Value                                                                         |
+| ----------------------------- | ----------------------------------------------------------------------------- |
+| `DATABASE_URL`                | the **port 6543** pooler URL with `?sslmode=require`                          |
+| `DB_POOL_MAX`                 | `1`                                                                           |
+| `SECRET_QR_TOKEN_SIGNING_KEY` | a new random secret, 32+ bytes; rotating it invalidates printed stickers      |
+| `SETUP_TOKEN`                 | a new random secret; **required**, or production refuses first-run setup      |
+| `CORS_ORIGINS`                | the three frontend origins, comma-separated (set after step 3, then redeploy) |
+| `REFRESH_COOKIE_SAMESITE`     | `none`                                                                        |
+| `TRUST_PROXY`                 | `true`                                                                        |
+| `OBJECT_STORAGE_ADAPTER`      | `mock` (see step 7)                                                           |
+| `METRICS_ENABLED`             | `false`                                                                       |
+| `REQUIRE_STAFF_TOTP`          | `false`                                                                       |
+| `DEPLOYMENT_REGION`           | e.g. `katsina-pilot`                                                          |
+
+`NODE_ENV` is `production` on Vercel; that is what makes the refresh cookie
+`Secure`, and what makes an unset `SETUP_TOKEN` disable setup. Do not override it.
+
+Deploy, then check:
+
+```sh
+curl -fsS https://<api>.vercel.app/v1/health
+curl -fsS https://<api>.vercel.app/v1/ready
+```
+
+If the build fails on pnpm, set `ENABLE_EXPERIMENTAL_COREPACK=1` for that project;
+Vercel then uses the `packageManager` field in `package.json`.
+
+## 3. Frontend projects on Vercel
+
+Create three more projects from the same repository:
+
+| Project           | Root Directory   | Build config                 | Environment variable              |
+| ----------------- | ---------------- | ---------------------------- | --------------------------------- |
+| `tpirs-admin`     | `apps/admin`     | `apps/admin/vercel.json`     | `VITE_API_BASE_URL=https://<api>` |
+| `tpirs-field`     | `apps/field`     | `apps/field/vercel.json`     | `VITE_API_BASE_URL=https://<api>` |
+| `tpirs-collector` | `apps/collector` | `apps/collector/vercel.json` | `VITE_API_BASE_URL=https://<api>` |
+
+The `VITE_API_BASE_URL` value must match the API origin exactly (scheme + host,
+no trailing slash). It is read at build time, so set it before the first build
+and redeploy after changing it. Each build also builds the workspace packages it
+imports (`pnpm --filter @tpirs/<app>... build`).
+
+The PWA service workers are scoped to each project's domain; installing the
+officer and collector apps works the same as locally.
+
+## 4. Close the CORS loop
+
+Take the three production URLs and set them on the **API** project:
+
+```sh
+CORS_ORIGINS=https://tpirs-admin.vercel.app,https://tpirs-field.vercel.app,https://tpirs-collector.vercel.app
+```
+
+Redeploy the API so the allowlist is active. Rules:
+
+- Exact origins, no trailing slash, no `*`.
+- A preview deployment has a different origin. Add its URL temporarily (or test
+  only the production deployment); otherwise the browser blocks it.
+- The refresh cookie is `HttpOnly` and scoped to `/v1/auth/refresh`. If it is
+  missing, sign-in works but every reload returns to the login form. Check in
+  this order: `Set-Cookie` on the login response, the origin in `CORS_ORIGINS`,
+  and `VITE_API_BASE_URL`.
+
+### The cookie depends on the domain shape
+
+| Shape                                  | `REFRESH_COOKIE_SAMESITE` | Why                                                                  |
+| -------------------------------------- | ------------------------- | -------------------------------------------------------------------- |
+| `*.vercel.app` subdomains (cross-site) | `none`                    | `vercel.app` is a public suffix, so the projects are different sites |
+| `levy.example.gov` + `api.example.gov` | `strict`                  | same registrable domain, so the cookie is same-site                  |
+
+`SameSite=None` cookies are third-party cookies. Safari blocks them by default,
+and a locked-down Chrome profile can too; sign-in still works, but a reload falls
+back to the login form. If the team uses Safari, put both apps under one custom
+domain (the second row) or front the API with a same-origin Vercel rewrite.
+
+## 5. First run
+
+Open:
+
+```
+https://tpirs-admin.vercel.app/?setupToken=<SETUP_TOKEN>
+```
+
+The wizard creates the tenant, its seven roles, the first account and no zones;
+step 4 replaces `admin` / `password` with your own credentials and signs you in.
+After that `POST /v1/setup/tenant` returns `404` even with the token.
+
+Then:
+
+1. **Zones** — create the operating zones, or leave the list empty.
+2. **Users** — create the team's accounts with temporary passwords and roles.
+3. **Registry** — register one vehicle and download its sticker for a smoke test.
+4. Rotate or remove `SETUP_TOKEN` from the API project. It is unused after the
+   first tenant exists, but there is no reason to keep a live secret around.
+
+## 6. What does not run without the worker
+
+The Vercel pilot deliberately has no `apps/worker`. As a result:
+
+| Feature                                      | Behaviour without the worker                     |
+| -------------------------------------------- | ------------------------------------------------ |
+| SMS receipts / queued channel replies        | queued in the outbox, never sent                 |
+| Automatic collector freeze on missed deposit | does not happen; freeze manually from Collectors |
+| Nightly reconciliation schedule              | does not run                                     |
+| Reconciliation job queue                     | jobs would sit in the queue                      |
+
+Owner phone verification is also unavailable in this topology: the OTP service
+uses the composition root's mock SMS provider and the mock cache, so no code is
+delivered and a code sent on one function instance is gone on the next. Register
+owners without phone verification for the pilot; verify phones once a real SMS
+provider and a shared cache are configured.
+
+USSD menus, login, onboarding, registry, verification, payments, disputes,
+manual cash intake and reports in the UI all work, because they are request/response.
+
+To keep the pilot's background jobs moving, run the worker **from a laptop**
+against the same Supabase database while the team tests:
+
+```sh
+export DATABASE_URL='postgresql://…:6543/postgres?sslmode=require'
+export DB_POOL_MAX=2
+pnpm --filter @tpirs/worker dev
+```
+
+The worker uses the Postgres job queue (no Redis needed) and the mock SMS
+provider, so no messages leave the machine. Stop the laptop and the schedule
+stops; this is a workaround, not a deployment.
+
+## 7. Object storage
+
+`OBJECT_STORAGE_ADAPTER=mock` keeps uploads in the function instance's memory.
+Photo uploads appear to succeed, but a later read can 404 after the instance
+recycles, and report exports that rely on stored files are not durable. Sticker
+rendering is in-memory and works.
+
+For durable uploads, point the existing S3 adapter at any S3-compatible bucket
+(Supabase Storage's S3 endpoint, Cloudflare R2, AWS S3) and set:
+
+```
+OBJECT_STORAGE_ADAPTER=s3
+OBJECT_STORAGE_ENDPOINT=…
+OBJECT_STORAGE_REGION=…
+OBJECT_STORAGE_BUCKET=…
+OBJECT_STORAGE_ACCESS_KEY_ID=…
+OBJECT_STORAGE_SECRET_ACCESS_KEY=…
+```
+
+No code change is needed; `apps/api/src/storage.ts` is the only selector.
+
+## 8. Pilot safety
+
+- Treat this as test data: do not put real driver personal data or real payments
+  through it.
+- First-run setup is protected by `SETUP_TOKEN` and by the fact that the window
+  closes after one tenant. Never deploy a production API with the token unset and
+  no tenant.
+- `METRICS_ENABLED=false`: the metrics endpoint is unauthenticated.
+- Vercel preview deployments are public by default. Enable Vercel Authentication
+  for the project if the team is not the only audience.
+- Secrets live only in Vercel/Supabase environment settings. `.env` is gitignored
+  and must never be uploaded.
+
+## 9. Troubleshooting
+
+| Symptom                                     | Likely cause / fix                                                                                                       |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `permission denied to set role "tpirs_app"` | Migrations ran under a different role; run `grant tpirs_app to <that role>` or re-run 0021                               |
+| `self signed certificate` / SSL error       | Missing `?sslmode=require` on `DATABASE_URL`                                                                             |
+| `too many connections`                      | `DB_POOL_MAX` above 1, or the direct (5432) URL used at runtime                                                          |
+| Login succeeds but a reload signs you out   | Cookie blocked: wrong `CORS_ORIGINS`, `SameSite` still `strict`, or `VITE_API_BASE_URL` mismatch                         |
+| Browser CORS error                          | Origin typo/trailing slash; redeploy the API after changing `CORS_ORIGINS`                                               |
+| Setup answers `503 setup_disabled`          | `SETUP_TOKEN` unset while `NODE_ENV=production`; set it and redeploy                                                     |
+| Setup answers `401 setup_token_required`    | Missing/wrong `?setupToken=`; the token is the `SETUP_TOKEN` value                                                       |
+| Function timeout during onboarding          | Onboarding is normally sub-second; raise the project's function duration in Vercel settings if a report export times out |
+| Build cannot find `@tpirs/*`                | Root Directory wrong, or the build command did not build workspace dependencies                                          |

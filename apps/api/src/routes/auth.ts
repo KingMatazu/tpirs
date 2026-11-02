@@ -27,21 +27,22 @@ export const REFRESH_COOKIE = "tpirs_refresh";
 
 /**
  * Cookie options for the D26 refresh token: httpOnly so page script can never
- * read it, SameSite strict so cross-site navigation does not carry it, Secure
- * everywhere (localhost is exempt in modern browsers), and scoped to the refresh
- * path so no other endpoint ever receives it.
+ * read it, SameSite from deployment config (`strict` same-origin, `none` for a
+ * split-origin hosted deployment), Secure everywhere production, and scoped to
+ * the refresh path so no other endpoint ever receives it.
  */
 function setRefreshCookie(
   reply: FastifyReply,
   token: string,
   expiresAt: Date,
   secure: boolean,
+  sameSite: "strict" | "lax" | "none",
 ): void {
   const maxAgeSeconds = Math.max(1, Math.floor((expiresAt.getTime() - Date.now()) / 1000));
   reply.setCookie(REFRESH_COOKIE, token, {
     path: "/v1/auth/refresh",
     httpOnly: true,
-    sameSite: "strict",
+    sameSite,
     // Secure in production (HTTPS). Local development is served over plain
     // http://localhost, where browsers may drop a Secure cookie, which turned
     // every reload into a sign-out.
@@ -74,9 +75,10 @@ async function sessionReply(
     user: { userId: string; tenantId: string; displayName: string; roles: readonly string[] };
   },
   secure: boolean,
+  sameSite: "strict" | "lax" | "none",
   mustChangeCredentials: boolean,
 ): Promise<unknown> {
-  setRefreshCookie(reply, session.refreshToken, session.refreshExpiresAt, secure);
+  setRefreshCookie(reply, session.refreshToken, session.refreshExpiresAt, secure, sameSite);
   return reply.send({
     token: session.token,
     expiresAt: session.expiresAt.toISOString(),
@@ -138,6 +140,7 @@ function tooMany(reply: FastifyReply, request: { id: string }, retryAfterSeconds
 
 export function registerAuthRoutes(app: FastifyInstance, context: AuthContext): void {
   const secureCookies = context.secureCookies ?? true;
+  const sameSiteCookies = context.sameSiteCookies ?? "strict";
   const limiter = context.rateLimiter;
   app.post("/v1/auth/login", { schema: authLoginSchema }, async (request, reply) => {
     const body = (request.body ?? {}) as LoginBody;
@@ -204,6 +207,7 @@ export function registerAuthRoutes(app: FastifyInstance, context: AuthContext): 
         reply,
         session,
         secureCookies,
+        sameSiteCookies,
         await mustChangeCredentials(context, session.user.tenantId, session.user.userId),
       );
     } catch (error) {
@@ -247,6 +251,7 @@ export function registerAuthRoutes(app: FastifyInstance, context: AuthContext): 
         reply,
         rotated,
         secureCookies,
+        sameSiteCookies,
         await mustChangeCredentials(context, rotated.user.tenantId, rotated.user.userId),
       );
     } catch (error) {
@@ -393,7 +398,7 @@ export function registerAuthRoutes(app: FastifyInstance, context: AuthContext): 
       });
       // The service recorded `auth.credentials_changed` in the same transaction
       // as the rename; a second audit row here would describe the same event.
-      return await sessionReply(reply, session, secureCookies, false);
+      return await sessionReply(reply, session, secureCookies, sameSiteCookies, false);
     },
   );
 }

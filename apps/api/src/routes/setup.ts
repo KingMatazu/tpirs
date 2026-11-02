@@ -1,4 +1,5 @@
-import type { FastifyInstance, FastifyReply } from "fastify";
+import { timingSafeEqual } from "node:crypto";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   OnboardingValidationError,
   TenantAlreadyProvisionedError,
@@ -32,6 +33,15 @@ export interface SetupContext {
   readonly db: AnyDb;
   /** The same limiter the auth routes use; compositions without one get none. */
   readonly rateLimiter?: RateLimiter;
+  /**
+   * Shared secret for first-run setup (ADR 0052). When set, creating the tenant
+   * requires `x-setup-token` to match. Deployments exposed to the internet must
+   * set it; a fresh production deployment without one refuses setup rather than
+   * leaving the window open.
+   */
+  readonly setupToken?: string;
+  /** `production` closes open setup; tests and local development stay open. */
+  readonly nodeEnv?: string;
 }
 
 /**
@@ -78,6 +88,53 @@ function notFound(reply: FastifyReply, request: { id: string }): FastifyReply {
   });
 }
 
+/** Constant-time comparison; a length mismatch is already a mismatch. */
+function tokenMatches(provided: string, expected: string): boolean {
+  const left = Buffer.from(provided);
+  const right = Buffer.from(expected);
+  if (left.length !== right.length) return false;
+  return timingSafeEqual(left, right);
+}
+
+/**
+ * Decides whether this request may create the first tenant.
+ *
+ * `undefined` means allowed. The order matters: a configured token is checked
+ * before the production rule, so a deployment that set one works, and a
+ * production deployment without one fails closed instead of exposing a tenant
+ * creation endpoint to the internet.
+ */
+function setupDenied(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  context: SetupContext,
+): FastifyReply | undefined {
+  if (context.setupToken !== undefined) {
+    const header = request.headers["x-setup-token"];
+    const provided = typeof header === "string" ? header : "";
+    if (!tokenMatches(provided, context.setupToken)) {
+      return reply.code(401).send({
+        error: {
+          code: "setup_token_required",
+          message: "A valid setup token is required to create the first tenant",
+          requestId: request.id,
+        },
+      });
+    }
+    return undefined;
+  }
+  if (context.nodeEnv === "production") {
+    return reply.code(503).send({
+      error: {
+        code: "setup_disabled",
+        message: "First-run setup is disabled because SETUP_TOKEN is not set on this deployment",
+        requestId: request.id,
+      },
+    });
+  }
+  return undefined;
+}
+
 function invalidSetup(
   reply: FastifyReply,
   request: { id: string },
@@ -118,6 +175,7 @@ export function registerSetupRoutes(app: FastifyInstance, context: SetupContext)
       // runs in preValidation, so every response is the same 404.
       preValidation: async (request, reply) => {
         if (!(await isSetupRequired(context.db))) return notFound(reply, request);
+        return setupDenied(request, reply, context);
       },
     },
     async (request, reply) => {

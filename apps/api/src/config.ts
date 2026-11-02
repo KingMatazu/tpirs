@@ -12,6 +12,26 @@ export interface AppConfig {
   readonly databaseUrl: string;
   /** Exposes `GET /metrics` when true (ADR 0042); 404 otherwise. */
   readonly metricsEnabled: boolean;
+  /**
+   * Browser origins allowed to call the API (ADR 0052). Empty/absent keeps the
+   * same-origin assumption: no CORS headers, no preflight. A hosted deployment
+   * with frontends on another origin lists them here.
+   */
+  readonly corsOrigins?: readonly string[];
+  /**
+   * `SameSite` on the refresh cookie. `strict` for same-origin deployments;
+   * `none` (with `Secure`) when the frontend is on a different site, otherwise
+   * the browser never stores or sends the cookie.
+   */
+  readonly refreshCookieSameSite?: "strict" | "lax" | "none";
+  /**
+   * Shared secret required by `POST /v1/setup/tenant` when first-run setup is
+   * reachable from the internet. In production an unset token disables setup
+   * instead of leaving the tenant-creation window open.
+   */
+  readonly setupToken?: string;
+  /** Trust `X-Forwarded-For` (Vercel, Railway, any reverse proxy). */
+  readonly trustProxy?: boolean;
 }
 
 export interface BuildAppOptions {

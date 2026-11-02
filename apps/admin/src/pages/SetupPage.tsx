@@ -177,6 +177,12 @@ export function SetupPage(): ReactElement {
   const [reviewIssues, setReviewIssues] = useState<readonly string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [tenant, setTenant] = useState<CreatedTenant | undefined>(undefined);
+  // A hosted first run may require a token (ADR 0052). It arrives in the URL so
+  // the operator can be handed one link; it is never stored or logged.
+  const setupToken =
+    typeof window === "undefined"
+      ? undefined
+      : (new URLSearchParams(window.location.search).get("setupToken") ?? undefined);
 
   const set = (patch: Partial<Draft>): void => {
     setDraft((current) => ({ ...current, ...patch }));
@@ -250,6 +256,7 @@ export function SetupPage(): ReactElement {
       // `error` as absent; cast to the loose result shape the rest of the
       // dashboard reads (unwrap.ts) before inspecting the envelope.
       const result = (await api.POST("/v1/setup/tenant", {
+        ...(setupToken === undefined ? {} : { headers: { "x-setup-token": setupToken } }),
         body: {
           name: draft.name.trim(),
           slug: draft.slug.trim(),

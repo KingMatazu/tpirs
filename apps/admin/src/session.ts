@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { ApiError } from "@tpirs/api-client";
-import { api } from "./api/client.js";
+import { api, apiCredentials } from "./api/client.js";
 import { unwrap, errorFrom, type ApiResult } from "./api/unwrap.js";
 
 export interface StaffUser {
@@ -135,7 +135,7 @@ export const useSession = create<SessionState>()((set, get) => ({
     refreshing = (async () => {
       try {
         const result = await api.POST("/v1/auth/refresh", {
-          credentials: "same-origin",
+          credentials: apiCredentials,
         });
         const data = await unwrap<{ readonly token?: string }>(result);
         const token = data.token;
@@ -179,7 +179,7 @@ export const useSession = create<SessionState>()((set, get) => ({
   async logout() {
     try {
       await api.POST("/v1/auth/logout", {
-        credentials: "same-origin",
+        credentials: apiCredentials,
       });
     } catch {
       // The local session is cleared regardless; a failed server-side revoke is

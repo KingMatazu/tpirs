@@ -219,6 +219,7 @@ describeIntegration("api auth/config/audit (integration)", () => {
     const cookie = String(loginResponse.headers["set-cookie"] ?? "");
     expect(cookie).toContain("tpirs_refresh=");
     expect(cookie).toContain("HttpOnly");
+    expect(cookie).toContain("SameSite=Strict");
     // The test config is not production, so local http:// keeps the cookie.
     expect(cookie).not.toContain("Secure");
 

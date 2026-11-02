@@ -300,3 +300,135 @@ describeIntegration("first-run setup (fresh database)", () => {
     expect(repeated.statusCode).toBe(404);
   });
 });
+
+/**
+ * First-run setup on an internet-facing deployment (ADR 0052).
+ *
+ * The zero-tenant window is the only unauthenticated route that writes rows, so
+ * a hosted deployment has to prove two things: with `SETUP_TOKEN` set, only a
+ * caller holding it can create the tenant; and a production deployment that
+ * forgot to set one fails closed instead of publishing an open setup form.
+ * Local development and tests keep the old open behaviour, which is why the
+ * suite above still posts without a header.
+ */
+describeIntegration("first-run setup token gate (fresh database)", () => {
+  let scratch: ScratchDatabase;
+  let db: AnyDb;
+  const token = "deploy-setup-token-1";
+  const slug = `gated-${Date.now().toString()}`;
+  const gatedAnswers = {
+    name: "Gated State",
+    slug,
+    legalEntity: "Gated State Revenue Authority",
+    supportEmail: "support@gated.example.gov",
+    supportPhone: "+2348000000000",
+    timezone: "Africa/Lagos",
+    currency: "NGN",
+    ussdCode: "*347*2#",
+    smsSenderId: "GATEDLEVY",
+    bikeFeeMinor: 20000,
+    tuktukFeeMinor: 30000,
+    adminEmail: "admin@gated.example.gov",
+  };
+
+  beforeAll(async () => {
+    if (TEST_URL === undefined) return;
+    scratch = await createScratchDatabase(TEST_URL);
+    db = createDb({ connectionString: scratch.url });
+    await migrateUp(db, migrationsDir);
+  }, 180_000);
+
+  afterAll(async () => {
+    if (TEST_URL === undefined) return;
+    if (db !== undefined) await db.destroy();
+    if (scratch !== undefined) await scratch.drop();
+  }, 60_000);
+
+  it("fails closed on production when no setup token is configured", async () => {
+    const app = await buildApp({
+      config: { ...config, nodeEnv: "production" },
+      telemetry: createMockTelemetry(),
+      db,
+      identity: createDbIdentityProvider({ db }),
+      rateLimiter: allowAllLimiter(),
+    });
+    await app.ready();
+    try {
+      const response = await app.inject({
+        method: "POST",
+        url: "/v1/setup/tenant",
+        payload: gatedAnswers,
+      });
+      expect(response.statusCode).toBe(503);
+      expect(response.json()).toMatchObject({ error: { code: "setup_disabled" } });
+      const status = await app.inject({ method: "GET", url: "/v1/setup/status" });
+      expect(status.json()).toEqual({ needsSetup: true });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("accepts only the configured token, then closes the window", async () => {
+    const app = await buildApp({
+      config: {
+        ...config,
+        nodeEnv: "production",
+        setupToken: token,
+        refreshCookieSameSite: "none",
+      },
+      telemetry: createMockTelemetry(),
+      db,
+      identity: createDbIdentityProvider({ db }),
+      rateLimiter: allowAllLimiter(),
+    });
+    await app.ready();
+    try {
+      const missing = await app.inject({
+        method: "POST",
+        url: "/v1/setup/tenant",
+        payload: gatedAnswers,
+      });
+      expect(missing.statusCode).toBe(401);
+      expect(missing.json()).toMatchObject({ error: { code: "setup_token_required" } });
+
+      const wrong = await app.inject({
+        method: "POST",
+        url: "/v1/setup/tenant",
+        headers: { "x-setup-token": `${token}-wrong` },
+        payload: gatedAnswers,
+      });
+      expect(wrong.statusCode).toBe(401);
+
+      const created = await app.inject({
+        method: "POST",
+        url: "/v1/setup/tenant",
+        headers: { "x-setup-token": token },
+        payload: gatedAnswers,
+      });
+      expect(created.statusCode).toBe(201);
+
+      // A split-origin deployment needs the refresh cookie to survive a
+      // cross-site request: SameSite=None plus Secure (production is HTTPS).
+      const login = await app.inject({
+        method: "POST",
+        url: "/v1/auth/login",
+        payload: { tenantSlug: slug, username: "admin", password: "password" },
+      });
+      expect(login.statusCode).toBe(200);
+      const cookie = String(login.headers["set-cookie"] ?? "");
+      expect(cookie).toContain("SameSite=None");
+      expect(cookie).toContain("Secure");
+
+      // Once a tenant exists the token is irrelevant: the route is gone.
+      const replay = await app.inject({
+        method: "POST",
+        url: "/v1/setup/tenant",
+        headers: { "x-setup-token": token },
+        payload: gatedAnswers,
+      });
+      expect(replay.statusCode).toBe(404);
+    } finally {
+      await app.close();
+    }
+  });
+});

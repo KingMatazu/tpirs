@@ -8,3 +8,6 @@ packages:
 # (a build tool) is allowed; everything else stays unbuilt by default.
 allowBuilds:
   esbuild: true
+
+minimumReleaseAgeExclude:
+  - "@fastify/cors@11.4.0"

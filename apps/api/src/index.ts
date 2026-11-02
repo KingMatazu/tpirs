@@ -36,15 +36,37 @@ function createNoLimitCache(): Cache {
   };
 }
 
+function list(value: string | undefined): readonly string[] {
+  if (value === undefined) return [];
+  return value
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry !== "");
+}
+
+function cookieSameSite(): "strict" | "lax" | "none" {
+  const value = (process.env.REFRESH_COOKIE_SAMESITE ?? "strict").trim().toLowerCase();
+  if (value === "lax" || value === "none" || value === "strict") return value;
+  throw new Error(`REFRESH_COOKIE_SAMESITE must be strict, lax or none (received "${value}")`);
+}
+
 function loadConfig(): AppConfig {
   return {
     nodeEnv: process.env.NODE_ENV ?? "development",
     host: process.env.API_HOST ?? "0.0.0.0",
-    port: Number(process.env.API_PORT ?? "3000"),
+    // Vercel (and most container platforms) inject PORT; API_PORT remains the
+    // local/CI setting so a developer's .env keeps working.
+    port: Number(process.env.PORT ?? process.env.API_PORT ?? "3000"),
     logLevel: process.env.LOG_LEVEL ?? "info",
     deploymentRegion: process.env.DEPLOYMENT_REGION ?? "local",
     databaseUrl: process.env.DATABASE_URL ?? "",
     metricsEnabled: process.env.METRICS_ENABLED === "true",
+    corsOrigins: list(process.env.CORS_ORIGINS),
+    refreshCookieSameSite: cookieSameSite(),
+    ...(process.env.SETUP_TOKEN === undefined || process.env.SETUP_TOKEN.trim() === ""
+      ? {}
+      : { setupToken: process.env.SETUP_TOKEN.trim() }),
+    trustProxy: process.env.TRUST_PROXY === "true",
   };
 }
 
@@ -67,8 +89,16 @@ async function main(): Promise<void> {
   });
 
   const requireTotp = process.env.REQUIRE_STAFF_TOTP === "true";
+  // A serverless instance should hold one connection, not ten: the pooled
+  // Supabase/PgBouncer URL multiplexes many instances onto few backends.
+  const poolMax = Number(process.env.DB_POOL_MAX ?? "10");
   const db =
-    config.databaseUrl === "" ? undefined : createDb({ connectionString: config.databaseUrl });
+    config.databaseUrl === ""
+      ? undefined
+      : createDb({
+          connectionString: config.databaseUrl,
+          ...(Number.isFinite(poolMax) && poolMax > 0 ? { maxConnections: poolMax } : {}),
+        });
   const identity = db === undefined ? undefined : createDbIdentityProvider({ db, requireTotp });
   if (db !== undefined) {
     telemetry.log("info", "identity provider ready", { requireTotp });

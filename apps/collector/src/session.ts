@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { ApiError } from "@tpirs/api-client";
-import { api, setCollectorToken } from "./api/client.js";
+import { api, apiCredentials, setCollectorToken } from "./api/client.js";
 
 export interface CollectorUser {
   readonly userId: string;
@@ -73,7 +73,7 @@ export const useSession = create<SessionState>()((set, get) => ({
 
   async logout() {
     try {
-      await api.POST("/v1/auth/logout", { credentials: "same-origin" });
+      await api.POST("/v1/auth/logout", { credentials: apiCredentials });
     } catch {
       // The local session is cleared regardless; the token expires on its own.
     }
@@ -89,7 +89,7 @@ export const useSession = create<SessionState>()((set, get) => ({
     }
     bootstrapping = (async () => {
       try {
-        const refreshed = await api.POST("/v1/auth/refresh", { credentials: "same-origin" });
+        const refreshed = await api.POST("/v1/auth/refresh", { credentials: apiCredentials });
         const token = refreshed.data?.token;
         if (typeof token !== "string" || token === "") {
           set({ status: "anonymous" });

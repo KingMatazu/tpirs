@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { ApiError } from "@tpirs/api-client";
 import type { TenantConfig } from "@tpirs/config";
-import { api, setFieldToken } from "./api/client.js";
+import { api, apiCredentials, setFieldToken } from "./api/client.js";
 import { deviceId, platform } from "./lib/device.js";
 import { applyTheme, fetchConfig, readCachedConfig } from "./lib/tenant.js";
 
@@ -114,7 +114,7 @@ export const useSession = create<SessionState>()((set, get) => ({
 
   async refresh() {
     try {
-      const refreshed = await api.POST("/v1/auth/refresh", { credentials: "same-origin" });
+      const refreshed = await api.POST("/v1/auth/refresh", { credentials: apiCredentials });
       const token = refreshed.data?.token;
       if (typeof token !== "string" || token === "") return false;
       setFieldToken(token);
@@ -126,7 +126,7 @@ export const useSession = create<SessionState>()((set, get) => ({
 
   async logout() {
     try {
-      await api.POST("/v1/auth/logout", { credentials: "same-origin" });
+      await api.POST("/v1/auth/logout", { credentials: apiCredentials });
     } catch {
       // The local session is cleared regardless; the token expires on its own.
     }
@@ -144,7 +144,7 @@ export const useSession = create<SessionState>()((set, get) => ({
       const cached = readCachedConfig();
       if (cached !== undefined) applyTheme(cached);
       try {
-        const refreshed = await api.POST("/v1/auth/refresh", { credentials: "same-origin" });
+        const refreshed = await api.POST("/v1/auth/refresh", { credentials: apiCredentials });
         const token = refreshed.data?.token;
         if (typeof token !== "string" || token === "") {
           set({ status: "anonymous", config: cached });

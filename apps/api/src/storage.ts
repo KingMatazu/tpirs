@@ -1,5 +1,6 @@
 import { createLocalDiskObjectStorage } from "@tpirs/adapters-localdisk-storage";
 import { createS3ObjectStorage } from "@tpirs/adapters-s3-storage";
+import { createMockObjectStorage } from "@tpirs/object-storage-mock";
 import type { ObjectStorage } from "@tpirs/ports";
 
 /**
@@ -27,8 +28,17 @@ export function buildObjectStorage(env: ObjectStorageEnv): ObjectStorage {
     });
   }
 
+  // Deliberately process-local: a hosted pilot that has not provisioned a
+  // bucket can still boot and register assets. Uploads are lost when the
+  // instance recycles, so this is a testing adapter, never a deployment one.
+  if (adapter === "mock") {
+    return createMockObjectStorage(env.OBJECT_STORAGE_BUCKET ?? "mock-bucket");
+  }
+
   if (adapter !== "s3") {
-    throw new Error(`Unknown OBJECT_STORAGE_ADAPTER "${adapter}" (expected "s3" or "localdisk")`);
+    throw new Error(
+      `Unknown OBJECT_STORAGE_ADAPTER "${adapter}" (expected "s3", "localdisk" or "mock")`,
+    );
   }
 
   if (env.OBJECT_STORAGE_BUCKET === undefined || env.OBJECT_STORAGE_BUCKET === "") {

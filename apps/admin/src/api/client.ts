@@ -17,11 +17,22 @@ export function wireSession(wiring: {
   refreshAction = wiring.refresh;
 }
 
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? window.location.origin;
+
+/**
+ * `same-origin` for the default single-origin deployment; `include` when the
+ * API lives on another site (ADR 0052), because a cross-site request with
+ * `same-origin` neither sends nor stores the refresh cookie.
+ */
+export const apiCredentials: "same-origin" | "include" =
+  apiBaseUrl === window.location.origin ? "same-origin" : "include";
+
 export const api = createApiClient({
   // Same-origin by default: the page's own origin, so development requests hit
   // Vite's /v1 proxy (apps/admin/vite.config.ts) and production sits behind one
   // origin. A split-origin deployment sets VITE_API_BASE_URL.
-  baseUrl: import.meta.env.VITE_API_BASE_URL ?? window.location.origin,
+  baseUrl: apiBaseUrl,
+  credentials: apiCredentials,
   getAccessToken: () => tokenReader(),
   idempotencyKeyPrefix: "dashboard",
 });
