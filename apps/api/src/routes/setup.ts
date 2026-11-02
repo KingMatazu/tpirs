@@ -108,65 +108,73 @@ export function registerSetupRoutes(app: FastifyInstance, context: SetupContext)
     return reply.send({ needsSetup: await isSetupRequired(context.db) });
   });
 
-  app.post("/v1/setup/tenant", { schema: setupTenantSchema }, async (request, reply) => {
-    if (limiter !== undefined) {
-      const byIp = await limiter.consume(`setup.create:ip:${request.ip}`, CREATE_IP_LIMIT);
-      if (!byIp.allowed) {
-        void reply.header("Retry-After", String(byIp.retryAfterSeconds));
-        return reply.code(429).send({
-          error: { code: "rate_limited", message: "Too many requests", requestId: request.id },
+  app.post(
+    "/v1/setup/tenant",
+    {
+      schema: setupTenantSchema,
+      // Fastify validates the body before the handler. On a configured
+      // deployment that would answer 400 to a malformed body, revealing that
+      // the route exists and what it accepts. The closed-window check therefore
+      // runs in preValidation, so every response is the same 404.
+      preValidation: async (request, reply) => {
+        if (!(await isSetupRequired(context.db))) return notFound(reply, request);
+      },
+    },
+    async (request, reply) => {
+      if (limiter !== undefined) {
+        const byIp = await limiter.consume(`setup.create:ip:${request.ip}`, CREATE_IP_LIMIT);
+        if (!byIp.allowed) {
+          void reply.header("Retry-After", String(byIp.retryAfterSeconds));
+          return reply.code(429).send({
+            error: { code: "rate_limited", message: "Too many requests", requestId: request.id },
+          });
+        }
+      }
+
+      const body = request.body as SetupTenantBody;
+      const languages = body.languages ?? ["en"];
+      const defaultLanguage = body.defaultLanguage ?? languages[0] ?? "en";
+
+      const answers: TenantConfigDefaultsInput = {
+        name: body.name,
+        slug: body.slug,
+        legalEntity: body.legalEntity,
+        supportEmail: body.supportEmail,
+        supportPhone: body.supportPhone,
+        timezone: body.timezone,
+        // Currency codes are upper case everywhere they are compared; a client
+        // typing "ngn" should not fail three validators down.
+        currency: body.currency.toUpperCase(),
+        ussdCode: body.ussdCode,
+        smsSenderId: body.smsSenderId,
+        bikeFeeMinor: body.bikeFeeMinor,
+        tuktukFeeMinor: body.tuktukFeeMinor,
+        languages,
+        defaultLanguage,
+        numberFormat: body.numberFormat ?? defaultLanguage,
+        dateFormat: body.dateFormat ?? DEFAULT_DATE_FORMAT,
+        ...(body.appName === undefined ? {} : { appName: body.appName }),
+      };
+
+      try {
+        const started = await startOnboarding(context.db, {
+          config: answers,
+          adminEmail: body.adminEmail,
         });
+        return await reply.code(201).send({
+          tenantSlug: answers.slug,
+          temporaryUsername: started.temporaryUsername,
+        });
+      } catch (error) {
+        if (error instanceof OnboardingValidationError) {
+          return invalidSetup(reply, request, error.issues);
+        }
+        // Two requests raced, or the deployment was configured between the check
+        // above and this call. Either way setup is done, and as far as the caller
+        // is concerned this route no longer exists.
+        if (error instanceof TenantAlreadyProvisionedError) return notFound(reply, request);
+        throw error;
       }
-    }
-
-    // Checked before anything else: on a configured deployment this must be
-    // indistinguishable from a route that does not exist, and it must not reveal
-    // which fields a setup body is expected to carry.
-    if (!(await isSetupRequired(context.db))) return notFound(reply, request);
-
-    const body = request.body as SetupTenantBody;
-    const languages = body.languages ?? ["en"];
-    const defaultLanguage = body.defaultLanguage ?? languages[0] ?? "en";
-
-    const answers: TenantConfigDefaultsInput = {
-      name: body.name,
-      slug: body.slug,
-      legalEntity: body.legalEntity,
-      supportEmail: body.supportEmail,
-      supportPhone: body.supportPhone,
-      timezone: body.timezone,
-      // Currency codes are upper case everywhere they are compared; a client
-      // typing "ngn" should not fail three validators down.
-      currency: body.currency.toUpperCase(),
-      ussdCode: body.ussdCode,
-      smsSenderId: body.smsSenderId,
-      bikeFeeMinor: body.bikeFeeMinor,
-      tuktukFeeMinor: body.tuktukFeeMinor,
-      languages,
-      defaultLanguage,
-      numberFormat: body.numberFormat ?? defaultLanguage,
-      dateFormat: body.dateFormat ?? DEFAULT_DATE_FORMAT,
-      ...(body.appName === undefined ? {} : { appName: body.appName }),
-    };
-
-    try {
-      const started = await startOnboarding(context.db, {
-        config: answers,
-        adminEmail: body.adminEmail,
-      });
-      return await reply.code(201).send({
-        tenantSlug: answers.slug,
-        temporaryUsername: started.temporaryUsername,
-      });
-    } catch (error) {
-      if (error instanceof OnboardingValidationError) {
-        return invalidSetup(reply, request, error.issues);
-      }
-      // Two requests raced, or the deployment was configured between the check
-      // above and this call. Either way setup is done, and as far as the caller
-      // is concerned this route no longer exists.
-      if (error instanceof TenantAlreadyProvisionedError) return notFound(reply, request);
-      throw error;
-    }
-  });
+    },
+  );
 }

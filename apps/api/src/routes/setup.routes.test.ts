@@ -180,6 +180,15 @@ describeIntegration("first-run setup (fresh database)", () => {
     // deployment reveals nothing about what setup accepts.
     expect(again.statusCode).toBe(404);
     expect(again.json()).toMatchObject({ error: { code: "not_found" } });
+
+    // Fastify validates bodies before handlers, so this also proves the window
+    // is checked in preValidation: an empty body must not turn the closed route
+    // into a 400 that describes the fields it accepts.
+    const malformed = await app.inject({ method: "POST", url: "/v1/setup/tenant", payload: {} });
+    expect(malformed.statusCode).toBe(404);
+    expect(malformed.json()).toMatchObject({
+      error: { code: "not_found", message: "Route not found" },
+    });
   });
 
   it("confines the provisioning account to the credential step", async () => {
@@ -277,8 +286,17 @@ describeIntegration("first-run setup (fresh database)", () => {
     expect((await login("admin", "password")).statusCode).toBe(401);
     const renamed = await login("aisha.bello", "levy-2026");
     expect(renamed.statusCode).toBe(200);
-    expect(
-      (renamed.json() as { user: { mustChangeCredentials: boolean } }).user.mustChangeCredentials,
-    ).toBe(false);
+    const session = renamed.json() as { token: string; user: { mustChangeCredentials: boolean } };
+    expect(session.user.mustChangeCredentials).toBe(false);
+
+    // Completion is not a general password-change route: it closes with the
+    // provisioning flag, just as tenant creation closes with the first tenant.
+    const repeated = await app.inject({
+      method: "POST",
+      url: "/v1/auth/complete-onboarding",
+      headers: { authorization: `Bearer ${session.token}` },
+      payload: { username: "someone.else", password: "different-2026" },
+    });
+    expect(repeated.statusCode).toBe(404);
   });
 });

@@ -336,6 +336,14 @@ export function registerAuthRoutes(app: FastifyInstance, context: AuthContext): 
         throw error;
       }
 
+      if (!principal.mustChangeCredentials) {
+        // This is the end of provisioning, not a general self-service password
+        // change. Once the flag is clear the route has nothing left to do.
+        return reply.code(404).send({
+          error: { code: "not_found", message: "Route not found", requestId: request.id },
+        });
+      }
+
       const body = (request.body ?? {}) as { username?: unknown; password?: unknown };
       const username = asString(body.username);
       const password = asString(body.password);
