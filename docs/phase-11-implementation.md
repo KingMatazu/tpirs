@@ -226,13 +226,21 @@ Original scope:
 - Docs (`README.md`, `AGENTS.md`, `docs/runbooks/local-development.md`) no
   longer describe `pnpm setup` as seeding.
 
-## Step 8: Zone management, 11.0b (planned)
+## Step 8: Zone management, 11.0b (delivered)
 
 - `GET/POST/PATCH /v1/zones` behind `zone:read` / `zone:manage` (nested zones
-  already supported by the table).
-- Configuration panel in `apps/admin` to add and rename zones, and to explain
-  that leaving the list empty is valid.
-- Tests: create + rename + cross-tenant isolation; a collector cannot manage.
+  already supported by the table). Create takes an optional `parentZoneId`;
+  rename is name-only, because a re-parent is how a tree becomes a cycle.
+- `apps/admin/src/pages/ZonesPage.tsx` — a permission-aware **Zones** screen
+  (its own nav entry, since `zone_supervisor` holds `zone:manage` but not
+  `tenant:read`). It renders the tree, adds a zone under a chosen parent, renames
+  in place, and says plainly that an empty list is valid.
+- Migration `0020` adds a partial unique index for top-level names: the original
+  `unique (tenant_id, parent_zone_id, name)` never covered roots, because SQL
+  treats two `NULL` parents as distinct.
+- Tests: create + child + rename + duplicate `409` + cross-tenant isolation; a
+  read-only role lists but cannot mutate; the admin screen covers the empty
+  state and both mutations.
 
 ## Step 9: User management, 11.0b (planned)
 

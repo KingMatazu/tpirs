@@ -498,8 +498,21 @@ const reversalRequest = {
 };
 
 /** Component schemas registered once; routes reference them via $ref. */
+const zone = {
+  $id: "Zone",
+  type: "object",
+  required: ["id", "parentZoneId", "name"],
+  properties: {
+    id: { type: "string" },
+    /** Null for a top-level zone; a child names the zone it sits inside. */
+    parentZoneId: { type: "string", nullable: true },
+    name: { type: "string" },
+  },
+};
+
 export const sharedSchemas: readonly Record<string, unknown>[] = [
   staffUser,
+  zone,
   asset,
   owner,
   payment,
@@ -722,6 +735,46 @@ export const setupTenantSchema: FastifySchema = {
 
 export const tenantConfigPutSchema: FastifySchema = {
   body: { type: "object" },
+};
+
+// ---------------------------------------------------------------------------
+// Zones (11.0b). The tenant hierarchy the registry and reports group by.
+// ---------------------------------------------------------------------------
+
+export const listZonesSchema: FastifySchema = {
+  response: {
+    200: {
+      type: "object",
+      required: ["zones"],
+      properties: { zones: { type: "array", items: { $ref: "Zone#" } } },
+    },
+  },
+};
+
+export const createZoneSchema: FastifySchema = {
+  body: {
+    type: "object",
+    required: ["name"],
+    properties: {
+      name: { type: "string", minLength: 1, maxLength: 120 },
+      parentZoneId: { type: "string", pattern: UUID_SCHEMA_PATTERN },
+    },
+  },
+  response: {
+    201: { type: "object", required: ["zone"], properties: { zone: { $ref: "Zone#" } } },
+  },
+};
+
+export const renameZoneSchema: FastifySchema = {
+  params: idParams,
+  body: {
+    type: "object",
+    required: ["name"],
+    properties: { name: { type: "string", minLength: 1, maxLength: 120 } },
+  },
+  response: {
+    200: { type: "object", required: ["zone"], properties: { zone: { $ref: "Zone#" } } },
+  },
 };
 
 // ---------------------------------------------------------------------------

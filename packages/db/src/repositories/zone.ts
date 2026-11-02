@@ -41,4 +41,19 @@ export class ZoneRepository {
       .where("id", "=", id)
       .executeTakeFirst();
   }
+
+  /**
+   * Rename only. A zone's parent is fixed at creation: letting an edit move a
+   * zone is how a tree becomes a cycle (A inside B inside A), and nothing in
+   * the levy flow needs to re-parent. If that changes, the move belongs in a
+   * dedicated operation that walks the chain first.
+   */
+  async rename(id: string, name: string): Promise<ZoneRecord | undefined> {
+    return this.db
+      .updateTable("zones")
+      .set({ name })
+      .where("id", "=", id)
+      .returning(["id", "parentZoneId", "name"])
+      .executeTakeFirst();
+  }
 }

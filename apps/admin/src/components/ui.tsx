@@ -60,11 +60,14 @@ export function TextInput(
     readonly autoComplete?: string;
     readonly name?: string;
     readonly inputMode?: "text" | "numeric" | "tel" | "decimal";
+    /** Accessible name for inputs that sit outside a `<Field>` label. */
+    readonly ariaLabel?: string;
   }>,
 ): ReactElement {
   return (
     <input
       name={props.name}
+      aria-label={props.ariaLabel}
       type={props.type ?? "text"}
       inputMode={props.inputMode}
       className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-[var(--tpirs-color-primary)] focus:outline-none"

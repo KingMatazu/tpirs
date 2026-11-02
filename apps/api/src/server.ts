@@ -12,6 +12,7 @@ import { sharedSchemas, healthSchema, readySchema } from "./schemas.js";
 import { registerAuthRoutes } from "./routes/auth.js";
 import { registerSetupRoutes } from "./routes/setup.js";
 import { registerConfigRoutes } from "./routes/config.js";
+import { registerZoneRoutes } from "./routes/zones.js";
 import { registerAssetRoutes } from "./routes/assets.js";
 import { registerVerifyRoutes } from "./routes/verify.js";
 import { registerVerificationAndSyncRoutes } from "./routes/field.js";
@@ -161,6 +162,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       ...(options.rateLimiter === undefined ? {} : { rateLimiter: options.rateLimiter }),
     });
     registerConfigRoutes(app, { identity: options.identity, db: options.db });
+    registerZoneRoutes(app, { db: options.db });
     registerAuditRoutes(app, { db: options.db });
     if (options.services !== undefined) {
       registerPaymentRoutes(app, { services: options.services });

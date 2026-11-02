@@ -10,6 +10,7 @@ import {
   ScrollText,
   Settings,
   Smartphone,
+  Tags,
   Wallet,
   type LucideIcon,
 } from "lucide-react";
@@ -40,6 +41,7 @@ interface NavEntry {
     | "nav.channels"
     | "nav.ussd"
     | "nav.config"
+    | "nav.zones"
     | "nav.audit";
   readonly permission: string;
   readonly icon: LucideIcon;
@@ -61,6 +63,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   { path: "/channels", labelKey: "nav.channels", permission: "tenant:read", icon: MessageSquare },
   { path: "/ussd", labelKey: "nav.ussd", permission: "tenant:read", icon: Smartphone },
   { path: "/config", labelKey: "nav.config", permission: "tenant:read", icon: Settings },
+  { path: "/zones", labelKey: "nav.zones", permission: "zone:read", icon: Tags },
   { path: "/audit", labelKey: "nav.audit", permission: "audit:read", icon: ScrollText },
 ];
 
