@@ -55,13 +55,17 @@ scripts             setup and CI entrypoints
 
 ```sh
 pnpm install
-pnpm setup        # copies .env, starts containers, migrates, seeds
+pnpm setup --seed # copies .env, starts containers, migrates, seeds demo tenants
 pnpm dev          # run all dev servers (scripts/dev.mjs); Ctrl+C stops them all
 ```
 
 Then open <http://localhost:5173> and sign in with tenant `alpha-state`,
 username `alpha.admin`, password `alpha-admin-password` (all seeded accounts are
 listed in the local-development runbook).
+
+To provision a real tenant instead of demo data, run `pnpm setup` (no `--seed`)
+and `pnpm dev`, then open <http://localhost:5173>: the first-run wizard onboards
+the first tenant in the browser.
 
 ## Common tasks
 

@@ -218,11 +218,13 @@ Original scope:
 - Tests: wizard renders on a fresh install, rejects `admin`/`password`, blocks a
   5-character password, and lands the new admin inside the dashboard.
 
-## Step 7: `pnpm setup` semantics (planned)
+## Step 7: `pnpm setup` semantics (delivered)
 
 - `scripts/setup.mjs`: no seed by default; `--seed` installs demo tenants; prints
   the onboarding URL; `ALLOW_DEMO_SEED` guard for non-interactive runs.
 - `scripts/ci/backup-check.sh` and `.env.example` updated to the new flags.
+- Docs (`README.md`, `AGENTS.md`, `docs/runbooks/local-development.md`) no
+  longer describe `pnpm setup` as seeding.
 
 ## Step 8: Zone management, 11.0b (planned)
 

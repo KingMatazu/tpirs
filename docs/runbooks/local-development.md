@@ -38,16 +38,20 @@ git clone https://github.com/KingMatazu/tpirs.git
 cd tpirs
 
 pnpm install
-pnpm setup
+pnpm setup --seed
 ```
 
-`pnpm setup` (`scripts/setup.mjs`) does four things:
+`pnpm setup` (`scripts/setup.mjs`) prepares a fresh install:
 
 1. copies `.env.example` to `.env` (only if `.env` is missing),
-2. starts Postgres, Redis and SeaweedFS with
-   `docker compose -f infra/docker-compose.yml up -d --wait`,
-3. applies every migration (`pnpm db:migrate`),
-4. seeds the two demo tenants (`pnpm db:seed`).
+2. starts Postgres, Redis and SeaweedFS with `docker compose -f
+infra/docker-compose.yml up -d`,
+3. applies every migration (`pnpm db:migrate`).
+
+It does **not** create a tenant. Run `pnpm dev` and open
+<http://localhost:5173>: the first-run wizard onboards the first tenant in the
+browser. To work with the two demo tenants instead, run `pnpm setup --seed`,
+which also calls `pnpm db:seed`.
 
 If a step fails, fix that step and re-run `pnpm setup`; it is safe to repeat.
 
@@ -171,11 +175,12 @@ Stop the containers without deleting data:
 docker compose -f infra/docker-compose.yml down
 ```
 
-Full reset (deletes the database volumes, then re-creates and seeds):
+Full reset (deletes the database volumes, then re-creates — and, with `--seed`,
+seeds):
 
 ```sh
 docker compose -f infra/docker-compose.yml down -v
-pnpm setup
+pnpm setup --seed
 ```
 
 Open a psql shell:
@@ -228,7 +233,7 @@ pnpm ci:migration-check
 | `docker compose` fails or `--wait` hangs                        | Docker Desktop is not running, or ports `5433`/`6380`/`9000` are taken.                                                                                       |
 | `pnpm dev` cannot reach the database                            | `.env` is missing or containers are down: run `pnpm setup` or `pnpm dev:infra`.                                                                               |
 | API logs "registry services unavailable; asset routes disabled" | `SECRET_QR_TOKEN_SIGNING_KEY` is unset. Copy the dev value from `.env.example` into `.env` and restart; the QR signer is required for registry/verify routes. |
-| Login fails                                                     | Use the exact slug (`alpha-state`), and confirm `pnpm setup`/`pnpm db:seed` ran.                                                                              |
+| Login fails                                                     | Use the exact slug (`alpha-state`), and confirm `pnpm setup --seed`/`pnpm db:seed` ran.                                                                       |
 | Dashboard requests fail with 404/502                            | The API is not on `:3000`; start it with `pnpm dev` or the API filter command above.                                                                          |
 | No reconciliation runs yet                                      | The worker schedules them from the tenant cron; Reports and Audit show data already.                                                                          |
 | Port already in use                                             | Stop the conflicting process, or change `API_PORT` in `.env` and the Vite `server.port` in `apps/{admin,field,collector}/vite.config.ts`.                     |

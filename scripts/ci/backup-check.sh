@@ -33,6 +33,9 @@ for _ in $(seq 1 30); do
 done
 
 export DATABASE_URL="postgres://tpirs:tpirs@localhost:$port/tpirs"
+# The seed CLI refuses to run against NODE_ENV=production unless
+# ALLOW_DEMO_SEED=true; this throwaway container is exactly the demo use case.
+export ALLOW_DEMO_SEED=true
 
 echo "backup-check: migrating and seeding"
 pnpm --filter @tpirs/db migrate up >/dev/null

@@ -9,7 +9,7 @@
 | Command                                                        | What it does                                                                |
 | -------------------------------------------------------------- | --------------------------------------------------------------------------- |
 | `pnpm install`                                                 | install workspace dependencies                                              |
-| `pnpm setup`                                                   | copy `.env`, start containers, migrate, seed (first run)                    |
+| `pnpm setup`                                                   | copy `.env`, start containers, migrate; add `--seed` for demo tenants       |
 | `pnpm dev`                                                     | all dev servers via `scripts/dev.mjs` (one Ctrl+C stops them); API on :3000 |
 | `pnpm dev:infra`                                               | Postgres/Redis/SeaweedFS containers only                                    |
 | `pnpm lint` / `typecheck` / `test` / `build`                   | turbo runs that task in every package (all `dependsOn: ^build`)             |

@@ -6,6 +6,21 @@ import path from "node:path";
 const root = path.resolve(import.meta.dirname, "..");
 const compose = ["compose", "-f", "infra/docker-compose.yml"];
 
+const args = process.argv.slice(2);
+const seedDemo = args.includes("--seed");
+
+if (args.includes("--help") || args.includes("-h")) {
+  console.log("Usage: node scripts/setup.mjs [--seed]");
+  console.log("");
+  console.log("Prepares the machine for development: copies .env, starts Postgres,");
+  console.log("Redis and SeaweedFS, and applies every migration.");
+  console.log("");
+  console.log("  (no flags)  fresh install. No tenant is created; onboard the first");
+  console.log("              tenant from the dashboard once the dev servers run.");
+  console.log("  --seed      also install the demo tenants (alpha-state, beta-state).");
+  process.exit(0);
+}
+
 function run(command, args) {
   console.log(`> ${command} ${args.join(" ")}`);
   const result = spawnSync(command, args, { cwd: root, stdio: "inherit", shell: true });
@@ -80,6 +95,18 @@ if (!existsSync(path.join(root, ".env"))) {
 run("docker", [...compose, "up", "-d"]);
 waitForStack();
 run("pnpm", ["db:migrate"]);
-run("pnpm", ["db:seed"]);
+if (seedDemo) {
+  run("pnpm", ["db:seed"]);
+}
 
-console.log("\nSetup complete. Start dev servers with: pnpm dev");
+console.log("");
+if (seedDemo) {
+  console.log("Setup complete with demo tenants.");
+  console.log("Start the dev servers with: pnpm dev");
+  console.log("Demo sign-in: tenant alpha-state, user alpha.admin, password alpha-admin-password");
+  console.log("(all seeded accounts are listed in docs/runbooks/local-development.md)");
+} else {
+  console.log("Setup complete. No tenant exists yet.");
+  console.log("Start the dev servers with: pnpm dev");
+  console.log("Then open http://localhost:5173 to onboard your first tenant in the browser.");
+}
