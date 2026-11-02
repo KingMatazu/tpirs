@@ -238,4 +238,56 @@ describe("wizard flow (steps 1–3)", () => {
       expect(screen.getByText("Currency must be an ISO 4217 code")).toBeTruthy();
     });
   });
+
+  it("hands off to the temporary sign-in after the tenant is created", async () => {
+    let loginBody: Record<string, unknown> | undefined;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: unknown, init?: RequestInit) => {
+        const request = isRequestLike(input) ? (input as Request) : new Request(String(input), init);
+        const url = new URL(request.url, "http://localhost").pathname;
+        if (url === "/v1/setup/tenant" && request.method === "POST") {
+          return json(201, { tenantSlug: "katsina-state", temporaryUsername: "admin" });
+        }
+        if (url === "/v1/auth/login" && request.method === "POST") {
+          loginBody = (await request.json()) as Record<string, unknown>;
+          return json(200, {
+            token: "tok-temp",
+            expiresAt: "2026-10-23T13:00:00.000Z",
+            user: {
+              userId: "u1",
+              tenantId: "t1",
+              displayName: "Administrator",
+              roles: ["system_admin"],
+              mustChangeCredentials: true,
+            },
+            refreshToken: "r-temp",
+            refreshExpiresAt: "2026-10-24T13:00:00.000Z",
+          });
+        }
+        if (url === "/v1/auth/me") {
+          return json(200, {
+            userId: "u1",
+            tenantId: "t1",
+            displayName: "Administrator",
+            roles: ["system_admin"],
+            permissions: ["asset:read"],
+            mustChangeCredentials: true,
+          });
+        }
+        return json(404, { error: { code: "not_found", message: "nope", requestId: "r" } });
+      }),
+    );
+
+    completeToReview();
+    fireEvent.click(screen.getByRole("button", { name: "Create tenant" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Continue to sign-in" }));
+
+    // The wizard signs in with the provisioning account, never asking the
+    // operator to type it; App then swaps to the credential step.
+    await waitFor(() => {
+      expect(loginBody).toEqual({ tenantSlug: "katsina-state", username: "admin", password: "password" });
+    });
+    expect(useSession.getState().user?.mustChangeCredentials).toBe(true);
+  });
 });

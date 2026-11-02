@@ -194,12 +194,15 @@ Split into four shippable parts; each lands with its own tests:
    SMS sender id; a review; `POST /v1/setup/tenant` with `issues` mapped to
    fields and a rejection landing the operator on the first failing field;
    advance to step 4 carrying the slug.
-3. **Credentials (step 4).** Live rule validation (no `admin`, no `password`,
-   six characters, not the username), sign in with the temporary account, call
-   `POST /v1/auth/complete-onboarding`, store the returned session.
-4. **Forced-credential redirect and the full acceptance tests.** Surface
-   `mustChangeCredentials` on the session, redirect an authenticated-but-flagged
-   account to the credential step, and land the new admin inside the dashboard.
+3. **Credentials (step 4) (delivered).** Live rule validation (no `admin`, no
+   `password`, six characters, not the username), the wizard signs in with the
+   temporary account automatically and hands off to a `CredentialForm`, which
+   calls `POST /v1/auth/complete-onboarding` and stores the returned session.
+4. **Forced-credential redirect and the full acceptance tests (delivered).**
+   `mustChangeCredentials` rides on the session and `/v1/auth/me`; `App` sends an
+   authenticated-but-flagged account straight to `CredentialForm` rather than a
+   dashboard every request would refuse, and completing onboarding lands the new
+   admin inside the dashboard.
 
 Original scope:
 

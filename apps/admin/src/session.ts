@@ -9,6 +9,12 @@ export interface StaffUser {
   readonly displayName: string;
   readonly roles: readonly string[];
   readonly permissions: readonly string[];
+  /**
+   * True while the account still holds the credentials it was provisioned with.
+   * The server refuses every route except the completion one until it is false;
+   * the client mirrors that by sending such an account to the credential screen.
+   */
+  readonly mustChangeCredentials?: boolean;
 }
 
 export type SessionStatus = "unknown" | "anonymous" | "authenticated";
@@ -37,6 +43,12 @@ interface SessionState {
   initialize(): Promise<void>;
   /** Asks `GET /v1/setup/status` and records whether onboarding is needed. */
   checkSetup(): Promise<void>;
+  /**
+   * Installs an already-obtained access token and loads the account behind it.
+   * `login` uses this after the sign-in call; the credential step uses it after
+   * `complete-onboarding` returns a fresh session.
+   */
+  acceptSession(token: string): Promise<void>;
   logout(): Promise<void>;
   /** True when the signed-in user holds the permission. */
   hasPermission(permission: string): boolean;
@@ -58,6 +70,7 @@ interface MeResponse {
   readonly displayName?: string;
   readonly roles?: readonly string[];
   readonly permissions?: readonly string[];
+  readonly mustChangeCredentials?: boolean;
 }
 
 /**
@@ -92,12 +105,17 @@ export const useSession = create<SessionState>()((set, get) => ({
       },
     });
     const token = unwrapLogin(result);
+    await get().acceptSession(token);
+  },
+
+  async acceptSession(token) {
     set({
       status: "authenticated",
       accessToken: token,
       user: undefined,
     });
-    // Login's body carries display basics only; permissions come from /me.
+    // The session body carries display basics only; permissions (and the
+    // must-change-credentials flag) come from /me.
     const applied = await applyMe(set);
     if (!applied) {
       set({ status: "anonymous", accessToken: undefined, user: undefined });
@@ -211,6 +229,7 @@ async function applyMe(set: (partial: Partial<SessionState>) => void): Promise<s
         displayName: me.displayName,
         roles: roles,
         permissions: permissions,
+        mustChangeCredentials: me.mustChangeCredentials ?? false,
       },
     });
     return me.displayName;

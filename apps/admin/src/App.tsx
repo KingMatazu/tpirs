@@ -5,6 +5,7 @@ import { Layout, firstPermittedRoute, permissionForRoute } from "./pages/Layout.
 import { Card, EmptyState } from "./components/ui.js";
 import { LoginPage } from "./pages/LoginPage.js";
 import { SetupPage } from "./pages/SetupPage.js";
+import { CredentialForm } from "./pages/CredentialForm.js";
 import { ConfigViewerPage } from "./pages/ConfigViewerPage.js";
 import { ChannelsPage } from "./pages/ChannelsPage.js";
 import { UssdSimulatorPage } from "./pages/UssdSimulatorPage.js";
@@ -23,6 +24,7 @@ const NO_PERMISSIONS: readonly string[] = [];
 export function App(): ReactElement {
   const sessionStatus = useSession((state) => state.status);
   const needsSetup = useSession((state) => state.needsSetup);
+  const user = useSession((state) => state.user);
   const permissions = useSession((state) => state.user?.permissions ?? NO_PERMISSIONS);
   const route = useRoute();
 
@@ -32,13 +34,23 @@ export function App(): ReactElement {
     void useSession.getState().initialize();
   }, []);
 
-  if (sessionStatus === "unknown" || (sessionStatus === "anonymous" && needsSetup === undefined)) {
+  if (
+    sessionStatus === "unknown" ||
+    (sessionStatus === "anonymous" && needsSetup === undefined) ||
+    (sessionStatus === "authenticated" && user === undefined)
+  ) {
     return <p className="min-h-screen p-8 text-sm text-slate-500">Checking session…</p>;
   }
   if (sessionStatus === "anonymous") {
     // First-run detection wins over the sign-in screen: an empty deployment has
     // no account to sign in with, so showing the form would be a dead end.
     return needsSetup === true ? <SetupPage /> : <LoginPage />;
+  }
+  // A session issued to the provisioning account is confined server-side to the
+  // completion route; the client sends it straight to the credential step
+  // rather than to a dashboard every request would refuse.
+  if (user?.mustChangeCredentials === true) {
+    return <CredentialForm />;
   }
 
   // Landing: the first page this role may actually open, not a hardcoded one.

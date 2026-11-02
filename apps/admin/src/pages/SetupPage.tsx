@@ -3,6 +3,7 @@ import { formatMoneyMinor, parseMajorToMinor } from "@tpirs/ui-tokens";
 import { api } from "../api/client.js";
 import { errorFrom, type ApiResult } from "../api/unwrap.js";
 import { Button, Field, TextInput } from "../components/ui.js";
+import { useSession } from "../session.js";
 
 /**
  * First-run onboarding: turns an empty deployment into one with a tenant.
@@ -48,6 +49,14 @@ interface CreatedTenant {
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const SLUG_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
+
+/**
+ * The provisioning password. It is a known constant by design (the server's
+ * `TEMPORARY_ADMIN_PASSWORD`), used exactly once here: the wizard signs in with
+ * the temporary account so the operator is taken straight to the credential
+ * step instead of typing a password that exists to be replaced.
+ */
+const TEMPORARY_PASSWORD = "password";
 
 const EMPTY: Draft = {
   name: "",
@@ -291,6 +300,25 @@ export function SetupPage(): ReactElement {
       setTenant({ tenantSlug: created.tenantSlug, temporaryUsername: created.temporaryUsername });
       setSubmitting(false);
       setStep(4);
+    })();
+  }
+
+  function signInWithTemporary(): void {
+    if (tenant === undefined) return;
+    setSubmitting(true);
+    void (async () => {
+      try {
+        await useSession.getState().login({
+          tenantSlug: tenant.tenantSlug,
+          username: tenant.temporaryUsername,
+          password: TEMPORARY_PASSWORD,
+        });
+        // On success the session is authenticated with the flag set, so `App`
+        // swaps this wizard for the credential step; nothing further to do here.
+      } catch {
+        setReviewIssues(["Could not sign in with the temporary account"]);
+        setSubmitting(false);
+      }
     })();
   }
 
@@ -579,12 +607,13 @@ export function SetupPage(): ReactElement {
                 <p className="text-sm text-slate-600">
                   The tenant{" "}
                   <span className="font-medium text-slate-900">{tenant.tenantSlug}</span> is ready.
-                  Choose the administrator&rsquo;s sign-in next.
+                  Continue to choose the administrator&rsquo;s sign-in.
                 </p>
               ) : (
                 <p className="text-sm text-slate-600">Sign-in setup arrives in the next step.</p>
               )}
-              <div className="flex justify-start">
+              {reviewIssues.length > 0 ? <ProblemList problems={reviewIssues} /> : null}
+              <div className="flex justify-between">
                 <Button
                   variant="ghost"
                   onClick={() => {
@@ -593,6 +622,11 @@ export function SetupPage(): ReactElement {
                 >
                   Back
                 </Button>
+                {tenant !== undefined ? (
+                  <Button onClick={signInWithTemporary} disabled={submitting}>
+                    {submitting ? "Signing in…" : "Continue to sign-in"}
+                  </Button>
+                ) : null}
               </div>
             </div>
           ) : null}

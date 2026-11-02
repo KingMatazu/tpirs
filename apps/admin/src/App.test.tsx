@@ -105,3 +105,33 @@ describe("route access", () => {
     expect(await screen.findByText(/this account has no pages yet/i)).toBeTruthy();
   });
 });
+
+describe("provisioning-credential gate", () => {
+  function renderApp(): void {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <App />
+      </QueryClientProvider>,
+    );
+  }
+
+  it("sends an account that still holds its provisioning credentials to the credential step", async () => {
+    useSession.setState({
+      status: "authenticated",
+      accessToken: "tok",
+      user: {
+        userId: "u-1",
+        tenantId: "t-1",
+        displayName: "Administrator",
+        roles: ["system_admin"],
+        permissions: ["asset:read"],
+        mustChangeCredentials: true,
+      },
+    });
+    renderApp();
+
+    expect(await screen.findByText("Choose the administrator")).toBeTruthy();
+    expect(screen.queryByRole("navigation", { name: "Primary" })).toBeNull();
+  });
+});

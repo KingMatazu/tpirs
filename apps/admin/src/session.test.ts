@@ -52,6 +52,7 @@ const meBody = {
   displayName: "Ada",
   roles: ["finance_admin"],
   permissions: ["audit:read", "payment:read"],
+  mustChangeCredentials: false,
 };
 
 function resetStore(): void {
@@ -95,6 +96,30 @@ describe("useSession", () => {
     expect(useSession.getState().accessToken).toBe("tok-login");
     expect(useSession.getState().user?.permissions).toContain("audit:read");
     expect(calls.map((call) => call.url)).toEqual(["/v1/auth/login", "/v1/auth/me"]);
+  });
+
+  it("records that the account still holds provisioning credentials", async () => {
+    responder = (url) => {
+      if (url === "/v1/auth/login") return { status: 200, body: sessionBody("tok-temp") };
+      if (url === "/v1/auth/me") {
+        return { status: 200, body: { ...meBody, mustChangeCredentials: true } };
+      }
+      return { status: 404 };
+    };
+    await useSession.getState().login({
+      tenantSlug: "example-state",
+      username: "admin",
+      password: "password",
+    });
+    expect(useSession.getState().user?.mustChangeCredentials).toBe(true);
+  });
+
+  it("acceptSession installs a token and loads the account behind it", async () => {
+    responder = (url) => (url === "/v1/auth/me" ? { status: 200, body: meBody } : { status: 404 });
+    await useSession.getState().acceptSession("tok-installed");
+    expect(useSession.getState().status).toBe("authenticated");
+    expect(useSession.getState().accessToken).toBe("tok-installed");
+    expect(useSession.getState().user?.displayName).toBe("Ada");
   });
 
   it("refresh posts no body and carries same-origin credentials", async () => {
