@@ -60,6 +60,7 @@ function resetStore(): void {
     accessToken: undefined,
     user: undefined,
     initializing: false,
+    needsSetup: undefined,
   });
   calls.length = 0;
   responder = () => ({ status: 401 });
@@ -147,5 +148,25 @@ describe("useSession", () => {
     responder = () => ({ status: 500 });
     await useSession.getState().logout();
     expect(useSession.getState().status).toBe("anonymous");
+  });
+});
+
+describe("first-run detection", () => {
+  it("records that onboarding is needed when the server says so", async () => {
+    responder = (url) =>
+      url === "/v1/setup/status" ? { status: 200, body: { needsSetup: true } } : { status: 404 };
+    await useSession.getState().checkSetup();
+    expect(useSession.getState().needsSetup).toBe(true);
+  });
+
+  it("treats a configured deployment and an unreachable one alike (false)", async () => {
+    responder = (url) =>
+      url === "/v1/setup/status" ? { status: 200, body: { needsSetup: false } } : { status: 404 };
+    await useSession.getState().checkSetup();
+    expect(useSession.getState().needsSetup).toBe(false);
+
+    responder = () => ({ status: 404 });
+    await useSession.getState().checkSetup();
+    expect(useSession.getState().needsSetup).toBe(false);
   });
 });

@@ -25,9 +25,18 @@ interface SessionState {
   readonly accessToken: string | undefined;
   readonly user: StaffUser | undefined;
   readonly initializing: boolean;
+  /**
+   * Whether this deployment still needs its first tenant. Undefined until
+   * `initialize` has asked the server; a configured deployment reports false,
+   * and an unreachable one is treated as false so the sign-in screen (and its
+   * error) shows rather than a setup wizard that cannot run.
+   */
+  readonly needsSetup: boolean | undefined;
   login(input: LoginInput): Promise<void>;
   silentRefresh(): Promise<void>;
   initialize(): Promise<void>;
+  /** Asks `GET /v1/setup/status` and records whether onboarding is needed. */
+  checkSetup(): Promise<void>;
   logout(): Promise<void>;
   /** True when the signed-in user holds the permission. */
   hasPermission(permission: string): boolean;
@@ -71,6 +80,7 @@ export const useSession = create<SessionState>()((set, get) => ({
   accessToken: undefined,
   user: undefined,
   initializing: false,
+  needsSetup: undefined,
 
   async login(input) {
     const result = await api.POST("/v1/auth/login", {
@@ -132,7 +142,20 @@ export const useSession = create<SessionState>()((set, get) => ({
     if (get().status !== "unknown") return;
     set({ initializing: true });
     await get().silentRefresh();
+    await get().checkSetup();
     set({ initializing: false });
+  },
+
+  async checkSetup() {
+    try {
+      const status = await unwrap<{ readonly needsSetup?: boolean }>(api.GET("/v1/setup/status"));
+      set({ needsSetup: status.needsSetup ?? false });
+    } catch {
+      // See the `needsSetup` doc above: an unreachable deployment is not one
+      // that needs onboarding, and showing the wizard would hide the real
+      // problem (the API is down).
+      set({ needsSetup: false });
+    }
   },
 
   async logout() {

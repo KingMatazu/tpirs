@@ -180,7 +180,26 @@ Migration `0019_onboarding.ts`:
   schema is per database, and `down` already used `if exists`.
 - Regenerate `packages/api-client` (API build, then client build).
 
-## Step 6: Admin onboarding wizard (planned)
+## Step 6: Admin onboarding wizard (4 parts)
+
+Split into four shippable parts; each lands with its own tests:
+
+1. **Detection and shell (delivered).** `useSession` learns `needsSetup` by
+   calling `GET /v1/setup/status` during `initialize`; `App` shows the wizard
+   before the sign-in screen when onboarding is needed; `SetupPage` renders the
+   neutral-token shell and the four-step indicator outside `Layout`.
+2. **State, levy and review (steps 1–3).** The real form: tenant identity,
+   currency, timezone, language; levy amounts in major units converted to minor
+   on submit; USSD code and SMS sender id; a review; `POST /v1/setup/tenant`
+   with `issues` mapped to fields; advance to step 4 carrying the slug.
+3. **Credentials (step 4).** Live rule validation (no `admin`, no `password`,
+   six characters, not the username), sign in with the temporary account, call
+   `POST /v1/auth/complete-onboarding`, store the returned session.
+4. **Forced-credential redirect and the full acceptance tests.** Surface
+   `mustChangeCredentials` on the session, redirect an authenticated-but-flagged
+   account to the credential step, and land the new admin inside the dashboard.
+
+Original scope:
 
 - `apps/admin/src/pages/SetupPage.tsx`: 4 steps — state details (name, slug
   derived and editable, legal entity, support email, email for the account,
