@@ -5,12 +5,14 @@ per-use levy system for bikes and tuk-tuks; the same codebase is resold to other
 states by writing configuration, not code.
 
 See `AGENTS.md` for the full build brief (design principles, ports and adapters,
-phases, and the quality bar). This README covers how to run the repo. Phases 0–9
-are implemented. Phase 9 completes the admin dashboard (registry, payments,
-suspense, disputes, reversals, reconciliation, reports, collectors, config and
-audit screens) with permission-aware navigation, tenant branding and a
-catalogue-driven language switch. Phase 8 adds reconciliation, reporting and
-anomaly detection:
+phases, and the quality bar). This README covers how to run the repo. Phases 0–10
+are implemented. Phase 11 adds productization: a first-run browser wizard that
+provisions the first tenant, zone and staff-account management, and the
+onboarding, provider and upgrade documentation a new state follows. Phase 9
+completes the admin dashboard (registry, payments, suspense, disputes, reversals,
+reconciliation, reports, collectors, config and audit screens) with
+permission-aware navigation, tenant branding and a catalogue-driven language
+switch. Phase 8 adds reconciliation, reporting and anomaly detection:
 statement import with the fee leg, append-only nightly runs and sign-off, the
 exception queue, six finance reports with CSV/PDF/XLSX exports, configurable
 anomaly rules, the worker schedule, the API routes and the admin screens (see
@@ -19,6 +21,13 @@ anomaly rules, the worker schedule, the API routes and the admin screens (see
 **Run it locally:** [`docs/runbooks/local-development.md`](docs/runbooks/local-development.md)
 has the complete guide — Docker services, dev servers, seeded logins, everyday
 commands, tests against the Docker database, and troubleshooting.
+
+**Onboarding a new state:** [`docs/onboarding/README.md`](docs/onboarding/README.md)
+is the deployment checklist. Provider choice is covered by
+[`docs/onboarding/provider-decision-guide.md`](docs/onboarding/provider-decision-guide.md)
+and the generated [`provider-matrix.md`](docs/onboarding/provider-matrix.md);
+release and upgrade policy is in
+[`docs/versioning-and-upgrades.md`](docs/versioning-and-upgrades.md).
 
 ## Layout
 
@@ -55,17 +64,14 @@ scripts             setup and CI entrypoints
 
 ```sh
 pnpm install
-pnpm setup --seed # copies .env, starts containers, migrates, seeds demo tenants
+pnpm setup        # copies .env, starts containers, migrates; creates no tenant
 pnpm dev          # run all dev servers (scripts/dev.mjs); Ctrl+C stops them all
 ```
 
-Then open <http://localhost:5173> and sign in with tenant `alpha-state`,
-username `alpha.admin`, password `alpha-admin-password` (all seeded accounts are
-listed in the local-development runbook).
-
-To provision a real tenant instead of demo data, run `pnpm setup` (no `--seed`)
-and `pnpm dev`, then open <http://localhost:5173>: the first-run wizard onboards
-the first tenant in the browser.
+Then open <http://localhost:5173> and onboard the first tenant in the browser.
+For the two demo tenants instead, run `pnpm setup --seed`; then sign in with
+tenant `alpha-state`, username `alpha.admin`, password `alpha-admin-password`
+(all seeded accounts are listed in the local-development runbook).
 
 ## Common tasks
 

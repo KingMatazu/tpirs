@@ -38,7 +38,7 @@ git clone https://github.com/KingMatazu/tpirs.git
 cd tpirs
 
 pnpm install
-pnpm setup --seed
+pnpm setup
 ```
 
 `pnpm setup` (`scripts/setup.mjs`) prepares a fresh install:

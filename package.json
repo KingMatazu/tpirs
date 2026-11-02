@@ -13,6 +13,8 @@
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
+    "docs:providers": "node scripts/provider-matrix.mjs --write",
+    "docs:providers:check": "node scripts/provider-matrix.mjs --check",
     "format": "prettier --write \"**/*.{ts,mjs,json,md,yaml,yml}\"",
     "format:check": "prettier --check \"**/*.{ts,mjs,json,md,yaml,yml}\"",
     "prepare": "husky",
