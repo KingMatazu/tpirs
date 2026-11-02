@@ -59,7 +59,7 @@ export function TextInput(
     readonly placeholder?: string;
     readonly autoComplete?: string;
     readonly name?: string;
-    readonly inputMode?: "text" | "numeric" | "tel";
+    readonly inputMode?: "text" | "numeric" | "tel" | "decimal";
   }>,
 ): ReactElement {
   return (

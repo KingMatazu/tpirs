@@ -188,10 +188,12 @@ Split into four shippable parts; each lands with its own tests:
    calling `GET /v1/setup/status` during `initialize`; `App` shows the wizard
    before the sign-in screen when onboarding is needed; `SetupPage` renders the
    neutral-token shell and the four-step indicator outside `Layout`.
-2. **State, levy and review (steps 1–3).** The real form: tenant identity,
-   currency, timezone, language; levy amounts in major units converted to minor
-   on submit; USSD code and SMS sender id; a review; `POST /v1/setup/tenant`
-   with `issues` mapped to fields; advance to step 4 carrying the slug.
+2. **State, levy and review (steps 1–3) (delivered).** The real form: tenant
+   identity, currency, timezone, language; levy amounts in major units converted
+   to minor on submit via `@tpirs/ui-tokens`' `parseMajorToMinor`; USSD code and
+   SMS sender id; a review; `POST /v1/setup/tenant` with `issues` mapped to
+   fields and a rejection landing the operator on the first failing field;
+   advance to step 4 carrying the slug.
 3. **Credentials (step 4).** Live rule validation (no `admin`, no `password`,
    six characters, not the username), sign in with the temporary account, call
    `POST /v1/auth/complete-onboarding`, store the returned session.
