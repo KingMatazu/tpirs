@@ -174,6 +174,20 @@ pnpm smoke https://levy.example.state.gov
 It waits for `/v1/health` and `/v1/ready`, checks the response body and confirms
 every response carries a request id. Then, in the dashboard:
 
+On a **fresh, disposable** deployment, the same script can exercise the whole
+onboarding path over HTTP:
+
+```sh
+SMOKE_ONBOARD=1 pnpm smoke https://staging.example.state.gov
+```
+
+It creates a `smoke-*` tenant, signs in with the temporary account, replaces the
+credentials, confirms the authenticated session and verifies the setup window
+closes. Never run it against a deployment in use — it creates a tenant and the
+first-run window is gone afterwards.
+
+Then, in the dashboard:
+
 1. **Registry** — register one test vehicle and download its sticker.
 2. **Field app** — sign in as an officer on a phone, scan the sticker, confirm
    the result shows the identifier and photo.

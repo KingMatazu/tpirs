@@ -294,42 +294,116 @@ Original scope:
 - `README.md` and `docs/runbooks/local-development.md` point at the onboarding
   path and use `pnpm setup` (no seed) as the default quick start.
 
-## Step 11: Katsina acceptance run (planned)
+## Step 11: Katsina acceptance run (delivered)
 
-- `tenants/katsina-state/tenant.config.yaml` committed as a reference config.
-- Provisioned **through the wizard**, exactly as a customer would: state details,
-  email, fees, then new credentials, then auto-login.
-- Recorded in the acceptance table with the elapsed time, and a note of every
-  place the runbook needed a person who had seen the code.
+`tenants/katsina-state/` holds the reference config the run produced, plus a
+README explaining that it was exported from a real deployment rather than written
+by hand and that its approved-but-fake values must be replaced. A config test
+loads it through the real validator, so a schema change that would reject an
+existing tenant fails the suite.
 
-## Step 12: Gates and delivery (planned)
+The run was performed against a **scratch database**, not the development
+database:
 
-`pnpm format` → `pnpm lint` → `pnpm typecheck` → `pnpm test`, then
-`scripts/ci/integration.sh`, `pnpm smoke` (extended to drive
-setup → complete → login over HTTP) and `scripts/ci/migration-check.sh` for
-`0019`.
+```sh
+docker exec tpirs-postgres-1 psql -U tpirs -d postgres -c "create database tpirs_katsina"
+DATABASE_URL=postgres://tpirs:tpirs@localhost:5433/tpirs_katsina pnpm --filter @tpirs/db migrate up
+DATABASE_URL=...tpirs_katsina API_PORT=3100 pnpm --filter @tpirs/api exec tsx src/index.ts
+```
+
+Then the wizard's exact HTTP sequence (the same calls `SetupPage` and
+`CredentialForm` make) was driven against `:3100`: status → create tenant →
+temporary sign-in → complete onboarding → authenticated read of the config.
+
+| Check                                                 | Result                                                        |
+| ----------------------------------------------------- | ------------------------------------------------------------- |
+| `GET /v1/setup/status` on an empty database           | `{"needsSetup":true}`                                         |
+| `POST /v1/setup/tenant` with the Katsina answers      | `201`, `temporaryUsername: "admin"`                           |
+| Temporary sign-in (`admin` / `password`)              | `200`, `mustChangeCredentials: true`, role `system_admin`     |
+| `POST /v1/auth/complete-onboarding` (`katsina.admin`) | `200` with a session token and `mustChangeCredentials: false` |
+| `GET /v1/auth/me` with that token (auto-login)        | `200`, the full `system_admin` permission set                 |
+| `GET /v1/tenants/current/config`                      | the exported config, now `tenants/katsina-state`              |
+| `pnpm smoke http://127.0.0.1:3100`                    | OK, with a request id on every response                       |
+| `GET /v1/setup/status` after provisioning             | `{"needsSetup":false}`                                        |
+| Replay of `POST /v1/setup/tenant`                     | `404` with the standard envelope                              |
+| Sign-in with the new credentials, flag cleared        | `200`, `mustChangeCredentials: false`                         |
+
+Elapsed from tenant creation to authenticated config export: **53 seconds**, with
+no retries. The wizard created one tenant, the seven system roles, the first
+account and **no zones**.
+
+**What this run does not prove.** No browser automation was available, so the
+flow was driven over HTTP exactly as the wizard drives it; the wizard's own
+component tests cover the form behaviour, but a human clicking through it was not
+part of this run. Nor was a person who had never seen the code available, so the
+brief's "by someone who has not seen the code" is **not** demonstrated here. The
+places the run still needed code knowledge are recorded so Step 10's runbook can
+absorb them:
+
+1. Minting the payment webhook endpoint token has no route or screen
+   (`payment.provisionEndpoint` is a service call). This is the one real
+   productization gap the run found; it is listed in the onboarding guide.
+2. Payment adapters are registered in `apps/api/src/index.ts`, so a new gateway
+   is a composition-root change as well as a config binding. The provider guide
+   says so, but a deployer cannot do it from the browser.
+3. Creating the scratch database and pointing the API at it are operator steps,
+   not wizard steps. They belong in the staging deployment runbook
+   (`docs/runbooks/adding-a-deploy-target.md`) rather than in onboarding.
+4. Config changes after onboarding go through `PUT /v1/tenants/current/config`;
+   the dashboard still has no editor (D56). The onboarding guide says this, but
+   it is the second place a deployer needs an engineer.
+5. OTP delivery, cache, lock service and clock remain mock-wired; the onboarding
+   guide lists them as known gaps.
+
+## Step 12: Gates and delivery (delivered)
+
+- `pnpm format` → `pnpm lint` → `pnpm typecheck` → `pnpm test`: each turbo run
+  finished 94/94 (test included the admin credential-gate copy change and the
+  config test that loads the Katsina reference).
+- `sh scripts/ci/verify.sh` (the CI rehearsal): install, lint 94/94, typecheck
+  94/94, build 94/94, then the new `pnpm docs:providers:check` — the generated
+  matrix is current.
+- `sh scripts/ci/integration.sh`: scratch Postgres on `:55433`, every migration,
+  the full suite with `TEST_DATABASE_URL` set. 94/94 tasks; the DB-backed suites
+  actually executed (api 110 tests, application 190, config 67, admin 232,
+  worker 2, job queue 10) instead of skipping.
+- `sh scripts/ci/migration-check.sh`: all migrations apply and roll back cleanly
+  (through `0020`).
+- `pnpm smoke` still checks health, readiness and the request id. It now also
+  drives onboarding when `SMOKE_ONBOARD=1`: status → create tenant → temporary
+  sign-in → credential replacement → authenticated read → setup window closed →
+  replay `404`. Verified against a fresh scratch API: **3 seconds**, tenant
+  `smoke-*`, then the database was dropped. The flag is documented as
+  scratch-deployment-only because it creates a tenant.
 
 ## Acceptance mapping
 
-| Brief requirement                                           | Delivered by                                          |
-| ----------------------------------------------------------- | ----------------------------------------------------- |
-| `tenant:create` tooling scaffolded from `tenants/_template` | Steps 2, 3, 5, 6                                      |
-| Validate config                                             | Step 2 (validator unchanged, factory tested)          |
-| Provision infra                                             | Deferred — D1 is open and the deploy target is `noop` |
-| Seed roles                                                  | Step 3                                                |
-| Run smoke tests                                             | Steps 10, 12                                          |
-| Onboarding checklist and runbook                            | Step 10                                               |
-| Provider decision guide                                     | Step 10                                               |
-| Demo tenant with synthetic data                             | `pnpm setup --seed` (Step 4/7)                        |
-| Licensing and versioning policy, upgrade path               | Step 10                                               |
-| A new state created and smoke-tested in under a day         | Step 11                                               |
+| Brief requirement                                           | Delivered by                                                         |
+| ----------------------------------------------------------- | -------------------------------------------------------------------- |
+| `tenant:create` tooling scaffolded from `tenants/_template` | Steps 2, 3, 5, 6                                                     |
+| Validate config                                             | Step 2 (validator unchanged, factory tested)                         |
+| Provision infra                                             | Deferred — D1 is open and the deploy target is `noop`                |
+| Seed roles                                                  | Step 3                                                               |
+| Run smoke tests                                             | Steps 10, 12 (`pnpm smoke`, plus `SMOKE_ONBOARD=1`)                  |
+| Onboarding checklist and runbook                            | Step 10                                                              |
+| Provider decision guide                                     | Step 10 (guide + generated matrix)                                   |
+| Demo tenant with synthetic data                             | `pnpm setup --seed` (Step 4/7)                                       |
+| Licensing and versioning policy, upgrade path               | Step 10                                                              |
+| A new state created and smoke-tested in under a day         | Step 11 (HTTP-driven; human/new-person check recorded as not proven) |
 
 ## Deferred
 
 - **`SETUP_TOKEN`.** Off by design in this phase; required before any deployment
   is reachable from the internet or hosts more than one tenant.
+- **A screen for payment webhook endpoints.** The token is minted by
+  `payment.provisionEndpoint(...)`, a service call used by tests; a deployment
+  needs engineering to provision it and hand the URL to the gateway. This is the
+  first productization gap the acceptance run found.
 - **Email provider and self-service password reset.** Email is an identifier
   until a sender exists; an admin sets temporary passwords in the meantime.
+- **Real OTP delivery.** The composition root still passes the mock SMS provider
+  to the OTP service; the per-tenant SMS adapter covers channel replies and
+  receipts only.
 - **Infrastructure provisioning.** D1 (hosting and data residency) is unresolved
   and the deploy target is `noop`, so "provision infra" would be a stub.
 - **A vendor-facing provisioning console.** Discussed and dropped for now; the

@@ -13,6 +13,10 @@ tenants/
     tenant.config.yaml   # committed reference config for a real deployment (optional)
 ```
 
+A worked example of that reference file is
+[`../katsina-state/tenant.config.yaml`](../katsina-state/tenant.config.yaml): it
+was exported from a real acceptance run rather than written by hand.
+
 ## How a tenant is actually provisioned
 
 The live config lives in the database, not on disk. A new deployment is onboarded

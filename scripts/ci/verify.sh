@@ -9,3 +9,6 @@ pnpm install --frozen-lockfile
 pnpm lint --continue
 pnpm typecheck --continue
 pnpm build --continue
+# The provider matrix is generated from the built adapters; a hand-edited or
+# stale table would tell a deployer something the code does not declare.
+pnpm docs:providers:check

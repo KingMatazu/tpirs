@@ -5,7 +5,7 @@ per-use levy system for bikes and tuk-tuks; the same codebase is resold to other
 states by writing configuration, not code.
 
 See `AGENTS.md` for the full build brief (design principles, ports and adapters,
-phases, and the quality bar). This README covers how to run the repo. Phases 0–10
+phases, and the quality bar). This README covers how to run the repo. Phases 0–11
 are implemented. Phase 11 adds productization: a first-run browser wizard that
 provisions the first tenant, zone and staff-account management, and the
 onboarding, provider and upgrade documentation a new state follows. Phase 9
@@ -87,6 +87,8 @@ pnpm db:restore-drill  # back up, restore into a scratch DB, smoke test the API
 pnpm ci:security  # dependency audit + route/role matrix + RLS coverage
 pnpm ci:load      # quarter-rate load smoke against a scratch database
 pnpm dev:infra    # start local Postgres/Redis/SeaweedFS only
+pnpm docs:providers        # regenerate docs/onboarding/provider-matrix.md
+pnpm docs:providers:check  # fail if that generated file is stale
 ```
 
 ## Architecture rules (enforced)

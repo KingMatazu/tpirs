@@ -1,0 +1,230 @@
+# Katsina State reference tenant configuration (Phase 11 acceptance run).
+#
+# Produced by the first-run wizard against a scratch database, then exported from
+# GET /v1/tenants/current/config. It is the exact config that deployment ran, kept
+# as a reviewed reference: a running deployment stores its config in Postgres, so
+# this file is documentation and a disaster-recovery artifact, not a startup input.
+# A test loads it through the real validator. See docs/onboarding/README.md.
+
+identity:
+  name: Katsina State
+  slug: katsina-state
+  legalEntity: Katsina State Revenue Authority
+  supportContacts:
+    email: support@katsina.gov.ng
+    phone: "+234650000000"
+locale:
+  currency: NGN
+  timezone: Africa/Lagos
+  dateFormat: dd/MM/yyyy
+  numberFormat: en
+  defaultLanguage: en
+  enabledLanguages:
+    - en
+branding:
+  colors:
+    accent: "#f2c200"
+    primary: "#0a5a4a"
+    secondary: "#053b33"
+  appName: Katsina State Levy
+  logoUrl: logo.svg
+  smsSenderId: KATSLEVY
+  receiptFooter: Thank you
+  receiptHeader: Katsina State
+assetTypes:
+  - key: bike
+    label: Motorbike
+    qrFormat: QR-{id}
+    attributes:
+      - key: plate_number
+        type: string
+        label: Plate number
+        pattern: ^[A-Z0-9]{5,8}$
+        required: true
+    stickerSpec: 60x60mm vinyl
+    shortCodeFormat: B{id}
+  - key: tuktuk
+    label: Tuk-tuk
+    qrFormat: QR-K{id}
+    attributes:
+      - key: plate_number
+        type: string
+        label: Plate number
+        pattern: ^[A-Z0-9]{5,8}$
+        required: true
+    stickerSpec: 60x60mm vinyl
+    shortCodeFormat: K{id}
+obligations:
+  model: pay_per_use
+  feeRules:
+    - key: bike-daily
+      amountMinor: 30000
+      assetTypeKey: bike
+      effectiveFrom: 2026-11-02
+    - key: tuktuk-daily
+      amountMinor: 45000
+      assetTypeKey: tuktuk
+      effectiveFrom: 2026-11-02
+  frequency: daily
+  graceDays: 0
+  arrearsPolicy: none
+  prepaidAllowed: false
+  allocationOrder: oldest_first
+providers:
+  - port: PaymentProvider
+    adapter: mock
+  - port: SmsProvider
+    adapter: mock
+  - port: UssdProvider
+    adapter: mock
+channels:
+  sms:
+    rateLimit:
+      perMsisdnPerMinute: 6
+    maxSendsPerDay: 5000
+    maxSendsPerRecipientPerDay: 10
+  ussd:
+    maxSteps: 12
+    rateLimit:
+      perIpPerMinute: 120
+      perMsisdnPerMinute: 20
+    maxInputLength: 32
+    sessionTimeoutSeconds: 180
+  menus:
+    - key: main
+      type: menu
+      options:
+        - key: "1"
+          next: pay.enter
+          labelKey: ussd.main.pay
+        - key: "2"
+          next: status.enter
+          labelKey: ussd.main.status
+        - key: "0"
+          action: cancel
+          labelKey: ussd.common.cancel
+      promptKey: ussd.main.prompt
+      invalidKey: ussd.main.invalid
+    - key: pay.enter
+      next: pay.confirm
+      type: input
+      input:
+        key: assetRef
+        pattern: ^[A-Z0-9]{5,8}$
+        errorKey: ussd.pay.invalid
+      promptKey: ussd.pay.enter
+    - key: pay.confirm
+      type: menu
+      options:
+        - key: "1"
+          action: pay
+          labelKey: ussd.common.confirm
+        - key: "2"
+          action: cancel
+          labelKey: ussd.common.cancel
+      promptKey: ussd.pay.confirm
+    - key: status.enter
+      next: status.run
+      type: input
+      input:
+        key: assetRef
+        pattern: ^[A-Z0-9]{5,8}$
+        errorKey: ussd.status.invalid
+      promptKey: ussd.status.enter
+    - key: status.run
+      type: action
+      action: status
+  messages:
+    en:
+      ussd.main.pay: Pay today's levy
+      ussd.pay.enter: Enter your vehicle plate or sticker code.
+      ussd.pay.failed: We could not start a payment. Try again later.
+      ussd.main.prompt: Reply with an option.
+      ussd.main.status: Check payment status
+      ussd.pay.balance: Paid today from your balance for {assetRef}.
+      ussd.pay.confirm: Pay today's levy for {assetRef}?
+      ussd.pay.covered: Your balance already covers today's levy for {assetRef}.
+      ussd.pay.created: Payment request created for {assetRef}.
+      ussd.pay.invalid: That code is not valid. Try again.
+      ussd.status.none: No payment recorded today for {assetRef}.
+      ussd.status.paid: Paid today for {assetRef}.
+      ussd.common.error: Something went wrong. Try again later.
+      ussd.main.invalid: Unknown option. Try again.
+      ussd.rate.limited: Too many requests. Please wait a minute and try again.
+      ussd.session.busy: Your request is still being processed. Please wait.
+      ussd.status.enter: Enter your vehicle plate or sticker code.
+      ussd.asset.unknown: No vehicle matches {assetRef}.
+      ussd.common.cancel: Cancel
+      sms.command.unknown: Reply with {keyword} followed by your plate or sticker code.
+      ussd.common.confirm: Confirm
+      ussd.status.invalid: That code is not valid. Try again.
+      ussd.pay.insufficient: Your balance is short by {amount} for {assetRef}.
+      ussd.session.cancelled: Cancelled. Dial back whenever you need to pay.
+      ussd.session.too_many_steps: Too many steps. Please start again.
+  ussdCode: "*347*88#"
+  startMenu: main
+  smsKeyword: KATSLEVY
+  otpMessageTemplate: "Katsina State Levy: your verification code is {code}."
+  smsReceiptTemplate: "Katsina State Levy receipt {receiptNo}: {amount} paid for
+    {assetRef} on {date}."
+cashRules:
+  enabled: true
+  floatCeilingMinor: 5000000
+  freezeOnShortfall: true
+  depositDeadlineHours: 24
+payments:
+  underpaymentPolicy: wallet
+featureFlags:
+  prepay: false
+  disputes: true
+  offlineMode: true
+  anomalyAlerts: true
+field:
+  maxQueueItems: 1000
+  disputeReasons:
+    - code: wrong_location
+      label: Wrong location
+    - code: already_paid
+      label: Already paid
+    - code: technical_issue
+      label: Technical issue
+    - code: other
+      label: Other
+  offlineGraceHours: 8
+reconciliation:
+  enabled: true
+  schedule: 0 2 * * *
+  notifyRole: finance_admin
+  anomalyRules:
+    - key: collector_volume_drop
+      enabled: false
+      severity: warning
+      windowDays: 14
+      thresholdPercent: 30
+    - key: collector_deposit_lag
+      enabled: false
+      severity: warning
+      windowDays: 7
+      thresholdMinor: 1
+    - key: zone_compliance_drop
+      enabled: false
+      severity: warning
+      windowDays: 14
+      thresholdPercent: 20
+    - key: officer_scan_volume_change
+      enabled: false
+      severity: info
+      windowDays: 14
+      thresholdPercent: 50
+    - key: suspense_growth
+      enabled: false
+      severity: warning
+      windowDays: 7
+      thresholdMinor: 750000
+  toleranceMinor: 100
+  feeToleranceMinor: 0
+  suspenseAgeingDays: 7
+compliance:
+  dataResidency: katsina-state
+  retentionDays: 2555
+  consentTextKey: consent.default

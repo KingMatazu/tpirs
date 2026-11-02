@@ -939,6 +939,22 @@ describe("reconciliation configuration", () => {
   });
 });
 
+describe("tenants/katsina-state", () => {
+  it("is the config the acceptance run produced and still validates", () => {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const path = resolve(here, "../../../tenants/katsina-state/tenant.config.yaml");
+    const config = loadTenantConfigFromString(readFileSync(path, "utf8"));
+
+    expect(config.identity.slug).toBe("katsina-state");
+    expect(config.identity.name).toBe("Katsina State");
+    expect(config.locale.currency).toBe("NGN");
+    expect(config.obligations.model).toBe("pay_per_use");
+    expect(config.obligations.feeRules.map((rule) => rule.amountMinor)).toEqual([30000, 45000]);
+    // The wizard provisions no zones; the tenant creates them after sign-in.
+    expect(config.channels.ussdCode).toBe("*347*88#");
+  });
+});
+
 describe("tenants/_template", () => {
   it("validates against the current schema", () => {
     const here = dirname(fileURLToPath(import.meta.url));
