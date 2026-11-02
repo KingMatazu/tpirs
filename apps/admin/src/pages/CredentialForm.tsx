@@ -116,12 +116,12 @@ export function CredentialForm(): ReactElement {
     <main className="mx-auto flex min-h-screen w-full max-w-sm flex-col justify-center px-4">
       <div className="mb-6">
         <p className="text-xs font-semibold uppercase tracking-wide text-[var(--tpirs-color-accent)]">
-          First-run setup · Sign in
+          First sign-in
         </p>
-        <h1 className="mt-1 text-xl font-semibold text-slate-900">Choose the administrator</h1>
+        <h1 className="mt-1 text-xl font-semibold text-slate-900">Choose your credentials</h1>
         <p className="mt-2 text-sm text-slate-600">
-          This account will manage the levy system. Pick a username and password no one else can
-          guess.
+          This account is still using a temporary password. Pick a username and password no one
+          else can guess; the temporary one stops working.
         </p>
       </div>
       <form

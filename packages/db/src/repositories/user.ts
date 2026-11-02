@@ -109,4 +109,46 @@ export class UserRepository {
       .returning(USER_COLUMNS)
       .executeTakeFirst();
   }
+
+  /** Every account in the tenant, oldest name first. Tenant scope is RLS. */
+  async list(): Promise<readonly UserRecord[]> {
+    return this.db.selectFrom("users").select(USER_COLUMNS).orderBy("username").execute();
+  }
+
+  /**
+   * Profile and status only. Credentials have their own method so a routine edit
+   * can never accidentally rewrite a password hash, and the columns are named
+   * individually rather than spread from input for the same reason.
+   */
+  async updateProfile(
+    id: string,
+    input: { displayName?: string; status?: "active" | "disabled" },
+  ): Promise<UserRecord | undefined> {
+    const changes: { displayName?: string; status?: string; updatedAt: Date } = {
+      updatedAt: new Date(),
+    };
+    if (input.displayName !== undefined) changes.displayName = input.displayName;
+    if (input.status !== undefined) changes.status = input.status;
+    return this.db
+      .updateTable("users")
+      .set(changes)
+      .where("id", "=", id)
+      .returning(USER_COLUMNS)
+      .executeTakeFirst();
+  }
+
+  /**
+   * An administrator sets a temporary password, so the account is flagged: the
+   * next sign-in reaches only the credential step, where the owner replaces it.
+   * Setting the flag here (not in the route) keeps "new password" and "must
+   * change it" from ever being written separately.
+   */
+  async setTemporaryPassword(id: string, passwordHash: string): Promise<UserRecord | undefined> {
+    return this.db
+      .updateTable("users")
+      .set({ passwordHash, mustChangeCredentials: true, updatedAt: new Date() })
+      .where("id", "=", id)
+      .returning(USER_COLUMNS)
+      .executeTakeFirst();
+  }
 }

@@ -103,4 +103,13 @@ export class RoleRepository {
       .execute();
     return rows.map((row) => row.key);
   }
+
+  /**
+   * Drops every role grant before a replacement set is applied. Deleting first
+   * and inserting after, both inside the caller's transaction, means the user is
+   * never briefly a mix of the old and the new role set.
+   */
+  async clearRolesForUser(userId: string): Promise<void> {
+    await this.db.deleteFrom("userRoles").where("userId", "=", userId).execute();
+  }
 }

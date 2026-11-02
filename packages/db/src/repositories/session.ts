@@ -71,4 +71,19 @@ export class SessionRepository {
       .executeTakeFirst();
     return Number(result.numUpdatedRows) > 0;
   }
+
+  /**
+   * Ends every live session an account holds. A password reset is only a
+   * revocation if the sessions issued under the old password stop working, so
+   * this runs in the same transaction as the reset.
+   */
+  async revokeAllForUser(userId: string): Promise<number> {
+    const result = await this.db
+      .updateTable("sessions")
+      .set({ revokedAt: new Date() })
+      .where("userId", "=", userId)
+      .where("revokedAt", "is", null)
+      .executeTakeFirst();
+    return Number(result.numUpdatedRows);
+  }
 }

@@ -58,7 +58,7 @@ describe("CredentialForm", () => {
     render(<CredentialForm />);
     expect(screen.getByLabelText("Username")).toBeTruthy();
     expect(screen.getByLabelText("Password")).toBeTruthy();
-    expect(screen.getByText("Choose the administrator")).toBeTruthy();
+    expect(screen.getByText("Choose your credentials")).toBeTruthy();
   });
 
   it("refuses the provisioning username", () => {

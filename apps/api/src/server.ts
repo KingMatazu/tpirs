@@ -13,6 +13,7 @@ import { registerAuthRoutes } from "./routes/auth.js";
 import { registerSetupRoutes } from "./routes/setup.js";
 import { registerConfigRoutes } from "./routes/config.js";
 import { registerZoneRoutes } from "./routes/zones.js";
+import { registerUserRoutes } from "./routes/users.js";
 import { registerAssetRoutes } from "./routes/assets.js";
 import { registerVerifyRoutes } from "./routes/verify.js";
 import { registerVerificationAndSyncRoutes } from "./routes/field.js";
@@ -163,6 +164,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     });
     registerConfigRoutes(app, { identity: options.identity, db: options.db });
     registerZoneRoutes(app, { db: options.db });
+    registerUserRoutes(app, { db: options.db });
     registerAuditRoutes(app, { db: options.db });
     if (options.services !== undefined) {
       registerPaymentRoutes(app, { services: options.services });

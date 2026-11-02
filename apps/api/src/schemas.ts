@@ -510,9 +510,38 @@ const zone = {
   },
 };
 
+const userSummary = {
+  $id: "UserSummary",
+  type: "object",
+  required: ["id", "username", "displayName", "email", "status", "roles", "mustChangeCredentials"],
+  properties: {
+    id: { type: "string" },
+    username: { type: "string" },
+    displayName: { type: "string" },
+    email: { type: "string", nullable: true },
+    status: { type: "string", enum: ["active", "disabled"] },
+    roles: { type: "array", items: { type: "string" } },
+    /** True while the account holds a temporary password and must replace it. */
+    mustChangeCredentials: { type: "boolean" },
+  },
+};
+
+const roleSummary = {
+  $id: "RoleSummary",
+  type: "object",
+  required: ["key", "name", "permissions"],
+  properties: {
+    key: { type: "string" },
+    name: { type: "string" },
+    permissions: { type: "array", items: { type: "string" } },
+  },
+};
+
 export const sharedSchemas: readonly Record<string, unknown>[] = [
   staffUser,
   zone,
+  userSummary,
+  roleSummary,
   asset,
   owner,
   payment,
@@ -774,6 +803,79 @@ export const renameZoneSchema: FastifySchema = {
   },
   response: {
     200: { type: "object", required: ["zone"], properties: { zone: { $ref: "Zone#" } } },
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Staff accounts (11.0b). The role list is here too: the account editor needs
+// the seven seeded roles and their permissions to offer a choice.
+// ---------------------------------------------------------------------------
+
+export const listUsersSchema: FastifySchema = {
+  response: {
+    200: {
+      type: "object",
+      required: ["users"],
+      properties: { users: { type: "array", items: { $ref: "UserSummary#" } } },
+    },
+  },
+};
+
+export const listRolesSchema: FastifySchema = {
+  response: {
+    200: {
+      type: "object",
+      required: ["roles"],
+      properties: { roles: { type: "array", items: { $ref: "RoleSummary#" } } },
+    },
+  },
+};
+
+export const createUserSchema: FastifySchema = {
+  body: {
+    type: "object",
+    required: ["username", "displayName", "email", "password", "roleKeys"],
+    properties: {
+      username: { type: "string", minLength: 3, maxLength: 40 },
+      displayName: { type: "string", minLength: 1, maxLength: 120 },
+      email: { type: "string", maxLength: 254 },
+      password: { type: "string", minLength: 1, maxLength: 200 },
+      roleKeys: { type: "array", items: { type: "string" }, minItems: 1 },
+    },
+  },
+  response: {
+    201: {
+      type: "object",
+      required: ["user"],
+      properties: { user: { $ref: "UserSummary#" } },
+    },
+  },
+};
+
+export const updateUserSchema: FastifySchema = {
+  params: idParams,
+  body: {
+    type: "object",
+    properties: {
+      displayName: { type: "string", minLength: 1, maxLength: 120 },
+      status: { type: "string", enum: ["active", "disabled"] },
+      roleKeys: { type: "array", items: { type: "string" }, minItems: 1 },
+    },
+  },
+  response: {
+    200: { type: "object", required: ["user"], properties: { user: { $ref: "UserSummary#" } } },
+  },
+};
+
+export const resetUserPasswordSchema: FastifySchema = {
+  params: idParams,
+  body: {
+    type: "object",
+    required: ["password"],
+    properties: { password: { type: "string", minLength: 1, maxLength: 200 } },
+  },
+  response: {
+    200: { type: "object", required: ["user"], properties: { user: { $ref: "UserSummary#" } } },
   },
 };
 

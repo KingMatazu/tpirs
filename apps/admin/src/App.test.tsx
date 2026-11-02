@@ -131,7 +131,7 @@ describe("provisioning-credential gate", () => {
     });
     renderApp();
 
-    expect(await screen.findByText("Choose the administrator")).toBeTruthy();
+    expect(await screen.findByText("Choose your credentials")).toBeTruthy();
     expect(screen.queryByRole("navigation", { name: "Primary" })).toBeNull();
   });
 });

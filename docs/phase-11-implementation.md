@@ -242,15 +242,27 @@ Original scope:
   read-only role lists but cannot mutate; the admin screen covers the empty
   state and both mutations.
 
-## Step 9: User management, 11.0b (planned)
+## Step 9: User management, 11.0b (delivered)
 
-- `GET/POST/PATCH /v1/users` behind `user:read` / `user:manage`: create with
-  email, assign a role, disable, and reset a password (admin-set temporary
-  password, since there is no sender yet).
-- Configuration panel listing users, roles and status; role assignment uses the
-  seven seeded roles read from `role:read`.
-- Negative tests: a user cannot grant themselves a role, an officer cannot reach
-  the endpoint, and no password ever appears in an audit row or a log line.
+- `GET /v1/users`, `POST /v1/users`, `PATCH /v1/users/:id`,
+  `POST /v1/users/:id/password` behind `user:read` / `user:manage`, plus
+  `GET /v1/roles` behind `role:read` for the role picker. Create takes an email
+  and at least one role; edit covers display name, status and the role set; the
+  password route sets a new **temporary** password and ends the account's live
+  sessions.
+- `apps/admin/src/pages/UsersPage.tsx` — a **Users** screen on `user:read`:
+  create with role checkboxes, enable/disable, edit roles, reset a password. It
+  hides the editors on the signed-in administrator's own row, because the server
+  refuses self-service and the screen should not offer what it will reject.
+- A created account is flagged `mustChangeCredentials`, so the credential gate
+  built in Step 6 sends it to `CredentialForm` at first sign-in; that screen's
+  copy is now neutral ("Choose your credentials") instead of wizard-only.
+- Rules live in `@tpirs/application/src/user-service.ts`: username/email/password
+  validation (min 6, not `password`, not the username), the self-service ban,
+  and "reset ends sessions" in one transaction.
+- Tests: create + first-sign-in gate + disable + reset + session revocation +
+  self-edit `409` + `403` for a role without `user:manage` + cross-tenant `404` +
+  an audit assertion that no password text ever reaches the trail.
 
 ## Step 10: Documentation and productization (planned)
 

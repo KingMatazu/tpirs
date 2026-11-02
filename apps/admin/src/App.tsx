@@ -8,6 +8,7 @@ import { SetupPage } from "./pages/SetupPage.js";
 import { CredentialForm } from "./pages/CredentialForm.js";
 import { ConfigViewerPage } from "./pages/ConfigViewerPage.js";
 import { ZonesPage } from "./pages/ZonesPage.js";
+import { UsersPage } from "./pages/UsersPage.js";
 import { ChannelsPage } from "./pages/ChannelsPage.js";
 import { UssdSimulatorPage } from "./pages/UssdSimulatorPage.js";
 import { AuditPage } from "./pages/AuditPage.js";
@@ -105,6 +106,8 @@ function pageFor(route: string): ReactElement {
       return <ConfigViewerPage />;
     case "/zones":
       return <ZonesPage />;
+    case "/users":
+      return <UsersPage />;
     case "/audit":
       return <AuditPage />;
     default:
