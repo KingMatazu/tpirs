@@ -466,6 +466,40 @@ describe("UsersPage", () => {
     expect(screen.queryByLabelText(/^Display name/)).toBeNull();
   });
 
+  it("replaces the chosen role instead of adding to it", async () => {
+    renderPage();
+    await screen.findByText("No accounts yet.");
+
+    fireEvent.input(screen.getByLabelText(/^Username/), { target: { value: "new.collector" } });
+    fireEvent.input(screen.getByLabelText(/^Full name/), { target: { value: "Musa Collector" } });
+    fireEvent.input(screen.getByLabelText(/^Email/), { target: { value: "musa@example.com" } });
+    fireEvent.input(screen.getByLabelText(/^Temporary password/), {
+      target: { value: "temp-pass-1" },
+    });
+
+    fireEvent.click(screen.getByLabelText("Field Officer"));
+    fireEvent.click(screen.getByLabelText("Collector"));
+
+    // One person, one role: the second choice clears the first.
+    expect((screen.getByLabelText("Field Officer") as HTMLInputElement).checked).toBe(false);
+    expect((screen.getByLabelText("Collector") as HTMLInputElement).checked).toBe(true);
+
+    fireEvent.input(screen.getByLabelText(/^Phone number/), {
+      target: { value: "08012345678" },
+    });
+    fireEvent.input(screen.getByLabelText(/^National ID number/), {
+      target: { value: "12345678901" },
+    });
+    fireEvent.input(screen.getByLabelText(/^Home address/), {
+      target: { value: "12 Market Road" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+
+    await waitFor(() => {
+      expect(bodyOf("POST", "/v1/users")?.["roleKeys"]).toEqual(["collector"]);
+    });
+  });
+
   it("asks for the collector details only when the collector role is chosen", async () => {
     renderPage();
     await screen.findByText("No accounts yet.");

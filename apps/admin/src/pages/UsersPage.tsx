@@ -570,15 +570,20 @@ export function UsersPage(): ReactElement {
               </div>
             </div>
             <fieldset>
-              <legend className="mb-1 text-sm font-medium text-slate-700">Roles</legend>
+              <legend className="mb-1 text-sm font-medium text-slate-700">Role</legend>
               <div className="flex flex-wrap gap-3">
                 {roles.map((role) => (
                   <label key={role.key} className="flex items-center gap-1 text-sm">
                     <input
-                      type="checkbox"
+                      type="radio"
+                      // One person, one role: a radio group makes the second
+                      // choice clear the first, which is the behaviour a
+                      // checkbox row only pretends to have.
+                      name="new-account-role"
+                      value={role.key}
                       checked={formRoles.includes(role.key)}
                       onChange={() => {
-                        setFormRoles(toggleRole(formRoles, role.key));
+                        setFormRoles([role.key]);
                       }}
                     />
                     {role.name}
