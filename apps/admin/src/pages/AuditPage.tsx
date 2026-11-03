@@ -86,14 +86,14 @@ export function AuditPage(): ReactElement {
   });
 
   if (!canRead) {
-    return <p className="text-sm text-slate-600">You do not have permission to view the audit trail.</p>;
+    return (
+      <p className="text-sm text-slate-600">You do not have permission to view the audit trail.</p>
+    );
   }
 
   const locale = tenantPayload?.config.locale;
   const renderTime = (iso: string): string =>
-    locale === undefined
-      ? iso
-      : formatTimestamp(iso, locale.numberFormat, locale.timezone);
+    locale === undefined ? iso : formatTimestamp(iso, locale.numberFormat, locale.timezone);
 
   const apply = (): void => {
     setApplied({ ...filters });
@@ -129,31 +129,41 @@ export function AuditPage(): ReactElement {
           <TextInput
             name="actor"
             value={filters.actor ?? ""}
-            onValueChange={(actor) => { setFilters({ ...filters, actor }); }}
+            onValueChange={(actor) => {
+              setFilters({ ...filters, actor });
+            }}
             placeholder="Actor user id"
           />
           <TextInput
             name="kind"
             value={filters.kind ?? ""}
-            onValueChange={(kind) => { setFilters({ ...filters, kind }); }}
+            onValueChange={(kind) => {
+              setFilters({ ...filters, kind });
+            }}
             placeholder="Kind (e.g. asset, payment)"
           />
           <TextInput
             name="action"
             value={filters.action ?? ""}
-            onValueChange={(action) => { setFilters({ ...filters, action }); }}
+            onValueChange={(action) => {
+              setFilters({ ...filters, action });
+            }}
             placeholder="Action (exact, e.g. asset.register)"
           />
           <TextInput
             name="from"
             value={filters.from ?? ""}
-            onValueChange={(from) => { setFilters({ ...filters, from }); }}
+            onValueChange={(from) => {
+              setFilters({ ...filters, from });
+            }}
             type="date"
           />
           <TextInput
             name="to"
             value={filters.to ?? ""}
-            onValueChange={(to) => { setFilters({ ...filters, to }); }}
+            onValueChange={(to) => {
+              setFilters({ ...filters, to });
+            }}
             type="date"
           />
           <Button type="submit">Apply</Button>
@@ -221,12 +231,16 @@ function AuditRow(props: {
         <td className="py-2 pr-4 font-mono text-xs text-slate-900">{entry.action}</td>
         <td className="py-2 pr-4 text-slate-700">{entry.entityType}</td>
         <td className="py-2 pr-4 font-mono text-xs text-slate-500">{entry.entityId ?? "—"}</td>
-        <td className="py-2 pr-4 font-mono text-xs text-slate-500">{entry.actorUserId ?? "system"}</td>
+        <td className="py-2 pr-4 font-mono text-xs text-slate-500">
+          {entry.actorUserId ?? "system"}
+        </td>
         <td className="py-2">
           <button
             type="button"
             className="cursor-pointer text-xs underline"
-            onClick={() => { props.onToggle(entry.id); }}
+            onClick={() => {
+              props.onToggle(entry.id);
+            }}
           >
             {props.expanded ? "Hide" : "Details"}
           </button>

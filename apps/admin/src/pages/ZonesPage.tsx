@@ -110,7 +110,9 @@ export function ZonesPage(): ReactElement {
     }
     setBusy(true);
     try {
-      await unwrap(api.PATCH("/v1/zones/{id}", { params: { path: { id: zone.id } }, body: { name } }));
+      await unwrap(
+        api.PATCH("/v1/zones/{id}", { params: { path: { id: zone.id } }, body: { name } }),
+      );
       pushToast({ kind: "success", message: `Zone renamed to "${name}".` });
       setRenamingId(undefined);
       await refresh();
@@ -194,7 +196,10 @@ export function ZonesPage(): ReactElement {
 
       {canManage ? (
         <Card title="Add a zone" description="Names must be unique within the same parent.">
-          <form className="flex flex-wrap items-end gap-3" onSubmit={(event) => void createZone(event)}>
+          <form
+            className="flex flex-wrap items-end gap-3"
+            onSubmit={(event) => void createZone(event)}
+          >
             <div className="w-56">
               <Field label="Name">
                 <TextInput

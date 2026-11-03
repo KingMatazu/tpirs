@@ -14,7 +14,9 @@ export function ConfigViewerPage(): ReactElement {
   const { config, isLoading, error } = useTenantConfig();
 
   if (!canRead) {
-    return <p className="text-sm text-slate-600">You do not have permission to view configuration.</p>;
+    return (
+      <p className="text-sm text-slate-600">You do not have permission to view configuration.</p>
+    );
   }
   if (isLoading) return <p className="text-sm text-slate-500">Loading configuration…</p>;
   if (error !== null || config === undefined) {
@@ -30,8 +32,8 @@ export function ConfigViewerPage(): ReactElement {
         <Badge tone="brand">version {String(config.version)}</Badge>
       </div>
       <ReadOnlyNote>
-        Read-only view of the validated tenant config. Changes go through the audited
-        configuration endpoint with `tenant:configure`.
+        Read-only view of the validated tenant config. Changes go through the audited configuration
+        endpoint with `tenant:configure`.
       </ReadOnlyNote>
       {sections.map((section) => (
         <Card key={section.id} title={section.title}>

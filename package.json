@@ -15,8 +15,8 @@
     "test": "turbo run test",
     "docs:providers": "node scripts/provider-matrix.mjs --write",
     "docs:providers:check": "node scripts/provider-matrix.mjs --check",
-    "format": "prettier --write \"**/*.{ts,mjs,json,md,yaml,yml}\"",
-    "format:check": "prettier --check \"**/*.{ts,mjs,json,md,yaml,yml}\"",
+    "format": "prettier --write \"**/*.{ts,tsx,mjs,json,md,yaml,yml}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,mjs,json,md,yaml,yml}\"",
     "prepare": "husky",
     "setup": "node scripts/setup.mjs",
     "dev:infra": "docker compose -f infra/docker-compose.yml up -d --wait",
@@ -34,7 +34,7 @@
     "db:restore-drill": "sh scripts/db/restore-drill.sh"
   },
   "lint-staged": {
-    "*.{ts,mjs}": [
+    "*.{ts,tsx,mjs}": [
       "node node_modules/eslint/bin/eslint.js --fix --max-warnings 0 --no-warn-ignored",
       "node node_modules/prettier/bin/prettier.cjs --write"
     ],

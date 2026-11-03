@@ -46,7 +46,9 @@ const fakeFetch = vi.fn(async (input: unknown) => {
     const body = JSON.parse(requests.at(-1)?.body ?? "{}") as { name: string };
     const existing = zones.find((zone) => zone.id === id);
     if (existing === undefined) {
-      return json(404, { error: { code: "not_found", message: "Zone not found", requestId: "r1" } });
+      return json(404, {
+        error: { code: "not_found", message: "Zone not found", requestId: "r1" },
+      });
     }
     const updated: ZoneView = { ...existing, name: body.name };
     zones = zones.map((zone) => (zone.id === id ? updated : zone));

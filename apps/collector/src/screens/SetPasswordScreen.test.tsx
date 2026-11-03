@@ -13,10 +13,9 @@ const state = {
 };
 
 vi.mock("../session.js", () => ({
-  useSession: Object.assign(
-    (selector: (value: typeof state) => unknown) => selector(state),
-    { getState: () => ({ changePassword, logout }) },
-  ),
+  useSession: Object.assign((selector: (value: typeof state) => unknown) => selector(state), {
+    getState: () => ({ changePassword, logout }),
+  }),
 }));
 
 function fill(password: string, confirmation = password): void {

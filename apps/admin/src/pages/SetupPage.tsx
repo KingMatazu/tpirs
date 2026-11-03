@@ -249,7 +249,11 @@ export function SetupPage(): ReactElement {
       setErrors({});
       setReviewIssues([]);
       const bikeFeeMinor = parseMajorToMinor(draft.bikeFeeMajor, draft.currency, draft.language);
-      const tuktukFeeMinor = parseMajorToMinor(draft.tuktukFeeMajor, draft.currency, draft.language);
+      const tuktukFeeMinor = parseMajorToMinor(
+        draft.tuktukFeeMajor,
+        draft.currency,
+        draft.language,
+      );
       if (bikeFeeMinor === undefined || tuktukFeeMinor === undefined) return;
 
       setSubmitting(true);
@@ -341,8 +345,7 @@ export function SetupPage(): ReactElement {
             Welcome to your revenue platform
           </h1>
           <p className="mt-2 text-sm text-slate-600">
-            This deployment has no tenant yet. Four short steps turn it into a working levy
-            system.
+            This deployment has no tenant yet. Four short steps turn it into a working levy system.
           </p>
         </header>
 
@@ -388,7 +391,11 @@ export function SetupPage(): ReactElement {
                   autoComplete="off"
                 />
               </Field>
-              <Field label="Slug" {...fieldError(errors, "slug")} hint="Used in the sign-in form and URLs.">
+              <Field
+                label="Slug"
+                {...fieldError(errors, "slug")}
+                hint="Used in the sign-in form and URLs."
+              >
                 <TextInput
                   value={draft.slug}
                   onValueChange={(value) => {
@@ -625,9 +632,8 @@ export function SetupPage(): ReactElement {
             <div className="mt-4 space-y-4">
               {tenant !== undefined ? (
                 <p className="text-sm text-slate-600">
-                  The tenant{" "}
-                  <span className="font-medium text-slate-900">{tenant.tenantSlug}</span> is ready.
-                  Continue to choose the administrator&rsquo;s sign-in.
+                  The tenant <span className="font-medium text-slate-900">{tenant.tenantSlug}</span>{" "}
+                  is ready. Continue to choose the administrator&rsquo;s sign-in.
                 </p>
               ) : (
                 <p className="text-sm text-slate-600">Sign-in setup arrives in the next step.</p>
@@ -678,7 +684,9 @@ function ProblemList(props: { readonly problems: readonly string[] }): ReactElem
   );
 }
 
-function ReviewRows(props: { readonly rows: readonly (readonly [string, string])[] }): ReactElement {
+function ReviewRows(props: {
+  readonly rows: readonly (readonly [string, string])[];
+}): ReactElement {
   return (
     <dl className="divide-y divide-slate-100 rounded-md border border-slate-200">
       {props.rows.map(([label, value]) => (

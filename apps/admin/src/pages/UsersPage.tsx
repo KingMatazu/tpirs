@@ -2,7 +2,15 @@ import { useState, type FormEvent, type ReactElement } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client.js";
 import { unwrap, errorFrom, type ApiResult } from "../api/unwrap.js";
-import { Badge, Button, Card, EmptyState, Field, ReadOnlyNote, TextInput } from "../components/ui.js";
+import {
+  Badge,
+  Button,
+  Card,
+  EmptyState,
+  Field,
+  ReadOnlyNote,
+  TextInput,
+} from "../components/ui.js";
 import type { BadgeTone } from "../components/ui.js";
 import { destinationsForRoles } from "../lib/appLinks.js";
 import type { AppDestination, HandoverDetails } from "../lib/appLinks.js";
@@ -188,7 +196,9 @@ function issueMap(issues: unknown): Record<string, string> {
 function errorIssues(error: unknown): unknown {
   if (typeof error !== "object" || error === null) return undefined;
   const body = (error as { error?: unknown }).error;
-  return typeof body === "object" && body !== null ? (body as { issues?: unknown }).issues : undefined;
+  return typeof body === "object" && body !== null
+    ? (body as { issues?: unknown }).issues
+    : undefined;
 }
 
 export function UsersPage(): ReactElement {
@@ -231,7 +241,8 @@ export function UsersPage(): ReactElement {
    * two moments that can produce one.
    */
   const [handover, setHandover] = useState<
-    { readonly details: HandoverDetails; readonly destinations: readonly AppDestination[] } | undefined
+    | { readonly details: HandoverDetails; readonly destinations: readonly AppDestination[] }
+    | undefined
   >(undefined);
 
   // The slug every sign-in form asks for, from the config this screen already
@@ -388,10 +399,7 @@ export function UsersPage(): ReactElement {
         api.PATCH("/v1/users/{id}", {
           params: { path: { id: account.id } },
           body: {
-            roleKeys: [
-              editPrimaryRole,
-              ...editExtraRoles.filter((key) => key !== editPrimaryRole),
-            ],
+            roleKeys: [editPrimaryRole, ...editExtraRoles.filter((key) => key !== editPrimaryRole)],
             primaryRoleKey: editPrimaryRole,
           },
         }),
@@ -648,14 +656,19 @@ export function UsersPage(): ReactElement {
       </Card>
 
       {canManage ? (
-        <Card title="Add an account" description="The account must replace this password at first sign-in.">
+        <Card
+          title="Add an account"
+          description="The account must replace this password at first sign-in."
+        >
           <form className="space-y-3" onSubmit={(event) => void createAccount(event)}>
             <div className="flex flex-wrap gap-3">
               <div className="w-48">
                 <Field
                   label="Username"
                   hint="Lowercase, 3–40 characters"
-                  {...(formErrors["username"] === undefined ? {} : { error: formErrors["username"] })}
+                  {...(formErrors["username"] === undefined
+                    ? {}
+                    : { error: formErrors["username"] })}
                 >
                   <TextInput
                     name="new-username"

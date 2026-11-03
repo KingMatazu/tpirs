@@ -28,9 +28,9 @@ export function ChannelsPage(): ReactElement {
     <div className="space-y-4">
       <h1 className="text-xl font-semibold text-slate-900">Driver channels</h1>
       <ReadOnlyNote>
-        Read-only view of the tenant's USSD menu graph and SMS templates. Drivers
-        check status and pay from here; under pay-per-use the channels never remind
-        about days with no payment, because such days are not debts.
+        Read-only view of the tenant's USSD menu graph and SMS templates. Drivers check status and
+        pay from here; under pay-per-use the channels never remind about days with no payment,
+        because such days are not debts.
       </ReadOnlyNote>
 
       <Card title={`${tenantConfig.channels.ussdCode} (USSD)`}>
@@ -38,11 +38,16 @@ export function ChannelsPage(): ReactElement {
           <dt className="text-slate-500">SMS keyword</dt>
           <dd className="text-slate-900">{tenantConfig.channels.smsKeyword}</dd>
           <dt className="text-slate-500">Start menu</dt>
-          <dd className="text-slate-900">{tenantConfig.channels.startMenu ?? menus[0]?.key ?? "—"}</dd>
+          <dd className="text-slate-900">
+            {tenantConfig.channels.startMenu ?? menus[0]?.key ?? "—"}
+          </dd>
         </dl>
       </Card>
 
-      <Card title="Menu graph" description="Breadth-first from the start menu; unreachable nodes appear last.">
+      <Card
+        title="Menu graph"
+        description="Breadth-first from the start menu; unreachable nodes appear last."
+      >
         {menus.length === 0 ? (
           <EmptyState message="No menu nodes configured." />
         ) : (
@@ -84,7 +89,10 @@ export function ChannelsPage(): ReactElement {
         )}
       </Card>
 
-      <Card title="Message catalogue" description="Driver-facing copy per language, configured in tenant config.">
+      <Card
+        title="Message catalogue"
+        description="Driver-facing copy per language, configured in tenant config."
+      >
         {catalog.languages.length === 0 ? (
           <EmptyState message="No catalogues configured." />
         ) : (
@@ -104,7 +112,10 @@ export function ChannelsPage(): ReactElement {
                 <tr key={row.key} className="border-b border-slate-100 align-top">
                   <td className="py-1 pr-4 font-mono text-xs text-slate-500">{row.key}</td>
                   {row.cells.map((cell) => (
-                    <td key={cell.language} className={`py-1 pr-4 ${cell.value === null ? "text-red-500" : "text-slate-800"}`}>
+                    <td
+                      key={cell.language}
+                      className={`py-1 pr-4 ${cell.value === null ? "text-red-500" : "text-slate-800"}`}
+                    >
                       {cell.value ?? "missing"}
                     </td>
                   ))}

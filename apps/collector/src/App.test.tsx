@@ -11,10 +11,9 @@ const state = {
 };
 
 vi.mock("./session.js", () => ({
-  useSession: Object.assign(
-    (selector: (value: typeof state) => unknown) => selector(state),
-    { getState: () => state },
-  ),
+  useSession: Object.assign((selector: (value: typeof state) => unknown) => selector(state), {
+    getState: () => state,
+  }),
 }));
 
 describe("collector app shell", () => {

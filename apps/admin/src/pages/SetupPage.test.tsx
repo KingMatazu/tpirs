@@ -70,9 +70,7 @@ describe("SetupPage shell", () => {
     const currency = screen.getByLabelText(/Currency/) as HTMLSelectElement;
     expect(timezone.tagName).toBe("SELECT");
     expect(currency.tagName).toBe("SELECT");
-    expect(
-      [...timezone.options].some((option) => option.value === "Africa/Lagos"),
-    ).toBe(true);
+    expect([...timezone.options].some((option) => option.value === "Africa/Lagos")).toBe(true);
     expect([...currency.options].some((option) => option.value === "NGN")).toBe(true);
   });
 });
@@ -85,7 +83,9 @@ describe("first-run detection in App", () => {
         const request = input as Request;
         const url = new URL(request.url, "http://localhost");
         if (url.pathname === "/v1/auth/refresh") {
-          return json(401, { error: { code: "unauthorized", message: "no session", requestId: "r" } });
+          return json(401, {
+            error: { code: "unauthorized", message: "no session", requestId: "r" },
+          });
         }
         if (url.pathname === "/v1/setup/status") {
           return json(200, { needsSetup: true });
@@ -107,7 +107,9 @@ describe("first-run detection in App", () => {
         const request = input as Request;
         const url = new URL(request.url, "http://localhost");
         if (url.pathname === "/v1/auth/refresh") {
-          return json(401, { error: { code: "unauthorized", message: "no session", requestId: "r" } });
+          return json(401, {
+            error: { code: "unauthorized", message: "no session", requestId: "r" },
+          });
         }
         if (url.pathname === "/v1/setup/status") {
           return json(200, { needsSetup: false });
@@ -127,7 +129,9 @@ describe("wizard flow (steps 1–3)", () => {
   let tenantBody: Record<string, unknown> | undefined;
 
   function isRequestLike(input: unknown): boolean {
-    return typeof input === "object" && input !== null && typeof (input as Request).url === "string";
+    return (
+      typeof input === "object" && input !== null && typeof (input as Request).url === "string"
+    );
   }
 
   function installFetch(onTenant?: (body: Record<string, unknown>) => void): void {
@@ -135,7 +139,9 @@ describe("wizard flow (steps 1–3)", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: unknown, init?: RequestInit) => {
-        const request = isRequestLike(input) ? (input as Request) : new Request(String(input), init);
+        const request = isRequestLike(input)
+          ? (input as Request)
+          : new Request(String(input), init);
         const url = new URL(request.url, "http://localhost").pathname;
         if (url === "/v1/setup/tenant" && request.method === "POST") {
           tenantBody = (await request.json()) as Record<string, unknown>;
@@ -224,7 +230,9 @@ describe("wizard flow (steps 1–3)", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: unknown, init?: RequestInit) => {
-        const request = isRequestLike(input) ? (input as Request) : new Request(String(input), init);
+        const request = isRequestLike(input)
+          ? (input as Request)
+          : new Request(String(input), init);
         const url = new URL(request.url, "http://localhost").pathname;
         if (url === "/v1/setup/tenant" && request.method === "POST") {
           return json(422, {
@@ -259,7 +267,9 @@ describe("wizard flow (steps 1–3)", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: unknown, init?: RequestInit) => {
-        const request = isRequestLike(input) ? (input as Request) : new Request(String(input), init);
+        const request = isRequestLike(input)
+          ? (input as Request)
+          : new Request(String(input), init);
         const url = new URL(request.url, "http://localhost").pathname;
         if (url === "/v1/setup/tenant" && request.method === "POST") {
           return json(201, { tenantSlug: "katsina-state", temporaryUsername: "admin" });
@@ -301,7 +311,11 @@ describe("wizard flow (steps 1–3)", () => {
     // The wizard signs in with the provisioning account, never asking the
     // operator to type it; App then swaps to the credential step.
     await waitFor(() => {
-      expect(loginBody).toEqual({ tenantSlug: "katsina-state", username: "admin", password: "password" });
+      expect(loginBody).toEqual({
+        tenantSlug: "katsina-state",
+        username: "admin",
+        password: "password",
+      });
     });
     expect(useSession.getState().user?.mustChangeCredentials).toBe(true);
   });

@@ -94,17 +94,16 @@ export function HandoverCard(
 
       {props.details.password === undefined ? (
         <p className="mt-2 text-xs text-slate-600">
-          The temporary password is not stored in a readable form. Ask the administrator who
-          created or reset the account, or reset it again to produce a new one.
+          The temporary password is not stored in a readable form. Ask the administrator who created
+          or reset the account, or reset it again to produce a new one.
         </p>
       ) : null}
 
       {unconfigured.length > 0 ? (
         <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
           This build was not told the {unconfigured.map((app) => app.label).join(" or ")} address.
-          Set{" "}
-          {unconfigured.map((app) => ADDRESS_VARIABLE[app.key]).join(" and ")}{" "}
-          on the dashboard project, redeploy it, and the link appears here.
+          Set {unconfigured.map((app) => ADDRESS_VARIABLE[app.key]).join(" and ")} on the dashboard
+          project, redeploy it, and the link appears here.
         </p>
       ) : null}
 

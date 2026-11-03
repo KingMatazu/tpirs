@@ -32,7 +32,10 @@ interface CredentialSession {
   readonly token?: string;
 }
 
-function issues(username: string, password: string): {
+function issues(
+  username: string,
+  password: string,
+): {
   username?: string;
   password?: string;
 } {
@@ -120,8 +123,8 @@ export function CredentialForm(): ReactElement {
         </p>
         <h1 className="mt-1 text-xl font-semibold text-slate-900">Choose your credentials</h1>
         <p className="mt-2 text-sm text-slate-600">
-          This account is still using a temporary password. Pick a username and password no one
-          else can guess; the temporary one stops working.
+          This account is still using a temporary password. Pick a username and password no one else
+          can guess; the temporary one stops working.
         </p>
       </div>
       <form

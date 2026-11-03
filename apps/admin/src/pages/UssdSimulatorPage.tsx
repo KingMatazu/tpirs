@@ -18,7 +18,9 @@ export function UssdSimulatorPage(): ReactElement {
   const [submitted, setSubmitted] = useState("");
 
   if (!canRead) {
-    return <p className="text-sm text-slate-600">You do not have permission to use the simulator.</p>;
+    return (
+      <p className="text-sm text-slate-600">You do not have permission to use the simulator.</p>
+    );
   }
   if (isLoading) return <p className="text-sm text-slate-500">Loading configuration…</p>;
   if (error !== null || config === undefined) {
@@ -39,9 +41,8 @@ export function UssdSimulatorPage(): ReactElement {
     <div className="space-y-4">
       <h1 className="text-xl font-semibold text-slate-900">USSD simulator</h1>
       <ReadOnlyNote>
-        Runs the pure USSD session engine against the tenant config in your browser —
-        no gateway, no network. Selections accumulate as replay text for{" "}
-        {tenantConfig.channels.ussdCode}.
+        Runs the pure USSD session engine against the tenant config in your browser — no gateway, no
+        network. Selections accumulate as replay text for {tenantConfig.channels.ussdCode}.
       </ReadOnlyNote>
 
       <Card title="Handset">
@@ -61,7 +62,12 @@ export function UssdSimulatorPage(): ReactElement {
             onValueChange={setDraft}
             placeholder="Type a segment (e.g. 1, or a short code)"
           />
-          <Button type="button" onClick={() => { submit(draft); }}>
+          <Button
+            type="button"
+            onClick={() => {
+              submit(draft);
+            }}
+          >
             Send
           </Button>
           <Button
@@ -83,7 +89,9 @@ export function UssdSimulatorPage(): ReactElement {
                 key={choice.key}
                 type="button"
                 variant="secondary"
-                onClick={() => { submit(choice.key); }}
+                onClick={() => {
+                  submit(choice.key);
+                }}
               >
                 {choice.key} — {choice.label}
               </Button>
@@ -99,7 +107,9 @@ export function UssdSimulatorPage(): ReactElement {
               key={candidate}
               type="button"
               variant={candidate === activeLanguage ? "secondary" : "ghost"}
-              onClick={() => { setLanguage(candidate); }}
+              onClick={() => {
+                setLanguage(candidate);
+              }}
             >
               {candidate}
             </Button>

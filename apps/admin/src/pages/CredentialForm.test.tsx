@@ -72,9 +72,7 @@ describe("CredentialForm", () => {
   it("refuses the provisioning password", () => {
     render(<CredentialForm />);
     submit("aisha.bello", "password");
-    expect(
-      screen.getByText(/"password" is the temporary password; choose your own/),
-    ).toBeTruthy();
+    expect(screen.getByText(/"password" is the temporary password; choose your own/)).toBeTruthy();
   });
 
   it("blocks a five-character password", () => {
@@ -104,7 +102,13 @@ describe("CredentialForm", () => {
           return json(200, {
             token: "tok-complete",
             expiresAt: "2026-10-23T13:00:00.000Z",
-            user: { userId: "u1", tenantId: "t1", displayName: "Aisha Bello", roles: ["system_admin"], mustChangeCredentials: false },
+            user: {
+              userId: "u1",
+              tenantId: "t1",
+              displayName: "Aisha Bello",
+              roles: ["system_admin"],
+              mustChangeCredentials: false,
+            },
             refreshToken: "r-complete",
             refreshExpiresAt: "2026-10-24T13:00:00.000Z",
           });
