@@ -101,6 +101,12 @@ export interface UserRoleTable {
   userId: string;
   roleId: string;
   tenantId: string;
+  /**
+   * The role the person was hired for, as opposed to the extra roles granted on
+   * top (migration 0023). A partial unique index allows one per user; the service
+   * keeps exactly one and the column defaults to false for a plain grant.
+   */
+  isPrimary: Generated<boolean>;
 }
 
 export interface DeviceTable {

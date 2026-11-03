@@ -212,6 +212,15 @@ export const seed: SeedFn = async (db) => {
             });
           }
         }
+        // The first role listed is the one the demo account was made for; the
+        // rest are extra access. Set after the grants so the partial unique index
+        // has a row to mark.
+        const primaryRoleKey = user.roleKeys.find((roleKey) => roleIds.has(roleKey));
+        const primaryRoleId =
+          primaryRoleKey === undefined ? undefined : roleIds.get(primaryRoleKey);
+        if (primaryRoleId !== undefined) {
+          await repos.roles.setPrimaryRoleForUser({ userId: created.id, roleId: primaryRoleId });
+        }
       }
 
       if (fake.cashDemo !== undefined) {

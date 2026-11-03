@@ -132,10 +132,18 @@ export async function provisionTenantRows(
         mustChangeCredentials: input.admin.mustChangeCredentials ?? false,
       }));
 
-    for (const roleKey of input.admin.roleKeys ?? ["system_admin"]) {
+    const roleKeys = input.admin.roleKeys ?? ["system_admin"];
+    for (const roleKey of roleKeys) {
       const roleId = roleIds.get(roleKey);
       if (roleId === undefined) continue;
       await repos.roles.assignToUser({ tenantId: tenant.id, userId: admin.id, roleId });
+    }
+    // Idempotent on a re-run: `tenant:create` may find the administrator already
+    // there, and the mark is moved rather than inserted a second time.
+    const primaryRoleKey = roleKeys.find((roleKey) => roleIds.has(roleKey));
+    const primaryRoleId = primaryRoleKey === undefined ? undefined : roleIds.get(primaryRoleKey);
+    if (primaryRoleId !== undefined) {
+      await repos.roles.setPrimaryRoleForUser({ userId: admin.id, roleId: primaryRoleId });
     }
 
     return { tenantId: tenant.id, adminUserId: admin.id, created: existing === undefined };

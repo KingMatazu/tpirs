@@ -79,3 +79,100 @@ describeIntegration("role lookup is tenant-scoped (integration)", () => {
     });
   });
 });
+
+/**
+ * The primary role is a property of one person's grant, and the database has to
+ * hold the "at most one" half of that rule: a screen that asks for a single
+ * primary role is worth nothing if two processes can each write one.
+ */
+describeIntegration("one primary role per user (integration)", () => {
+  let db: AnyDb;
+  let tenantId: string;
+  let userId: string;
+  const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  beforeAll(async () => {
+    if (TEST_URL === undefined) return;
+    db = createDb({ connectionString: TEST_URL });
+    await migrateUp(db, migrationsDir);
+    tenantId = await withSystem(db, async (tx) => {
+      const created = await sql<{ id: string }>`
+        insert into tenants (slug, name, legal_entity, config)
+        values (${`primary-${stamp}`}, 'Primary', 'Primary Entity', '{}'::jsonb)
+        returning id
+      `.execute(tx);
+      return created.rows[0]?.id ?? "";
+    });
+    userId = await withSystem(db, async (tx) => {
+      const repos = repositories(tx);
+      for (const key of ["officer", "collector"]) {
+        await repos.roles.create({ tenantId, key, name: key, permissions: [] });
+      }
+      const user = await repos.users.create({
+        tenantId,
+        username: `primary.${stamp}`,
+        displayName: "Primary Person",
+        passwordHash: "not-a-real-hash",
+        totpSecret: null,
+      });
+      for (const key of ["officer", "collector"]) {
+        const role = await repos.roles.findByKey(key, tenantId);
+        if (role !== undefined) {
+          await repos.roles.assignToUser({ tenantId, userId: user.id, roleId: role.id });
+        }
+      }
+      return user.id;
+    });
+  });
+
+  afterAll(async () => {
+    if (TEST_URL === undefined || db === undefined) return;
+    await withSystem(db, async (tx) => {
+      await sql`delete from user_roles where tenant_id = ${tenantId}`.execute(tx);
+      await sql`delete from users where tenant_id = ${tenantId}`.execute(tx);
+      await sql`delete from role_permissions where tenant_id = ${tenantId}`.execute(tx);
+      await sql`delete from roles where tenant_id = ${tenantId}`.execute(tx);
+      await sql`delete from tenants where id = ${tenantId}`.execute(tx);
+    });
+    await db.destroy();
+  });
+
+  it("lists the primary role first and marks only that one", async () => {
+    await withSystem(db, async (tx) => {
+      const roles = repositories(tx).roles;
+      const collector = await roles.findByKey("collector", tenantId);
+      if (collector === undefined) throw new Error("collector role missing");
+      await roles.setPrimaryRoleForUser({ userId, roleId: collector.id });
+
+      // Collector sorts before officer alphabetically, so "collector first" alone
+      // would prove nothing. The mark is what puts it there.
+      expect(await roles.roleKeysForUser(userId)).toEqual(["collector", "officer"]);
+      expect(await roles.rolesForUser(userId)).toEqual([
+        { key: "collector", isPrimary: true },
+        { key: "officer", isPrimary: false },
+      ]);
+    });
+  });
+
+  it("moves the mark instead of accumulating primaries", async () => {
+    await withSystem(db, async (tx) => {
+      const roles = repositories(tx).roles;
+      const officer = await roles.findByKey("officer", tenantId);
+      if (officer === undefined) throw new Error("officer role missing");
+      await roles.setPrimaryRoleForUser({ userId, roleId: officer.id });
+
+      expect(await roles.rolesForUser(userId)).toEqual([
+        { key: "officer", isPrimary: true },
+        { key: "collector", isPrimary: false },
+      ]);
+    });
+  });
+
+  it("refuses a second primary written behind the service's back", async () => {
+    await expect(
+      withSystem(db, async (tx) => {
+        await sql`update user_roles set is_primary = true where user_id = ${userId}`.execute(tx);
+      }),
+    ).rejects.toThrow();
+  });
+});
