@@ -1,12 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "cd ../.. && pnpm --filter @tpirs/collector... build",
+  "buildCommand": "pnpm --filter @tpirs/collector... build",
   "outputDirectory": "dist",
-  "rewrites": [
-    {
-      "source": "/(.*)",
-      "destination": "/index.html"
-    }
-  ],
-  "installCommand": "cd ../.. && pnpm install --frozen-lockfile"
+  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
 }
