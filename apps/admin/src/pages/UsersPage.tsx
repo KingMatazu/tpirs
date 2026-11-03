@@ -208,6 +208,15 @@ export function UsersPage(): ReactElement {
   });
   const [formPrimaryRole, setFormPrimaryRole] = useState("");
   const [formExtraRoles, setFormExtraRoles] = useState<readonly string[]>([]);
+  /**
+   * The temporary password is masked by default and shown only on request. It is
+   * not a secret the administrator does not already know — they typed it or
+   * pressed Generate — but this screen is often used in an office where a
+   * shoulder is close to the monitor, and the card that hands it over is the
+   * intended place to read it.
+   */
+  const [showFormPassword, setShowFormPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
 
@@ -338,6 +347,9 @@ export function UsersPage(): ReactElement {
       });
       setFormPrimaryRole("");
       setFormExtraRoles([]);
+      // A new account is handed over from a card, so the field goes back to
+      // masked rather than staying readable for whoever uses the screen next.
+      setShowFormPassword(false);
       await refresh();
     } finally {
       setBusy(false);
@@ -421,6 +433,7 @@ export function UsersPage(): ReactElement {
       });
       setPasswordForId(undefined);
       setNewPassword("");
+      setShowNewPassword(false);
       await refresh();
     } catch (error) {
       pushToast({ kind: "error", ...describeError(error) });
@@ -515,6 +528,7 @@ export function UsersPage(): ReactElement {
                         setRolesForId(undefined);
                         setPasswordForId(passwordForId === account.id ? undefined : account.id);
                         setNewPassword("");
+                        setShowNewPassword(false);
                       }}
                     >
                       Reset password
@@ -588,10 +602,25 @@ export function UsersPage(): ReactElement {
                         name={`password-${account.id}`}
                         value={newPassword}
                         onValueChange={setNewPassword}
-                        type="password"
+                        type={showNewPassword ? "text" : "password"}
                         autoComplete="new-password"
                       />
                     </Field>
+                    <div className="mt-1">
+                      <Button
+                        variant="ghost"
+                        ariaLabel={
+                          showNewPassword
+                            ? "Hide the new temporary password"
+                            : "Show the new temporary password"
+                        }
+                        onClick={() => {
+                          setShowNewPassword(!showNewPassword);
+                        }}
+                      >
+                        {showNewPassword ? "Hide" : "Show"}
+                      </Button>
+                    </div>
                     <div className="mt-2 flex gap-2">
                       <Button
                         disabled={busy || newPassword === ""}
@@ -684,11 +713,24 @@ export function UsersPage(): ReactElement {
                     onValueChange={(value) => {
                       setForm({ ...form, password: value });
                     }}
-                    type="password"
+                    type={showFormPassword ? "text" : "password"}
                     autoComplete="new-password"
                   />
                 </Field>
-                <div className="mt-1">
+                <div className="mt-1 flex gap-2">
+                  <Button
+                    variant="ghost"
+                    ariaLabel={
+                      showFormPassword
+                        ? "Hide the temporary password"
+                        : "Show the temporary password"
+                    }
+                    onClick={() => {
+                      setShowFormPassword(!showFormPassword);
+                    }}
+                  >
+                    {showFormPassword ? "Hide" : "Show"}
+                  </Button>
                   <Button
                     variant="ghost"
                     onClick={() => {

@@ -494,6 +494,51 @@ describe("UsersPage", () => {
     expect(input.value).toMatch(/^[abcdefghijkmnpqrstuvwxyz23456789]{16}$/);
   });
 
+  it("keeps the temporary password masked until the administrator asks to see it", async () => {
+    renderPage();
+    await screen.findByText("No accounts yet.");
+
+    const input = screen.getByLabelText(/^Temporary password/) as HTMLInputElement;
+    expect(input.type).toBe("password");
+
+    fireEvent.input(input, { target: { value: "temp-pass-1" } });
+    fireEvent.click(screen.getByRole("button", { name: "Show the temporary password" }));
+
+    // Revealing changes the input's type, not its value: the administrator reads
+    // what will be handed over, then hides it again.
+    expect(input.type).toBe("text");
+    expect(input.value).toBe("temp-pass-1");
+    fireEvent.click(screen.getByRole("button", { name: "Hide the temporary password" }));
+    expect(input.type).toBe("password");
+  });
+
+  it("masks the password it is about to set on an existing account too", async () => {
+    accounts = [
+      {
+        id: "u1",
+        username: "ada.admin",
+        displayName: "Ada",
+        email: "ada@example.com",
+        phone: null,
+        nationalId: null,
+        homeAddress: null,
+        status: "active",
+        roles: ["officer"],
+        primaryRoleKey: "officer",
+        mustChangeCredentials: false,
+      },
+    ];
+    renderPage();
+    await screen.findByText("ada.admin");
+
+    fireEvent.click(screen.getByRole("button", { name: "Reset password" }));
+    const input = screen.getByLabelText(/^New temporary password/) as HTMLInputElement;
+    expect(input.type).toBe("password");
+
+    fireEvent.click(screen.getByRole("button", { name: "Show the new temporary password" }));
+    expect(input.type).toBe("text");
+  });
+
   it("calls the name field the full name", async () => {
     renderPage();
     await screen.findByText("No accounts yet.");

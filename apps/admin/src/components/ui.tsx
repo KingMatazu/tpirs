@@ -13,6 +13,8 @@ export function Button(
     readonly variant?: "primary" | "secondary" | "ghost";
     readonly disabled?: boolean;
     readonly onClick?: () => void;
+    /** Accessible name when the visible text is a single word, e.g. "Show". */
+    readonly ariaLabel?: string;
   }>,
 ): ReactElement {
   const tone =
@@ -24,6 +26,7 @@ export function Button(
   return (
     <button
       type={props.type ?? "button"}
+      aria-label={props.ariaLabel}
       className={`rounded-md px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50 ${tone}`}
       disabled={props.disabled}
       onClick={props.onClick}

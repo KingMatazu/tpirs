@@ -201,9 +201,11 @@ how a supervisor who has moved off cash handling stops being a collector. The
 primary role itself cannot be removed — choose a different one, or disable the
 account.
 
-The card is the only place the password is ever shown: the server stores a hash,
-so closing it loses the value. Re-opening it from the **Handover** button on the
-account row shows everything except the password.
+The form masks the password as you type it; **Show** reveals it so you can check
+what you generated before submitting, and **Hide** puts it back. The card is the
+only place the password appears afterwards: the server stores a hash, so closing
+it loses the value. Re-opening it from the **Handover** button on the account row
+shows everything except the password.
 
 What the person does:
 
