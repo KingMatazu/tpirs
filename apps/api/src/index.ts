@@ -1,4 +1,4 @@
-import { buildApp } from "./server.js";
+import { buildApp } from "./build-app.js";
 import type { AppConfig } from "./config.js";
 import type { Services } from "./services.js";
 import { buildServices, makeTenantConfigLoader } from "./services.js";

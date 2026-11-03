@@ -24,7 +24,7 @@ flipped to `(completed)` as each lands, one commit per step.
 | Dual-approval reversals                                             | `packages/application/src/ledger-service.ts`, ADR 0013                           | completed |
 | Webhook signature verify, dedupe, outbox                            | `apps/api/src/routes/webhooks.ts`, ADRs 0016/0017                                | completed |
 | Rate limits on verify / USSD / SMS                                  | ADR 0024, `apps/api/src/routes/{verify,field}.ts`                                | completed |
-| Request IDs + one error envelope                                    | `apps/api/src/server.ts`, `errors.ts`                                            | completed |
+| Request IDs + one error envelope                                    | `apps/api/src/build-app.ts`, `errors.ts`                                         | completed |
 | Health and readiness endpoints                                      | `GET /v1/health`, `GET /v1/ready`                                                | completed |
 | Telemetry port + console JSON sink                                  | `packages/adapters/telemetry/otel`                                               | completed |
 | Graceful shutdown (API + worker)                                    | `apps/api/src/index.ts`, `apps/worker/src/index.ts`                              | completed |
@@ -105,7 +105,7 @@ alternatives live in `docs/decisions-needed.md` and `docs/adr/`.
   through the existing `Telemetry` port — no vendor SDK, no new runtime
   dependency (hand-rolled text rendering is ~60 lines and is what ADR 0042
   records).
-- `GET /metrics` in `apps/api/src/server.ts`, registered like `/v1/health`,
+- `GET /metrics` in `apps/api/src/build-app.ts`, registered like `/v1/health`,
   gated on `METRICS_ENABLED=true`, excluded from the audit hook and from the
   OpenAPI document (`schema: { hide: true }`).
 - Metric contract (names are the alert contract in Step 10):
@@ -279,7 +279,7 @@ Recorded in ADR 0041 (D50): Node + `undici`, no new dependency, budgets as code.
 
 ## Step 7: API surface hardening (completed)
 
-- Fastify limits in `apps/api/src/server.ts`: `bodyLimit`, `connectionTimeout`,
+- Fastify limits in `apps/api/src/build-app.ts`: `bodyLimit`, `connectionTimeout`,
   `requestTimeout`, `keepAliveTimeout`, and a max header size; document the
   chosen numbers and why (a webhook body is small; a sticker photo upload is
   multipart and has its own limit).

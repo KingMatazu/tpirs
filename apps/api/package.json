@@ -10,8 +10,8 @@
       "default": "./dist/index.js"
     },
     "./app": {
-      "types": "./dist/server.d.ts",
-      "default": "./dist/server.js"
+      "types": "./dist/build-app.d.ts",
+      "default": "./dist/build-app.js"
     }
   },
   "scripts": {

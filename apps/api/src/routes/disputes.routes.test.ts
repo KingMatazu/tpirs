@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { buildApp } from "../server.js";
+import { buildApp } from "../build-app.js";
 import type { AppConfig } from "../config.js";
 import { buildServices, makeTenantConfigLoader } from "../services.js";
 import { createMockTelemetry } from "@tpirs/telemetry-mock";

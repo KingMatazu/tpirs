@@ -49,13 +49,13 @@ Last reviewed: 2026-10-30 (Phase 10, Step 0).
 
 ## Abuse controls and transport
 
-| Control                                                 | Where                                                       | Proven by                                                         |
-| ------------------------------------------------------- | ----------------------------------------------------------- | ----------------------------------------------------------------- |
-| Rate limits on verify / USSD / SMS                      | ADR 0024, `routes/verify.ts`, `routes/field.ts`             | route tests (429 + `Retry-After`)                                 |
-| Request IDs on every response and log line              | `apps/api/src/server.ts`                                    | `server.test.ts`                                                  |
-| One error envelope, no stack traces or SQL in responses | `apps/api/src/errors.ts`, `server.ts`                       | `server.test.ts`, per-route error cases                           |
-| Body size limits, timeouts, security headers            | `apps/api/src/server.ts`, per-route limits on the uploads   | `server.test.ts` (headers on 200 and 404), `routes.test.ts` (413) |
-| Dependency audit on critical/high                       | `scripts/ci/audit.sh`, `docs/security/audit-allowlist.json` | the gate itself, run in CI                                        |
+| Control                                                 | Where                                                        | Proven by                                                         |
+| ------------------------------------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------- |
+| Rate limits on verify / USSD / SMS                      | ADR 0024, `routes/verify.ts`, `routes/field.ts`              | route tests (429 + `Retry-After`)                                 |
+| Request IDs on every response and log line              | `apps/api/src/build-app.ts`                                  | `server.test.ts`                                                  |
+| One error envelope, no stack traces or SQL in responses | `apps/api/src/errors.ts`, `server.ts`                        | `server.test.ts`, per-route error cases                           |
+| Body size limits, timeouts, security headers            | `apps/api/src/build-app.ts`, per-route limits on the uploads | `server.test.ts` (headers on 200 and 404), `routes.test.ts` (413) |
+| Dependency audit on critical/high                       | `scripts/ci/audit.sh`, `docs/security/audit-allowlist.json`  | the gate itself, run in CI                                        |
 
 ## Data protection
 

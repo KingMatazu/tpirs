@@ -1,10 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
-import { buildApp } from "./server.js";
+import { buildApp } from "./build-app.js";
 import type { AppConfig } from "./config.js";
 import { createMockTelemetry } from "@tpirs/telemetry-mock";
 import { createPrometheusTelemetry } from "@tpirs/adapters-prometheus-telemetry";
-import { LOG_REDACT_PATHS } from "./server.js";
+import { LOG_REDACT_PATHS } from "./build-app.js";
 import { clientErrorMessage } from "./errors.js";
 
 const config: AppConfig = {
