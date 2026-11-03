@@ -3,6 +3,8 @@ import { formatMoneyMinor } from "@tpirs/ui-tokens";
 import { Banner, Card, PrimaryButton, Screen, SecondaryButton } from "../components/ui.js";
 import { floatPercent, toBigInt } from "../lib/flow.js";
 import { businessDateFor, useTenantConfig, useWallet } from "../lib/data.js";
+import { initialsFor } from "../lib/profile.js";
+import { useSession } from "../session.js";
 
 /**
  * Home: what the collector needs before knocking on a driver's window — how much
@@ -14,9 +16,10 @@ export function HomeScreen(
     onCollect: () => void;
     onDeposit: () => void;
     onRegister: () => void;
-    onSignOut: () => void;
+    onProfile: () => void;
   }>,
 ): ReactElement {
+  const displayName = useSession((state) => state.user?.displayName ?? "");
   const config = useTenantConfig();
   const wallet = useWallet();
   const numberFormat = config?.locale.numberFormat ?? "en-NG";
@@ -40,6 +43,16 @@ export function HomeScreen(
   return (
     <Screen
       title={config?.identity.name ?? "Collector"}
+      action={
+        <button
+          type="button"
+          onClick={props.onProfile}
+          aria-label="Profile"
+          className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-900 text-sm font-semibold text-white active:bg-slate-700"
+        >
+          {initialsFor(displayName)}
+        </button>
+      }
       footer={
         <PrimaryButton onClick={props.onCollect} disabled={frozen}>
           Collect fee
@@ -94,14 +107,6 @@ export function HomeScreen(
           ? ` · ${formatMoneyMinor(toBigInt(view?.openIntakeTotalMinor), currency, numberFormat)} open`
           : ""}
       </SecondaryButton>
-
-      <button
-        type="button"
-        onClick={props.onSignOut}
-        className="mt-2 text-sm font-medium text-slate-500 underline"
-      >
-        Sign out
-      </button>
     </Screen>
   );
 }

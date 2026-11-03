@@ -60,6 +60,8 @@ export function Screen(
   props: Readonly<{
     title: string;
     onBack?: () => void;
+    /** Header control on the right, e.g. the profile avatar. */
+    action?: ReactNode;
     children: ReactNode;
     footer?: ReactNode;
   }>,
@@ -79,7 +81,7 @@ export function Screen(
           </button>
         )}
         <h1 className="flex-1 text-center text-base font-semibold text-slate-900">{props.title}</h1>
-        <span className="w-16" />
+        <div className="flex w-16 justify-end">{props.action}</div>
       </header>
       <main className="mx-auto flex w-full max-w-md flex-1 flex-col gap-3 p-3">
         {props.children}

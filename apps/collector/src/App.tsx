@@ -8,6 +8,7 @@ import { ConfirmScreen } from "./screens/ConfirmScreen.js";
 import { DoneScreen } from "./screens/DoneScreen.js";
 import { DepositScreen } from "./screens/DepositScreen.js";
 import { RegisterScreen } from "./screens/RegisterScreen.js";
+import { ProfileScreen } from "./screens/ProfileScreen.js";
 
 type Screen =
   | { readonly name: "home" }
@@ -15,7 +16,8 @@ type Screen =
   | { readonly name: "confirm"; readonly asset: FoundAsset }
   | { readonly name: "done"; readonly receiptNumber: string; readonly replayed: boolean }
   | { readonly name: "deposit" }
-  | { readonly name: "register" };
+  | { readonly name: "register" }
+  | { readonly name: "profile" };
 
 /**
  * The collector flow: home → find → confirm → done, with deposit reachable from
@@ -61,8 +63,8 @@ export function App(): ReactElement {
           onDeposit={() => {
             setScreen({ name: "deposit" });
           }}
-          onSignOut={() => {
-            void useSession.getState().logout();
+          onProfile={() => {
+            setScreen({ name: "profile" });
           }}
         />
       );
@@ -108,5 +110,7 @@ export function App(): ReactElement {
       return <DepositScreen onBack={goHome} />;
     case "register":
       return <RegisterScreen onBack={goHome} />;
+    case "profile":
+      return <ProfileScreen onBack={goHome} />;
   }
 }
