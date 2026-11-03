@@ -103,19 +103,28 @@ holding.
   moments the password is known), a **Handover** row action while the flag is set,
   and **Generate** on the temporary-password field.
 
-## Step 4: Tests (planned)
+## Step 4: Tests (delivered)
 
-- `apps/api/src/routes/users.routes.test.ts`: a flagged account rotates its
-  password, the flag clears, the old token dies, the new password signs in, a
-  second call answers 404, and a weak password is rejected with a `password` issue.
+- `apps/api/src/routes/users.routes.test.ts`: a weak replacement is refused with a
+  `password` issue and leaves the account flagged; a flagged account rotates, the
+  old token dies, the replacement token works, the temporary password stops
+  signing in, the username is unchanged, a second call answers 404, and the audit
+  trail records `auth.credentials_changed` without any password.
 - `apps/api/src/routes/access-matrix.test.ts`: the new route is classified as
-  authenticated-without-permission, and the matrix must stay complete.
-- `UsersPage.test.tsx`: the card names the field app for an officer, the dashboard
-  for a finance role, shows the generated password, and explains an unset URL.
-- `SetPasswordScreen` tests in both apps, including the `App` branch that shows it
-  before the home screen.
-- `noTenantLiterals.test.ts` scans the new admin files: no zone, currency or
-  address as a literal.
+  authenticated-without-permission, so the matrix stays complete.
+- `UsersPage.test.tsx`: the card names the officer app and the state for an
+  officer, the dashboard address for a finance role, explains an unset address,
+  drops the password when dismissed, reopens without it, and generates one.
+- `appLinks.test.ts`, `temporaryPassword.test.ts`: the mapping and the message.
+- `SetPasswordScreen` tests and an `App` branch test in both phone apps.
+
+Verified with the repository's own gates: `pnpm lint`, `pnpm typecheck`,
+`pnpm test`, and the DB-backed suite against local Postgres
+(`TEST_DATABASE_URL=postgres://tpirs:tpirs@localhost:5433/tpirs`), where
+`@tpirs/api` reports 116 passing. Running every package at once against one
+Postgres on this machine produced timeouts in unrelated suites; each package is
+green on its own, which is the same contention `scripts/ci/integration.sh`
+avoids by using a scratch database.
 
 ## Step 5: Documentation (planned)
 
