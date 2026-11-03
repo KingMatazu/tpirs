@@ -167,6 +167,20 @@ export interface TenantCashRules {
   readonly freezeOnShortfall: boolean;
 }
 
+/**
+ * Rules about the staff who handle money.
+ *
+ * A national identification number is the state's own format — eleven digits in
+ * one state, nine in another, a letter prefix in a third — so the rule is
+ * configuration rather than a constant in the account service. Omitting the
+ * section keeps the eleven-digit default, which is what configurations written
+ * before this section existed fall back to.
+ */
+export interface TenantCollectors {
+  /** Regular expression a collector's national ID must match. */
+  readonly nationalIdPattern: string;
+}
+
 /** Payment intake behaviour that is not a provider binding. */
 export interface TenantPayments {
   /** Defaults to `wallet` when the section is omitted. */
@@ -314,6 +328,8 @@ export interface TenantConfig {
   readonly providers: readonly TenantProviderBinding[];
   readonly channels: TenantChannels;
   readonly cashRules: TenantCashRules;
+  /** Staff money-handling rules; omitted means the eleven-digit default. */
+  readonly collectors?: TenantCollectors;
   readonly payments: TenantPayments;
   readonly featureFlags: TenantFeatureFlags;
   readonly field: TenantFieldSettings;

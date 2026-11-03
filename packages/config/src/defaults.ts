@@ -73,6 +73,20 @@ export interface TenantConfigDefaultsInput {
 /** Languages a new tenant may enable: those with shipped driver-channel copy. */
 export const PROVISIONABLE_LANGUAGES: readonly string[] = CHANNEL_CATALOG_LANGUAGES;
 
+/**
+ * Eleven digits: the national identification number the pilot state issues.
+ *
+ * It is a default rather than a rule in code. A state with a different format
+ * sets `collectors.nationalIdPattern` in its config and the account form, the
+ * service and the audit trail all follow without a deployment.
+ */
+export const DEFAULT_NATIONAL_ID_PATTERN = "^\\d{11}$";
+
+/** The national ID rule a tenant's config carries, or the platform default. */
+export function nationalIdPattern(config: TenantConfig): string {
+  return config.collectors?.nationalIdPattern ?? DEFAULT_NATIONAL_ID_PATTERN;
+}
+
 const DEFAULT_COLORS = {
   primary: "#0a5a4a",
   secondary: "#053b33",
@@ -256,6 +270,7 @@ export function defaultTenantConfig(input: TenantConfigDefaultsInput): TenantCon
       depositDeadlineHours: input.depositDeadlineHours ?? 24,
       freezeOnShortfall: true,
     },
+    collectors: { nationalIdPattern: DEFAULT_NATIONAL_ID_PATTERN },
     payments: { underpaymentPolicy: input.underpaymentPolicy ?? "wallet" },
     featureFlags: { disputes: true, prepay: false, offlineMode: true, anomalyAlerts: true },
     field: {

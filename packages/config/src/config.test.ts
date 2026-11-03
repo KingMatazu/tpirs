@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { loadTenantConfigFromString } from "./loader.js";
 import { validateTenantConfig } from "./validate.js";
 import { enabledAnomalyRules } from "./reconciliation.js";
+import { nationalIdPattern } from "./defaults.js";
 import { TenantConfigValidationError } from "./errors.js";
 import type { TenantConfig } from "./schema.js";
 
@@ -495,6 +496,28 @@ describe("validateTenantConfig", () => {
       raw.payments = { underpaymentPolicy: "refund" };
     });
     expect(run).toThrow(/underpaymentPolicy must be one of/);
+  });
+
+  it("keeps the eleven-digit national ID default when the section is omitted", () => {
+    // Configurations written before the section existed must still load.
+    const config = configWith()();
+    expect(config.collectors).toBeUndefined();
+    expect(nationalIdPattern(config)).toBe("^\\d{11}$");
+  });
+
+  it("accepts a state's own national ID pattern", () => {
+    const config = configWith((raw) => {
+      raw.collectors = { nationalIdPattern: "^[A-Z]{2}-\\d{9}$" };
+    })();
+    expect(nationalIdPattern(config)).toBe("^[A-Z]{2}-\\d{9}$");
+  });
+
+  it("rejects a national ID pattern that is not a regular expression", () => {
+    const run = configWith((raw) => {
+      // An unterminated character class: the one thing `new RegExp` refuses.
+      raw.collectors = { nationalIdPattern: "^[0-9" };
+    });
+    expect(run).toThrow(/nationalIdPattern must be a valid regular expression/);
   });
 
   it("rejects a receipt template that omits a required placeholder", () => {

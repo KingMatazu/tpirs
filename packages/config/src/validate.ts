@@ -18,6 +18,7 @@ import type {
   TenantChannels,
   TenantCompliance,
   TenantConfig,
+  TenantCollectors,
   TenantDisputeReason,
   TenantFeatureFlags,
   TenantFeeRule,
@@ -953,6 +954,29 @@ function validateCashRules(v: Validator, value: unknown): TenantCashRules | unde
   return { enabled, floatCeilingMinor, depositDeadlineHours, freezeOnShortfall };
 }
 
+/**
+ * The collector profile rule. Only the pattern is validated here: whether it is
+ * anchored, how long the number is, and whether it is all digits are the state's
+ * decisions, and `new RegExp` is the only thing the platform needs from it.
+ */
+function validateCollectors(v: Validator, value: unknown): TenantCollectors | undefined {
+  const obj = v.object(value, "collectors");
+  if (obj === undefined) return undefined;
+  const nationalIdPattern = v.string(obj.nationalIdPattern, "nationalIdPattern");
+  if (nationalIdPattern === undefined) return undefined;
+  try {
+    new RegExp(nationalIdPattern);
+  } catch {
+    v.issue(
+      "schema_error",
+      "collectors.nationalIdPattern must be a valid regular expression",
+      "nationalIdPattern",
+    );
+    return undefined;
+  }
+  return { nationalIdPattern };
+}
+
 function validatePayments(v: Validator, value: unknown): TenantPayments | undefined {
   const obj = v.object(value, "payments");
   if (obj === undefined) return undefined;
@@ -1315,6 +1339,13 @@ export function validateTenantConfig(input: unknown): TenantConfig {
     locale?.defaultLanguage ?? "",
   );
   const cashRules = validateCashRules(root.child("cashRules"), rootObj.cashRules);
+  // Omitting the section keeps the platform default (eleven digits), so a
+  // configuration written before the section existed still loads; a present but
+  // malformed one is an error, never silently defaulted.
+  const collectors =
+    rootObj.collectors === undefined
+      ? undefined
+      : validateCollectors(root.child("collectors"), rootObj.collectors);
   // Omitting the section means the default policy; a present but malformed
   // section is an error, never silently defaulted.
   const payments =
@@ -1390,6 +1421,7 @@ export function validateTenantConfig(input: unknown): TenantConfig {
     providers,
     channels,
     cashRules,
+    ...(collectors === undefined ? {} : { collectors }),
     payments,
     featureFlags,
     field,

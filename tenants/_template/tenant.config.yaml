@@ -176,6 +176,12 @@ cashRules:
   depositDeadlineHours: 24
   freezeOnShortfall: true
 
+# Staff money-handling rules. `nationalIdPattern` is a regular expression the
+# national identification number of a collector must match; the default is
+# eleven digits. A state with a different format changes this line, not the code.
+collectors:
+  nationalIdPattern: "^\\d{11}$"
+
 # Omit this section for the default (`wallet`). `suspense` sends every short
 # payment to finance for review instead of crediting the asset wallet.
 payments:
