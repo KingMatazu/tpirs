@@ -226,6 +226,37 @@ Accounts created **before** this change are still flagged and were previously
 unusable on the officer and collector apps. They now reach the password screen on
 their next sign-in; nothing needs to be reset.
 
+### Installing the collector app
+
+The collector app is an installable PWA. On the handset:
+
+1. Open the collector address and sign in.
+2. Tap the collector's initials in the Home header to open **Profile**.
+3. **Android/Chrome:** tap **Install on this phone**. **iPhone/iPad:** tap Share,
+   then **Add to Home Screen** (Safari exposes no install prompt).
+
+The Profile screen says which case applies. If it offers the browser menu
+instead, that browser never emitted an install prompt — open the address in
+Chrome or Safari rather than an in-app webview. The installed app opens full
+screen; its shell is cached, but taking cash still needs a connection, because
+nothing is recorded on the phone.
+
+### What a collector sees in Profile
+
+The initials in the Home header open a read-only profile:
+
+- name, role, username and the state;
+- the collector's own phone, national ID and home address, with the ID masked to
+  its last four digits until **Show** is tapped. These fields are managed in the
+  dashboard, not in the app;
+- cash in hand against the float ceiling, with a frozen warning;
+- the install row;
+- **Sign out**, which moved here from Home.
+
+There is no self-service password change yet. A collector who needs one asks a
+supervisor, who resets it from **Accounts**; the reset re-flags the account and
+produces a new handover card.
+
 ## 6. What does not run without the worker
 
 The Vercel pilot deliberately has no `apps/worker`. As a result:

@@ -59,3 +59,4 @@ Format: context, decision, consequences, alternatives considered.
 - [0054](./0054-collector-profile.md) Collector profile: three fields, one tenant rule, and no personal data in the audit trail
 - [0055](./0055-primary-role.md) One primary role per person, with extra roles that can be revoked
 - [0056](./0056-handover-print-and-reissue.md) The handover card prints itself; a lost password is re-issued, not recovered
+- [0057](./0057-collector-install-and-profile.md) The collector app is installable, and its profile is read-only
