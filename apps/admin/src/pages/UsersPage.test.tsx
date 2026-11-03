@@ -25,6 +25,7 @@ let issuesForCreate: { path: string; message: string }[] = [];
 const roles: RoleOption[] = [
   { key: "finance_admin", name: "Finance Admin", permissions: ["payment:read"] },
   { key: "officer", name: "Field Officer", permissions: ["scan:record"] },
+  { key: "collector", name: "Collector", permissions: ["cash:intake"] },
 ];
 
 const fakeFetch = vi.fn(async (input: unknown) => {
@@ -43,9 +44,15 @@ const fakeFetch = vi.fn(async (input: unknown) => {
     return json(200, { roles });
   }
   if (request.method === "GET" && url.pathname === "/v1/tenants/current/config") {
-    // Only the slug is read by this screen; the rest of the config is the
-    // config viewer's business.
-    return json(200, { config: { identity: { slug: "katsina-state" } }, version: 1 });
+    // Only the slug and the collector rule are read by this screen; the rest of
+    // the config is the config viewer's business.
+    return json(200, {
+      config: {
+        identity: { slug: "katsina-state" },
+        collectors: { nationalIdPattern: "^\\d{11}$" },
+      },
+      version: 1,
+    });
   }
   if (request.method === "POST" && url.pathname === "/v1/users") {
     if (issuesForCreate.length > 0) {
@@ -63,12 +70,18 @@ const fakeFetch = vi.fn(async (input: unknown) => {
       displayName: string;
       email: string;
       roleKeys: string[];
+      phone?: string;
+      nationalId?: string;
+      homeAddress?: string;
     };
     const created: StaffAccount = {
       id: "u-new",
       username: body.username,
       displayName: body.displayName,
       email: body.email,
+      phone: body.phone ?? null,
+      nationalId: body.nationalId ?? null,
+      homeAddress: body.homeAddress ?? null,
       status: "active",
       roles: body.roleKeys,
       mustChangeCredentials: true,
@@ -136,7 +149,7 @@ function bodyOf(method: string, path: string): Record<string, unknown> | undefin
 /** Fills the create form and submits it, with one role checked. */
 function createAccount(input: { username: string; password: string; role: string }): void {
   fireEvent.input(screen.getByLabelText(/^Username/), { target: { value: input.username } });
-  fireEvent.input(screen.getByLabelText(/^Display name/), { target: { value: "New Officer" } });
+  fireEvent.input(screen.getByLabelText(/^Full name/), { target: { value: "New Officer" } });
   fireEvent.input(screen.getByLabelText(/^Email/), { target: { value: "new@example.com" } });
   fireEvent.input(screen.getByLabelText(/^Temporary password/), {
     target: { value: input.password },
@@ -187,6 +200,9 @@ describe("UsersPage", () => {
         username: "ada.admin",
         displayName: "Ada",
         email: "ada@example.com",
+        phone: null,
+        nationalId: null,
+        homeAddress: null,
         status: "active",
         roles: ["finance_admin"],
         mustChangeCredentials: false,
@@ -196,6 +212,9 @@ describe("UsersPage", () => {
         username: "sam.staff",
         displayName: "Sam",
         email: "sam@example.com",
+        phone: null,
+        nationalId: null,
+        homeAddress: null,
         status: "disabled",
         roles: ["officer"],
         mustChangeCredentials: true,
@@ -217,7 +236,7 @@ describe("UsersPage", () => {
     await screen.findByText("No accounts yet.");
 
     fireEvent.input(screen.getByLabelText(/^Username/), { target: { value: "new.officer" } });
-    fireEvent.input(screen.getByLabelText(/^Display name/), {
+    fireEvent.input(screen.getByLabelText(/^Full name/), {
       target: { value: "New Officer" },
     });
     fireEvent.input(screen.getByLabelText(/^Email/), { target: { value: "new@example.com" } });
@@ -243,7 +262,7 @@ describe("UsersPage", () => {
     await screen.findByText("No accounts yet.");
 
     fireEvent.input(screen.getByLabelText(/^Username/), { target: { value: "taken" } });
-    fireEvent.input(screen.getByLabelText(/^Display name/), { target: { value: "Taken" } });
+    fireEvent.input(screen.getByLabelText(/^Full name/), { target: { value: "Taken" } });
     fireEvent.input(screen.getByLabelText(/^Email/), { target: { value: "taken@example.com" } });
     fireEvent.input(screen.getByLabelText(/^Temporary password/), {
       target: { value: "temp-pass-1" },
@@ -261,6 +280,9 @@ describe("UsersPage", () => {
         username: "sam.staff",
         displayName: "Sam",
         email: "sam@example.com",
+        phone: null,
+        nationalId: null,
+        homeAddress: null,
         status: "active",
         roles: ["officer"],
         mustChangeCredentials: false,
@@ -283,6 +305,9 @@ describe("UsersPage", () => {
         username: "sam.staff",
         displayName: "Sam",
         email: "sam@example.com",
+        phone: null,
+        nationalId: null,
+        homeAddress: null,
         status: "active",
         roles: ["officer"],
         mustChangeCredentials: false,
@@ -313,6 +338,9 @@ describe("UsersPage", () => {
         username: "sam.staff",
         displayName: "Sam",
         email: "sam@example.com",
+        phone: null,
+        nationalId: null,
+        homeAddress: null,
         status: "active",
         roles: ["officer"],
         mustChangeCredentials: false,
@@ -333,6 +361,9 @@ describe("UsersPage", () => {
         username: "ada.admin",
         displayName: "Ada",
         email: "ada@example.com",
+        phone: null,
+        nationalId: null,
+        homeAddress: null,
         status: "active",
         roles: ["finance_admin"],
         mustChangeCredentials: false,
@@ -400,6 +431,9 @@ describe("UsersPage", () => {
         username: "sam.staff",
         displayName: "Sam",
         email: "sam@example.com",
+        phone: null,
+        nationalId: null,
+        homeAddress: null,
         status: "active",
         roles: ["officer"],
         mustChangeCredentials: true,
@@ -423,5 +457,131 @@ describe("UsersPage", () => {
 
     const input = screen.getByLabelText(/^Temporary password/) as HTMLInputElement;
     expect(input.value).toMatch(/^[abcdefghijkmnpqrstuvwxyz23456789]{16}$/);
+  });
+
+  it("calls the name field the full name", async () => {
+    renderPage();
+    await screen.findByText("No accounts yet.");
+    expect(screen.getByLabelText(/^Full name/)).toBeTruthy();
+    expect(screen.queryByLabelText(/^Display name/)).toBeNull();
+  });
+
+  it("asks for the collector details only when the collector role is chosen", async () => {
+    renderPage();
+    await screen.findByText("No accounts yet.");
+
+    expect(screen.queryByLabelText(/^Phone number/)).toBeNull();
+
+    fireEvent.click(screen.getByLabelText("Collector"));
+
+    expect(screen.getByLabelText(/^Phone number/)).toBeTruthy();
+    expect(screen.getByLabelText(/^National ID number/)).toBeTruthy();
+    expect(screen.getByLabelText(/^Home address/)).toBeTruthy();
+    // The state's rule, in words, from the config the dashboard holds.
+    expect(screen.getByText("11 digits")).toBeTruthy();
+  });
+
+  it("sends the collector profile with the account", async () => {
+    renderPage();
+    await screen.findByText("No accounts yet.");
+
+    fireEvent.input(screen.getByLabelText(/^Username/), { target: { value: "new.collector" } });
+    fireEvent.input(screen.getByLabelText(/^Full name/), { target: { value: "Musa Collector" } });
+    fireEvent.input(screen.getByLabelText(/^Email/), { target: { value: "musa@example.com" } });
+    fireEvent.input(screen.getByLabelText(/^Temporary password/), {
+      target: { value: "temp-pass-1" },
+    });
+    fireEvent.click(screen.getByLabelText("Collector"));
+    fireEvent.input(screen.getByLabelText(/^Phone number/), {
+      target: { value: "08012345678" },
+    });
+    fireEvent.input(screen.getByLabelText(/^National ID number/), {
+      target: { value: "12345678901" },
+    });
+    fireEvent.input(screen.getByLabelText(/^Home address/), {
+      target: { value: "12 Market Road" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+
+    await waitFor(() => {
+      expect(bodyOf("POST", "/v1/users")).toEqual({
+        username: "new.collector",
+        displayName: "Musa Collector",
+        email: "musa@example.com",
+        password: "temp-pass-1",
+        roleKeys: ["collector"],
+        phone: "08012345678",
+        nationalId: "12345678901",
+        homeAddress: "12 Market Road",
+      });
+    });
+  });
+
+  it("refuses a collector account without the details, without asking the server", async () => {
+    renderPage();
+    await screen.findByText("No accounts yet.");
+
+    fireEvent.input(screen.getByLabelText(/^Username/), { target: { value: "new.collector" } });
+    fireEvent.input(screen.getByLabelText(/^Full name/), { target: { value: "Musa Collector" } });
+    fireEvent.input(screen.getByLabelText(/^Email/), { target: { value: "musa@example.com" } });
+    fireEvent.input(screen.getByLabelText(/^Temporary password/), {
+      target: { value: "temp-pass-1" },
+    });
+    fireEvent.click(screen.getByLabelText("Collector"));
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+
+    expect(await screen.findByText("Enter a phone number")).toBeTruthy();
+    expect(screen.getByText("Enter the national ID number")).toBeTruthy();
+    expect(screen.getByText("Enter a home address")).toBeTruthy();
+    expect(requests.some((row) => row.method === "POST")).toBe(false);
+  });
+
+  it("rejects a national ID that does not match the state's rule", async () => {
+    renderPage();
+    await screen.findByText("No accounts yet.");
+
+    fireEvent.input(screen.getByLabelText(/^Username/), { target: { value: "new.collector" } });
+    fireEvent.input(screen.getByLabelText(/^Full name/), { target: { value: "Musa Collector" } });
+    fireEvent.input(screen.getByLabelText(/^Email/), { target: { value: "musa@example.com" } });
+    fireEvent.input(screen.getByLabelText(/^Temporary password/), {
+      target: { value: "temp-pass-1" },
+    });
+    fireEvent.click(screen.getByLabelText("Collector"));
+    fireEvent.input(screen.getByLabelText(/^Phone number/), {
+      target: { value: "08012345678" },
+    });
+    fireEvent.input(screen.getByLabelText(/^National ID number/), { target: { value: "12345" } });
+    fireEvent.input(screen.getByLabelText(/^Home address/), {
+      target: { value: "12 Market Road" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+
+    expect(
+      await screen.findByText("Enter the national ID in the format this state uses"),
+    ).toBeTruthy();
+    expect(requests.some((row) => row.method === "POST")).toBe(false);
+  });
+
+  it("lists the collector's contact and identity details", async () => {
+    accounts = [
+      {
+        id: "u3",
+        username: "musa.collector",
+        displayName: "Musa Collector",
+        email: "musa@example.com",
+        phone: "08012345678",
+        nationalId: "12345678901",
+        homeAddress: "12 Market Road",
+        status: "active",
+        roles: ["collector"],
+        mustChangeCredentials: false,
+      },
+    ];
+    renderPage();
+    await screen.findByText("musa.collector");
+
+    expect(screen.getByText("Phone 08012345678")).toBeTruthy();
+    expect(screen.getByText("National ID 12345678901")).toBeTruthy();
+    expect(screen.getByText("Home address 12 Market Road")).toBeTruthy();
   });
 });

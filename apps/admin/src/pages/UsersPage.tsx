@@ -6,6 +6,7 @@ import { Badge, Button, Card, EmptyState, Field, ReadOnlyNote, TextInput } from 
 import type { BadgeTone } from "../components/ui.js";
 import { destinationsForRoles } from "../lib/appLinks.js";
 import type { AppDestination, HandoverDetails } from "../lib/appLinks.js";
+import { nationalIdHint } from "../lib/collectorProfile.js";
 import { temporaryPassword } from "../lib/temporaryPassword.js";
 import { useTenantConfig } from "../lib/tenantConfig.js";
 import { describeError, pushToast } from "../toast.js";
@@ -26,6 +27,10 @@ export interface StaffAccount {
   readonly username: string;
   readonly displayName: string;
   readonly email: string | null;
+  /** Contact and identity details; recorded for a collector. */
+  readonly phone: string | null;
+  readonly nationalId: string | null;
+  readonly homeAddress: string | null;
   readonly status: "active" | "disabled";
   readonly roles: readonly string[];
   readonly mustChangeCredentials: boolean;
@@ -90,6 +95,9 @@ export function UsersPage(): ReactElement {
     displayName: "",
     email: "",
     password: "",
+    phone: "",
+    nationalId: "",
+    homeAddress: "",
   });
   const [formRoles, setFormRoles] = useState<readonly string[]>([]);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
@@ -112,6 +120,10 @@ export function UsersPage(): ReactElement {
   // holds — so the card cannot disagree with what the apps expect.
   const { config: tenantPayload } = useTenantConfig();
   const slug = tenantPayload?.config.identity.slug;
+  // The state's national ID rule, for the hint and the local check. The server
+  // is authoritative; when the config has not loaded yet, it decides alone.
+  const nationalIdPattern = tenantPayload?.config.collectors?.nationalIdPattern;
+  const isCollector = formRoles.includes("collector");
 
   const usersQuery = useQuery({
     queryKey: USERS_KEY,
@@ -139,6 +151,28 @@ export function UsersPage(): ReactElement {
     event.preventDefault();
     setBusy(true);
     setFormErrors({});
+
+    // A collector carries the state's cash, so the state needs to know who they
+    // are and how to reach them. Everyone else is not asked.
+    const local: Record<string, string> = {};
+    if (isCollector) {
+      if (form.phone.trim() === "") local["phone"] = "Enter a phone number";
+      if (form.nationalId.trim() === "") {
+        local["nationalId"] = "Enter the national ID number";
+      } else if (
+        nationalIdPattern !== undefined &&
+        !new RegExp(nationalIdPattern).test(form.nationalId.trim())
+      ) {
+        local["nationalId"] = "Enter the national ID in the format this state uses";
+      }
+      if (form.homeAddress.trim() === "") local["homeAddress"] = "Enter a home address";
+    }
+    if (Object.keys(local).length > 0) {
+      setFormErrors(local);
+      setBusy(false);
+      return;
+    }
+
     try {
       const result = (await api.POST("/v1/users", {
         body: {
@@ -147,6 +181,13 @@ export function UsersPage(): ReactElement {
           email: form.email.trim(),
           password: form.password,
           roleKeys: [...formRoles],
+          ...(isCollector
+            ? {
+                phone: form.phone.trim(),
+                nationalId: form.nationalId.trim(),
+                homeAddress: form.homeAddress.trim(),
+              }
+            : {}),
         },
       })) as ApiResult<{ user: StaffAccount }>;
       if (result.error !== undefined && result.error !== null) {
@@ -170,7 +211,15 @@ export function UsersPage(): ReactElement {
           destinations: destinationsForRoles(created.roles),
         });
       }
-      setForm({ username: "", displayName: "", email: "", password: "" });
+      setForm({
+        username: "",
+        displayName: "",
+        email: "",
+        password: "",
+        phone: "",
+        nationalId: "",
+        homeAddress: "",
+      });
       setFormRoles([]);
       await refresh();
     } finally {
@@ -298,6 +347,15 @@ export function UsersPage(): ReactElement {
                 </div>
                 {account.email !== null ? (
                   <p className="text-xs text-slate-500">{account.email}</p>
+                ) : null}
+                {account.phone !== null ? (
+                  <p className="text-xs text-slate-500">Phone {account.phone}</p>
+                ) : null}
+                {account.nationalId !== null ? (
+                  <p className="text-xs text-slate-500">National ID {account.nationalId}</p>
+                ) : null}
+                {account.homeAddress !== null ? (
+                  <p className="text-xs text-slate-500">Home address {account.homeAddress}</p>
                 ) : null}
 
                 {canManage && account.id !== currentUserId ? (
@@ -451,7 +509,8 @@ export function UsersPage(): ReactElement {
               </div>
               <div className="w-56">
                 <Field
-                  label="Display name"
+                  label="Full name"
+                  hint="As it appears on their ID"
                   {...(formErrors["displayName"] === undefined
                     ? {}
                     : { error: formErrors["displayName"] })}
@@ -530,6 +589,73 @@ export function UsersPage(): ReactElement {
                 <p className="mt-1 text-xs text-red-600">{formErrors["roleKeys"]}</p>
               )}
             </fieldset>
+
+            {isCollector ? (
+              <fieldset className="space-y-3 rounded-md border border-slate-200 p-3">
+                <legend className="px-1 text-sm font-medium text-slate-700">
+                  Collector details
+                </legend>
+                <p className="-mt-1 text-xs text-slate-500">
+                  A collector carries the state's cash, so these are required. They are shown to
+                  staff with account access and never written to the audit trail.
+                </p>
+                <div className="flex flex-wrap gap-3">
+                  <div className="w-56">
+                    <Field
+                      label="Phone number"
+                      hint="The number to reach them on during a shift"
+                      {...(formErrors["phone"] === undefined ? {} : { error: formErrors["phone"] })}
+                    >
+                      <TextInput
+                        name="new-phone"
+                        value={form.phone}
+                        onValueChange={(value) => {
+                          setForm({ ...form, phone: value });
+                        }}
+                        inputMode="tel"
+                        autoComplete="off"
+                      />
+                    </Field>
+                  </div>
+                  <div className="w-56">
+                    <Field
+                      label="National ID number"
+                      hint={nationalIdHint(nationalIdPattern)}
+                      {...(formErrors["nationalId"] === undefined
+                        ? {}
+                        : { error: formErrors["nationalId"] })}
+                    >
+                      <TextInput
+                        name="new-national-id"
+                        value={form.nationalId}
+                        onValueChange={(value) => {
+                          setForm({ ...form, nationalId: value });
+                        }}
+                        inputMode="numeric"
+                        autoComplete="off"
+                      />
+                    </Field>
+                  </div>
+                  <div className="w-72">
+                    <Field
+                      label="Home address"
+                      {...(formErrors["homeAddress"] === undefined
+                        ? {}
+                        : { error: formErrors["homeAddress"] })}
+                    >
+                      <TextInput
+                        name="new-home-address"
+                        value={form.homeAddress}
+                        onValueChange={(value) => {
+                          setForm({ ...form, homeAddress: value });
+                        }}
+                        autoComplete="off"
+                      />
+                    </Field>
+                  </div>
+                </div>
+              </fieldset>
+            ) : null}
             <Button type="submit" disabled={busy}>
               {busy ? "Creating…" : "Create account"}
             </Button>
