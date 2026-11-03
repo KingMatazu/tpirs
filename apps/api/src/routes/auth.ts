@@ -1,12 +1,19 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { PortError } from "@tpirs/ports";
 import type { DeviceRegistration } from "@tpirs/ports";
-import { OnboardingValidationError, completeOnboarding } from "@tpirs/application";
+import {
+  OnboardingValidationError,
+  UserNotFoundError,
+  UserValidationError,
+  changeOwnPassword,
+  completeOnboarding,
+} from "@tpirs/application";
 import { repositories, withTenant } from "@tpirs/db";
 import { bearerToken, requirePrincipal, UnauthorizedError } from "../auth.js";
 import { resolveTenantIdBySlug } from "../tenants.js";
 import type { AuthContext } from "../auth.js";
 import {
+  authChangePasswordSchema,
   authCompleteOnboardingSchema,
   authLoginSchema,
   authLogoutSchema,
@@ -398,6 +405,83 @@ export function registerAuthRoutes(app: FastifyInstance, context: AuthContext): 
       });
       // The service recorded `auth.credentials_changed` in the same transaction
       // as the rename; a second audit row here would describe the same event.
+      return await sessionReply(reply, session, secureCookies, sameSiteCookies, false);
+    },
+  );
+
+  /**
+   * The staff version of the same handshake: keep the username the administrator
+   * wrote on the handover card, replace the password they could read.
+   *
+   * A flagged account can reach nothing else, so this is the only door out of a
+   * temporary password on the officer and collector apps — the dashboard has its
+   * own form for the provisioning account. Once the flag is clear the route
+   * answers 404, the same "nothing left to do" posture as onboarding.
+   */
+  app.post(
+    "/v1/auth/change-password",
+    { schema: authChangePasswordSchema },
+    async (request, reply) => {
+      let principal;
+      try {
+        principal = requirePrincipal(request);
+      } catch (error) {
+        if (error instanceof UnauthorizedError) {
+          return reply.code(401).send({
+            error: { code: "unauthorized", message: error.message, requestId: request.id },
+          });
+        }
+        throw error;
+      }
+
+      if (!principal.mustChangeCredentials) {
+        return reply.code(404).send({
+          error: { code: "not_found", message: "Route not found", requestId: request.id },
+        });
+      }
+
+      const password = asString((request.body as { password?: unknown }).password);
+      if (password === undefined) {
+        return reply.code(400).send({
+          error: { code: "bad_request", message: "A password is required", requestId: request.id },
+        });
+      }
+
+      let changed;
+      try {
+        changed = await changeOwnPassword(context.db, {
+          tenantId: principal.tenantId,
+          userId: principal.userId,
+          password,
+        });
+      } catch (error) {
+        if (error instanceof UserValidationError) {
+          return reply.code(422).send({
+            error: {
+              code: "unprocessable_entity",
+              message: "The new password was not accepted",
+              requestId: request.id,
+              issues: error.issues,
+            },
+          });
+        }
+        if (error instanceof UserNotFoundError) {
+          return reply.code(404).send({
+            error: { code: "not_found", message: "User not found", requestId: request.id },
+          });
+        }
+        throw error;
+      }
+
+      // The service ended every session, including the one that made this call:
+      // they were all authorised by the password that just stopped working. The
+      // replacement is minted from the new one so nobody is asked to type it
+      // again on the next screen.
+      const session = await context.identity.authenticate({
+        tenantId: principal.tenantId,
+        username: changed.username,
+        password,
+      });
       return await sessionReply(reply, session, secureCookies, sameSiteCookies, false);
     },
   );

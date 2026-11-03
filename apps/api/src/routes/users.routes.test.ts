@@ -170,6 +170,7 @@ describeIntegration("api users e2e (integration)", () => {
   let createdId = "";
   const temporaryPassword = "temporary-pass-1";
   const resetPassword = "reset-pass-2";
+  const rotatedPassword = "rotated-pass-3";
 
   it("lists accounts with their roles and the role catalogue", async () => {
     const manager = await login(slugA, "um.manager", seedPassword);
@@ -338,6 +339,90 @@ describeIntegration("api users e2e (integration)", () => {
     expect(fresh.mustChangeCredentials).toBe(true);
   });
 
+  it("rejects a weak replacement password and leaves the account flagged", async () => {
+    const signedIn = await login(slugA, "um.created", resetPassword);
+    const token = signedIn.token ?? "";
+
+    const weak = await app.inject({
+      method: "POST",
+      url: "/v1/auth/change-password",
+      headers: { authorization: `Bearer ${token}` },
+      payload: { password: "short" },
+    });
+    expect(weak.statusCode).toBe(422);
+    expect(
+      (weak.json() as { error: { issues: { path: string }[] } }).error.issues.map(
+        (issue) => issue.path,
+      ),
+    ).toContain("password");
+
+    // Still locked: a refused replacement must not half-apply.
+    const me = await app.inject({
+      method: "GET",
+      url: "/v1/auth/me",
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect((me.json() as { mustChangeCredentials: boolean }).mustChangeCredentials).toBe(true);
+  });
+
+  it("lets a flagged account replace its password and keeps its username", async () => {
+    const before = await login(slugA, "um.created", resetPassword);
+    const oldToken = before.token ?? "";
+
+    const rotated = await app.inject({
+      method: "POST",
+      url: "/v1/auth/change-password",
+      headers: { authorization: `Bearer ${oldToken}` },
+      payload: { password: rotatedPassword },
+    });
+    expect(rotated.statusCode).toBe(200);
+    const session = rotated.json() as {
+      token: string;
+      user: { username?: string; mustChangeCredentials: boolean };
+    };
+    expect(session.user.mustChangeCredentials).toBe(false);
+
+    // The session that made the call was authorised by the password that has
+    // just stopped working, so it is gone; the replacement is already issued.
+    const stale = await app.inject({
+      method: "GET",
+      url: "/v1/auth/me",
+      headers: { authorization: `Bearer ${oldToken}` },
+    });
+    expect(stale.statusCode).toBe(401);
+    const current = await app.inject({
+      method: "GET",
+      url: "/v1/auth/me",
+      headers: { authorization: `Bearer ${session.token}` },
+    });
+    expect(current.statusCode).toBe(200);
+
+    // The temporary password no longer signs in; the chosen one does, unflagged.
+    expect((await login(slugA, "um.created", resetPassword)).status).toBe(401);
+    const fresh = await login(slugA, "um.created", rotatedPassword);
+    expect(fresh.status).toBe(200);
+    expect(fresh.mustChangeCredentials).toBe(false);
+
+    // The username is the one the administrator handed over, unchanged.
+    const list = await app.inject({
+      method: "GET",
+      url: "/v1/users",
+      headers: { authorization: `Bearer ${managerToken}` },
+    });
+    expect(
+      (list.json() as { users: UserJson[] }).users.some((user) => user.username === "um.created"),
+    ).toBe(true);
+
+    // Rotation is a one-off, not a general password-change route.
+    const again = await app.inject({
+      method: "POST",
+      url: "/v1/auth/change-password",
+      headers: { authorization: `Bearer ${session.token}` },
+      payload: { password: "another-pass-4" },
+    });
+    expect(again.statusCode).toBe(404);
+  });
+
   it("refuses to let an administrator change their own account", async () => {
     const self = await app.inject({
       method: "GET",
@@ -390,10 +475,12 @@ describeIntegration("api users e2e (integration)", () => {
     expect(actions).toContain("user.create");
     expect(actions).toContain("user.update");
     expect(actions).toContain("user.password.reset");
+    expect(actions).toContain("auth.credentials_changed");
 
     const trail = JSON.stringify(entries);
     expect(trail).not.toContain(temporaryPassword);
     expect(trail).not.toContain(resetPassword);
+    expect(trail).not.toContain(rotatedPassword);
     expect(trail).not.toContain(seedPassword);
   });
 });

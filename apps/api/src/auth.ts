@@ -141,6 +141,7 @@ export function requirePermission(
  * is here so the person can abandon setup without completing it.
  */
 const CREDENTIAL_ROTATION_ROUTES: readonly string[] = [
+  "POST /v1/auth/change-password",
   "POST /v1/auth/complete-onboarding",
   "POST /v1/auth/logout",
   "POST /v1/auth/refresh",

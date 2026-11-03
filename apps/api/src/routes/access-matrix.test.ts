@@ -46,6 +46,9 @@ const AUTHENTICATED: Readonly<Record<string, string>> = {
   // The one thing a provisioning account may do; the request gate in auth.ts
   // refuses every other route until it has been called.
   "POST /v1/auth/complete-onboarding": "replaces the caller's own temporary credentials",
+  // The same handshake for a staff account an administrator created: keep the
+  // username from the handover card, replace only the password.
+  "POST /v1/auth/change-password": "replaces the caller's own temporary password",
   // Every screen renders from the tenant config (branding, locale, asset
   // schemas, cash and reconciliation rules), so any staff member may read it;
   // only writing it needs tenant:configure. The config holds secret references,

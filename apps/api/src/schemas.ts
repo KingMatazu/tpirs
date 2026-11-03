@@ -660,6 +660,19 @@ export const authCompleteOnboardingSchema: FastifySchema = {
   response: { 200: session },
 };
 
+/**
+ * The staff counterpart: a temporary password set by an administrator is
+ * replaced without touching the username they were given.
+ */
+export const authChangePasswordSchema: FastifySchema = {
+  body: {
+    type: "object",
+    required: ["password"],
+    properties: { password: { type: "string" } },
+  },
+  response: { 200: session },
+};
+
 export const authMeSchema: FastifySchema = {
   // /me returns the session user augmented with resolved permissions.
   response: {

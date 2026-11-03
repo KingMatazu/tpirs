@@ -369,6 +369,62 @@ export async function resetUserPassword(
   });
 }
 
+export interface ChangeOwnPasswordInput {
+  readonly tenantId: string;
+  readonly userId: string;
+  readonly password: string;
+}
+
+/**
+ * The owner of a temporary password replaces it, keeping the username the
+ * administrator handed them.
+ *
+ * This is the staff counterpart of `completeOnboarding`, and deliberately not the
+ * same call. Onboarding also forces a new *username*, because the provisioning
+ * account is literally `admin` with the password `password` — a published pair.
+ * A staff account was given a real username on a handover card, so asking the
+ * person to invent another one only makes the card wrong.
+ *
+ * Every open session is ended, exactly as an administrator's reset does: the
+ * sessions in question were authorised by the password that has just stopped
+ * working. The route replaces the caller's own session afterwards.
+ */
+export async function changeOwnPassword(
+  db: AnyDb,
+  input: ChangeOwnPasswordInput,
+): Promise<UserSummary> {
+  return withTenant(db, input.tenantId, async (tx) => {
+    const repos = repositories(tx);
+    const existing = await repos.users.findById(input.userId);
+    if (existing === undefined) throw new UserNotFoundError();
+
+    const issues = userPasswordIssues({ username: existing.username, password: input.password });
+    if (issues.length > 0) throw new UserValidationError(issues);
+
+    const updated = await repos.users.changePassword(
+      input.userId,
+      await hashPassword(input.password),
+    );
+    if (updated === undefined) throw new UserNotFoundError();
+    await repos.sessions.revokeAllForUser(input.userId);
+    // Recorded here rather than by the route's audit descriptor: only the
+    // service sees the flag it just cleared, and the hash is never part of it.
+    await repos.audit.record({
+      tenantId: input.tenantId,
+      actorUserId: input.userId,
+      action: "auth.credentials_changed",
+      entityType: "user",
+      entityId: input.userId,
+      before: {
+        username: existing.username,
+        mustChangeCredentials: existing.mustChangeCredentials,
+      },
+      after: { username: updated.username, mustChangeCredentials: false },
+    });
+    return await summarize(repos, updated);
+  });
+}
+
 function assertNotSelf(actorUserId: string, userId: string): void {
   if (actorUserId === userId) {
     throw new UserConflictError(

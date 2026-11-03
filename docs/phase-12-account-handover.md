@@ -69,7 +69,7 @@ holding.
   create/reset that produced it. Re-opening it later shows everything except the
   password.
 
-## Step 1: Password-only rotation (planned)
+## Step 1: Password-only rotation (delivered)
 
 - `packages/db/src/repositories/user.ts`: `changePassword(id, passwordHash)` — sets
   the hash and clears the flag in one statement, mirroring `setTemporaryPassword`.

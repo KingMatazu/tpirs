@@ -138,6 +138,22 @@ export class UserRepository {
   }
 
   /**
+   * The owner of a flagged account replaces its temporary password. The username
+   * is untouched: an administrator chose it, wrote it on the handover card and
+   * the person has no reason to invent a different one. Clearing the flag in the
+   * same statement is what makes the replacement atomic — a new password with the
+   * old lock, or the reverse, is a state nobody can sign in from.
+   */
+  async changePassword(id: string, passwordHash: string): Promise<UserRecord | undefined> {
+    return this.db
+      .updateTable("users")
+      .set({ passwordHash, mustChangeCredentials: false, updatedAt: new Date() })
+      .where("id", "=", id)
+      .returning(USER_COLUMNS)
+      .executeTakeFirst();
+  }
+
+  /**
    * An administrator sets a temporary password, so the account is flagged: the
    * next sign-in reaches only the credential step, where the owner replaces it.
    * Setting the flag here (not in the route) keeps "new password" and "must
