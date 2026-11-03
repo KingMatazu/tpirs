@@ -382,6 +382,23 @@ describeIntegration("api users e2e (integration)", () => {
     expect(user.nationalId).toBe("12345678901");
     expect(user.homeAddress).toBe("12 Market Road");
     expect(user.roles).toEqual(["collector"]);
+
+    // The collector app reads the same three fields back from /me, which is the
+    // only profile endpoint a collector can reach.
+    const signedIn = await login(slugA, "um.collector", temporaryPassword);
+    const me = await app.inject({
+      method: "GET",
+      url: "/v1/auth/me",
+      headers: { authorization: `Bearer ${signedIn.token ?? ""}` },
+    });
+    expect(me.statusCode).toBe(200);
+    expect(me.json()).toMatchObject({
+      username: "um.collector",
+      phone: "08012345678",
+      nationalId: "12345678901",
+      homeAddress: "12 Market Road",
+      roles: ["collector"],
+    });
   });
 
   it("applies each tenant's own national ID pattern", async () => {

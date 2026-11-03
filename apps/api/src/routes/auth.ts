@@ -301,7 +301,7 @@ export function registerAuthRoutes(app: FastifyInstance, context: AuthContext): 
     return reply.code(204).send();
   });
 
-  app.get("/v1/auth/me", { schema: authMeSchema }, (request, reply) => {
+  app.get("/v1/auth/me", { schema: authMeSchema }, async (request, reply) => {
     let principal;
     try {
       principal = requirePrincipal(request);
@@ -313,10 +313,29 @@ export function registerAuthRoutes(app: FastifyInstance, context: AuthContext): 
       }
       throw error;
     }
+    // The caller's own record, for the handful of fields a profile screen shows.
+    // Read here rather than carried on the principal: contact details have no
+    // business riding along on every request, and this route runs once per app
+    // load. A principal exists only because this row did, so a missing row is a
+    // race with a deletion, not a normal answer.
+    const account = await withTenant(context.db, principal.tenantId, (tx) =>
+      repositories(tx).users.findById(principal.userId),
+    );
+    if (account === undefined) {
+      return reply.code(401).send({
+        error: { code: "unauthorized", message: "Authentication required", requestId: request.id },
+      });
+    }
     return reply.send({
       userId: principal.userId,
       tenantId: principal.tenantId,
       displayName: principal.displayName,
+      username: account.username,
+      // Null when the state does not record it; only a collector is required to
+      // have all three (ADR 0054).
+      phone: account.phone,
+      nationalId: account.nationalId,
+      homeAddress: account.homeAddress,
       roles: principal.roles,
       permissions: principal.permissions,
       mustChangeCredentials: principal.mustChangeCredentials,

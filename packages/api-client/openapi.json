@@ -1282,6 +1282,10 @@
                     "userId",
                     "tenantId",
                     "displayName",
+                    "username",
+                    "phone",
+                    "nationalId",
+                    "homeAddress",
                     "roles",
                     "permissions",
                     "mustChangeCredentials"
@@ -1295,6 +1299,21 @@
                     },
                     "displayName": {
                       "type": "string"
+                    },
+                    "username": {
+                      "type": "string"
+                    },
+                    "phone": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "nationalId": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "homeAddress": {
+                      "type": "string",
+                      "nullable": true
                     },
                     "roles": {
                       "type": "array",

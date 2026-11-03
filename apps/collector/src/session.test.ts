@@ -24,6 +24,11 @@ function meResponse(): { readonly response: Response; readonly data: unknown } {
       userId: "u-1",
       tenantId: "t-1",
       displayName: "Collector",
+      username: "alpha.collector",
+      phone: "+2348000000001",
+      nationalId: "12345678901",
+      homeAddress: "12 Example Road",
+      roles: ["collector"],
       permissions: ["cash:manage"],
     },
   };
@@ -93,5 +98,25 @@ describe("session bootstrap", () => {
 
     expect(session.getState().status).toBe("anonymous");
     expect(vi.mocked(api.POST)).toHaveBeenCalledTimes(2); // refresh, then logout
+  });
+
+  it("keeps the caller's own contact details for the profile screen", async () => {
+    vi.mocked(api.POST).mockResolvedValue({
+      response: new Response(null, { status: 200 }),
+      data: { token: "access-token" },
+    } as never);
+    vi.mocked(api.GET).mockResolvedValue(meResponse() as never);
+
+    const session = await freshSession();
+    await session.getState().initialize();
+
+    // Read-only on the phone, but the collector must be able to read them back:
+    // support calls start with "what does your profile say?".
+    expect(session.getState().user).toMatchObject({
+      username: "alpha.collector",
+      phone: "+2348000000001",
+      nationalId: "12345678901",
+      homeAddress: "12 Example Road",
+    });
   });
 });

@@ -698,7 +698,8 @@ export const authChangePasswordSchema: FastifySchema = {
 };
 
 export const authMeSchema: FastifySchema = {
-  // /me returns the session user augmented with resolved permissions.
+  // /me returns the session user augmented with resolved permissions and the
+  // caller's own contact fields, which the collector app's profile screen reads.
   response: {
     200: {
       type: "object",
@@ -706,6 +707,10 @@ export const authMeSchema: FastifySchema = {
         "userId",
         "tenantId",
         "displayName",
+        "username",
+        "phone",
+        "nationalId",
+        "homeAddress",
         "roles",
         "permissions",
         "mustChangeCredentials",
@@ -714,6 +719,10 @@ export const authMeSchema: FastifySchema = {
         userId: { type: "string" },
         tenantId: { type: "string" },
         displayName: { type: "string" },
+        username: { type: "string" },
+        phone: { type: "string", nullable: true },
+        nationalId: { type: "string", nullable: true },
+        homeAddress: { type: "string", nullable: true },
         roles: { type: "array", items: { type: "string" } },
         permissions: { type: "array", items: { type: "string" } },
         mustChangeCredentials: { type: "boolean" },

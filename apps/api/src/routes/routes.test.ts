@@ -230,7 +230,20 @@ describeIntegration("api auth/config/audit (integration)", () => {
       headers: { authorization: `Bearer ${token}` },
     });
     expect(response.statusCode).toBe(200);
-    const body = response.json() as { roles: string[]; permissions: string[] };
+    const body = response.json() as {
+      username: string;
+      phone: string | null;
+      nationalId: string | null;
+      homeAddress: string | null;
+      roles: string[];
+      permissions: string[];
+    };
+    expect(body.username).toBe("rt.admin");
+    // Present and null rather than absent: the profile screen distinguishes
+    // "not recorded" from "the server did not say".
+    expect(body.phone).toBeNull();
+    expect(body.nationalId).toBeNull();
+    expect(body.homeAddress).toBeNull();
     expect(body.roles).toContain("system_admin");
     expect(body.permissions).toContain("tenant:configure");
   });

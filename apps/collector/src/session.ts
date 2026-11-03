@@ -6,6 +6,12 @@ export interface CollectorUser {
   readonly userId: string;
   readonly tenantId: string;
   readonly displayName: string;
+  readonly username: string;
+  /** The collector's own contact fields, shown read-only on the profile screen. */
+  readonly phone: string | null;
+  readonly nationalId: string | null;
+  readonly homeAddress: string | null;
+  readonly roles: readonly string[];
   readonly permissions: readonly string[];
   /** True while the account still holds the temporary password it was given. */
   readonly mustChangeCredentials: boolean;
@@ -28,6 +34,11 @@ interface MeResponse {
   readonly userId?: string;
   readonly tenantId?: string;
   readonly displayName?: string;
+  readonly username?: string;
+  readonly phone?: string | null;
+  readonly nationalId?: string | null;
+  readonly homeAddress?: string | null;
+  readonly roles?: readonly string[];
   readonly permissions?: readonly string[];
   readonly mustChangeCredentials?: boolean;
 }
@@ -164,6 +175,11 @@ async function loadMe(): Promise<CollectorUser | undefined> {
     userId: body.userId,
     tenantId: body.tenantId,
     displayName: body.displayName ?? "Collector",
+    username: body.username ?? "",
+    phone: body.phone ?? null,
+    nationalId: body.nationalId ?? null,
+    homeAddress: body.homeAddress ?? null,
+    roles: body.roles ?? [],
     permissions: body.permissions ?? [],
     mustChangeCredentials: body.mustChangeCredentials === true,
   };

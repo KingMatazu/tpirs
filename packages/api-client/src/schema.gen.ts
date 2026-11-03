@@ -255,6 +255,10 @@ export interface paths {
                             userId: string;
                             tenantId: string;
                             displayName: string;
+                            username: string;
+                            phone: string | null;
+                            nationalId: string | null;
+                            homeAddress: string | null;
                             roles: string[];
                             permissions: string[];
                             mustChangeCredentials: boolean;
