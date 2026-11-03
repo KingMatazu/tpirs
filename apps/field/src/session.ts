@@ -10,6 +10,12 @@ export interface FieldUser {
   readonly tenantId: string;
   readonly displayName: string;
   readonly permissions: readonly string[];
+  /**
+   * True while the account still holds the temporary password an administrator
+   * handed over. The server refuses every other route in that state, so the app
+   * shows the password screen and nothing else.
+   */
+  readonly mustChangeCredentials: boolean;
 }
 
 export type SessionStatus = "unknown" | "anonymous" | "authenticated";
@@ -26,6 +32,12 @@ interface SessionState {
     password: string;
     totpCode?: string;
   }): Promise<void>;
+  /**
+   * Replaces the temporary password at first sign-in. The server ends the
+   * session that authorised the old password and issues a new one, which this
+   * stores so the officer does not sign in twice.
+   */
+  changePassword(password: string): Promise<void>;
   logout(): Promise<void>;
   initialize(): Promise<void>;
   /** Renews the bearer from the refresh cookie. False when the session is gone. */
@@ -38,6 +50,7 @@ interface MeResponse {
   readonly tenantId?: string;
   readonly displayName?: string;
   readonly permissions?: readonly string[];
+  readonly mustChangeCredentials?: boolean;
 }
 
 /**
@@ -112,6 +125,32 @@ export const useSession = create<SessionState>()((set, get) => ({
     set({ status: "authenticated", user, config: effective, configError });
   },
 
+  async changePassword(password) {
+    const result = await api.POST("/v1/auth/change-password", { body: { password } });
+    const token = (result.data as { token?: string } | undefined)?.token;
+    if (!result.response.ok || typeof token !== "string" || token === "") {
+      throw new ApiError({
+        status: result.response.status,
+        code: result.response.status === 422 ? "unprocessable_entity" : "error",
+        message: issueMessage(result.error) ?? "That password was not accepted.",
+      });
+    }
+    setFieldToken(token);
+    const user = get().user;
+    if (user !== undefined) set({ user: { ...user, mustChangeCredentials: false } });
+    // The tenant config was refused while the account was flagged; load it now so
+    // the officer's first screen is branded rather than the neutral default.
+    try {
+      const config = await fetchConfig();
+      if (config !== undefined) {
+        applyTheme(config);
+        set({ config, configError: false });
+      }
+    } catch {
+      // A shift can start without branding.
+    }
+  },
+
   async refresh() {
     try {
       const refreshed = await api.POST("/v1/auth/refresh", { credentials: apiCredentials });
@@ -176,6 +215,23 @@ export const useSession = create<SessionState>()((set, get) => ({
   },
 }));
 
+/** The first field issue the server reported, as one sentence for the screen. */
+function issueMessage(body: unknown): string | undefined {
+  if (typeof body !== "object" || body === null) return undefined;
+  const error = (body as { error?: unknown }).error;
+  if (typeof error !== "object" || error === null) return undefined;
+  const issues = (error as { issues?: unknown }).issues;
+  if (Array.isArray(issues)) {
+    for (const issue of issues) {
+      if (typeof issue !== "object" || issue === null) continue;
+      const message = (issue as { message?: unknown }).message;
+      if (typeof message === "string" && message !== "") return message;
+    }
+  }
+  const message = (error as { message?: unknown }).message;
+  return typeof message === "string" && message !== "" ? message : undefined;
+}
+
 async function loadMe(): Promise<FieldUser | undefined> {
   const me = await api.GET("/v1/auth/me");
   const body = me.data as MeResponse | undefined;
@@ -185,5 +241,6 @@ async function loadMe(): Promise<FieldUser | undefined> {
     tenantId: body.tenantId,
     displayName: body.displayName ?? "Officer",
     permissions: body.permissions ?? [],
+    mustChangeCredentials: body.mustChangeCredentials === true,
   };
 }

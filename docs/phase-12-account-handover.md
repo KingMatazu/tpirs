@@ -83,7 +83,7 @@ holding.
 - Regenerate the contract: `pnpm --filter @tpirs/api build` →
   `pnpm --filter @tpirs/api-client build`.
 
-## Step 2: First sign-in on the officer and collector apps (planned)
+## Step 2: First sign-in on the officer and collector apps (delivered)
 
 - Both sessions read `mustChangeCredentials` from login and `/v1/auth/me`.
 - New `screens/SetPasswordScreen.tsx` in each app (local copies, matching how these

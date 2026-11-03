@@ -7,6 +7,8 @@ export interface CollectorUser {
   readonly tenantId: string;
   readonly displayName: string;
   readonly permissions: readonly string[];
+  /** True while the account still holds the temporary password it was given. */
+  readonly mustChangeCredentials: boolean;
 }
 
 export type SessionStatus = "unknown" | "anonymous" | "authenticated";
@@ -15,6 +17,8 @@ interface SessionState {
   readonly status: SessionStatus;
   readonly user: CollectorUser | undefined;
   login(input: { tenantSlug: string; username: string; password: string }): Promise<void>;
+  /** Replaces the temporary password at first sign-in and stores the new session. */
+  changePassword(password: string): Promise<void>;
   logout(): Promise<void>;
   initialize(): Promise<void>;
   hasPermission(permission: string): boolean;
@@ -25,6 +29,7 @@ interface MeResponse {
   readonly tenantId?: string;
   readonly displayName?: string;
   readonly permissions?: readonly string[];
+  readonly mustChangeCredentials?: boolean;
 }
 
 /**
@@ -69,6 +74,21 @@ export const useSession = create<SessionState>()((set, get) => ({
       });
     }
     set({ status: "authenticated", user });
+  },
+
+  async changePassword(password) {
+    const result = await api.POST("/v1/auth/change-password", { body: { password } });
+    const token = (result.data as { token?: string } | undefined)?.token;
+    if (!result.response.ok || typeof token !== "string" || token === "") {
+      throw new ApiError({
+        status: result.response.status,
+        code: result.response.status === 422 ? "unprocessable_entity" : "error",
+        message: issueMessage(result.error) ?? "That password was not accepted.",
+      });
+    }
+    setCollectorToken(token);
+    const user = get().user;
+    if (user !== undefined) set({ user: { ...user, mustChangeCredentials: false } });
   },
 
   async logout() {
@@ -119,6 +139,23 @@ export const useSession = create<SessionState>()((set, get) => ({
   },
 }));
 
+/** The first field issue the server reported, as one sentence for the screen. */
+function issueMessage(body: unknown): string | undefined {
+  if (typeof body !== "object" || body === null) return undefined;
+  const error = (body as { error?: unknown }).error;
+  if (typeof error !== "object" || error === null) return undefined;
+  const issues = (error as { issues?: unknown }).issues;
+  if (Array.isArray(issues)) {
+    for (const issue of issues) {
+      if (typeof issue !== "object" || issue === null) continue;
+      const message = (issue as { message?: unknown }).message;
+      if (typeof message === "string" && message !== "") return message;
+    }
+  }
+  const message = (error as { message?: unknown }).message;
+  return typeof message === "string" && message !== "" ? message : undefined;
+}
+
 async function loadMe(): Promise<CollectorUser | undefined> {
   const me = await api.GET("/v1/auth/me");
   const body = me.data as MeResponse | undefined;
@@ -128,5 +165,6 @@ async function loadMe(): Promise<CollectorUser | undefined> {
     tenantId: body.tenantId,
     displayName: body.displayName ?? "Collector",
     permissions: body.permissions ?? [],
+    mustChangeCredentials: body.mustChangeCredentials === true,
   };
 }

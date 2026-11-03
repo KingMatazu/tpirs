@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type ReactElement } from "react";
 import { useSession } from "./session.js";
 import { HomeScreen } from "./screens/HomeScreen.js";
 import { LoginScreen } from "./screens/LoginScreen.js";
+import { SetPasswordScreen } from "./screens/SetPasswordScreen.js";
 import { DisputeScreen } from "./screens/DisputeScreen.js";
 import { ResultScreen } from "./screens/ResultScreen.js";
 import { ScanLogScreen } from "./screens/ScanLogScreen.js";
@@ -56,6 +57,7 @@ type Screen =
 export function App(): ReactElement {
   const status = useSession((state) => state.status);
   const config = useSession((state) => state.config);
+  const mustChangeCredentials = useSession((state) => state.user?.mustChangeCredentials === true);
   const [screen, setScreen] = useState<Screen>({ name: "home" });
 
   useEffect(() => {
@@ -117,6 +119,10 @@ export function App(): ReactElement {
   }
 
   if (status !== "authenticated") return <LoginScreen />;
+
+  // A temporary password is a published one until it is replaced; the server
+  // refuses every other route, so the officer sees this and nothing else.
+  if (mustChangeCredentials) return <SetPasswordScreen />;
 
   switch (screen.name) {
     case "scan":

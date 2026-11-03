@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactElement } from "react";
 import { useSession } from "./session.js";
 import { LoginScreen } from "./screens/LoginScreen.js";
+import { SetPasswordScreen } from "./screens/SetPasswordScreen.js";
 import { HomeScreen } from "./screens/HomeScreen.js";
 import { FindScreen, type FoundAsset } from "./screens/FindScreen.js";
 import { ConfirmScreen } from "./screens/ConfirmScreen.js";
@@ -23,6 +24,7 @@ type Screen =
  */
 export function App(): ReactElement {
   const status = useSession((state) => state.status);
+  const mustChangeCredentials = useSession((state) => state.user?.mustChangeCredentials === true);
   const [screen, setScreen] = useState<Screen>({ name: "home" });
 
   useEffect(() => {
@@ -37,6 +39,10 @@ export function App(): ReactElement {
     );
   }
   if (status === "anonymous") return <LoginScreen />;
+
+  // The server refuses every other route while a temporary password is in place,
+  // so the collector must choose one before the cash flow opens.
+  if (mustChangeCredentials) return <SetPasswordScreen />;
 
   const goHome = (): void => {
     setScreen({ name: "home" });
