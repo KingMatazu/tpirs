@@ -3,6 +3,7 @@ import { formatMoneyMinor, parseMajorToMinor } from "@tpirs/ui-tokens";
 import { api } from "../api/client.js";
 import { errorFrom, type ApiResult } from "../api/unwrap.js";
 import { Button, Field, TextInput } from "../components/ui.js";
+import { CURRENCY_OPTIONS, TIME_ZONE_OPTIONS, browserTimeZone } from "../lib/onboardingOptions.js";
 import { useSession } from "../session.js";
 
 /**
@@ -64,7 +65,7 @@ const EMPTY: Draft = {
   legalEntity: "",
   supportEmail: "",
   supportPhone: "",
-  timezone: "",
+  timezone: browserTimeZone(),
   currency: "",
   language: "en",
   adminEmail: "",
@@ -218,11 +219,11 @@ export function SetupPage(): ReactElement {
       result["supportEmail"] = "Support email must be a valid email address";
     }
     if (draft.supportPhone.trim() === "") result["supportPhone"] = "Support phone is required";
-    if (!draft.timezone.includes("/")) {
-      result["timezone"] = "Timezone must be an IANA zone like Region/City";
+    if (draft.timezone.trim() === "") {
+      result["timezone"] = "Select a timezone";
     }
-    if (!/^[A-Za-z]{3}$/.test(draft.currency.trim())) {
-      result["currency"] = "Currency must be a 3-letter ISO code";
+    if (draft.currency.trim() === "") {
+      result["currency"] = "Select a currency";
     }
     if (!EMAIL_PATTERN.test(draft.adminEmail.trim())) {
       result["adminEmail"] = "Administrator email must be a valid email address";
@@ -432,24 +433,36 @@ export function SetupPage(): ReactElement {
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
                 <Field label="Timezone" {...fieldError(errors, "timezone")}>
-                  <TextInput
+                  <select
+                    className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
                     value={draft.timezone}
-                    onValueChange={(value) => {
-                      set({ timezone: value });
+                    onChange={(event) => {
+                      set({ timezone: event.currentTarget.value });
                     }}
-                    placeholder="Region/City"
-                    autoComplete="off"
-                  />
+                  >
+                    <option value="">Select a timezone</option>
+                    {TIME_ZONE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
                 </Field>
                 <Field label="Currency" {...fieldError(errors, "currency")}>
-                  <TextInput
+                  <select
+                    className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
                     value={draft.currency}
-                    onValueChange={(value) => {
-                      set({ currency: value.toUpperCase() });
+                    onChange={(event) => {
+                      set({ currency: event.currentTarget.value });
                     }}
-                    placeholder="ISO code"
-                    autoComplete="off"
-                  />
+                  >
+                    <option value="">Select a currency</option>
+                    {CURRENCY_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
                 </Field>
               </div>
               <Field label="Language" {...fieldError(errors, "language")}>

@@ -63,6 +63,18 @@ describe("SetupPage shell", () => {
     // navigate yet, so none of it may be present.
     expect(screen.queryByRole("navigation", { name: "Primary" })).toBeNull();
   });
+
+  it("offers timezone and currency as closed lists instead of free text", () => {
+    render(<SetupPage />);
+    const timezone = screen.getByLabelText(/Timezone/) as HTMLSelectElement;
+    const currency = screen.getByLabelText(/Currency/) as HTMLSelectElement;
+    expect(timezone.tagName).toBe("SELECT");
+    expect(currency.tagName).toBe("SELECT");
+    expect(
+      [...timezone.options].some((option) => option.value === "Africa/Lagos"),
+    ).toBe(true);
+    expect([...currency.options].some((option) => option.value === "NGN")).toBe(true);
+  });
 });
 
 describe("first-run detection in App", () => {
@@ -136,7 +148,10 @@ describe("wizard flow (steps 1–3)", () => {
   }
 
   function fill(input: (label: string) => HTMLElement, label: string, value: string): void {
-    fireEvent.input(input(label), { target: { value } });
+    const element = input(label);
+    // React listens to `input` for text fields and `change` for a <select>.
+    const event = element.tagName === "SELECT" ? fireEvent.change : fireEvent.input;
+    event(element, { target: { value } });
   }
 
   function input(label: string): HTMLElement {
