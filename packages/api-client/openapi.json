@@ -71,6 +71,7 @@
           "homeAddress",
           "status",
           "roles",
+          "primaryRoleKey",
           "mustChangeCredentials"
         ],
         "properties": {
@@ -111,6 +112,10 @@
             "items": {
               "type": "string"
             }
+          },
+          "primaryRoleKey": {
+            "type": "string",
+            "nullable": true
           },
           "mustChangeCredentials": {
             "type": "boolean"
@@ -1654,6 +1659,10 @@
                     },
                     "minItems": 1
                   },
+                  "primaryRoleKey": {
+                    "type": "string",
+                    "minLength": 1
+                  },
                   "phone": {
                     "type": "string",
                     "maxLength": 32
@@ -1747,6 +1756,10 @@
                       "type": "string"
                     },
                     "minItems": 1
+                  },
+                  "primaryRoleKey": {
+                    "type": "string",
+                    "minLength": 1
                   }
                 }
               }

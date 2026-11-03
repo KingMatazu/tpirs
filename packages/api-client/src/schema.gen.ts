@@ -575,6 +575,7 @@ export interface paths {
                         email: string;
                         password: string;
                         roleKeys: string[];
+                        primaryRoleKey?: string;
                         phone?: string;
                         nationalId?: string;
                         homeAddress?: string;
@@ -667,6 +668,7 @@ export interface paths {
                         /** @enum {string} */
                         status?: "active" | "disabled";
                         roleKeys?: string[];
+                        primaryRoleKey?: string;
                     };
                 };
             };
@@ -3511,6 +3513,7 @@ export interface components {
             /** @enum {string} */
             status: "active" | "disabled";
             roles: string[];
+            primaryRoleKey: string | null;
             mustChangeCredentials: boolean;
         };
         /** RoleSummary */

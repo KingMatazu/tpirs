@@ -70,10 +70,12 @@ const fakeFetch = vi.fn(async (input: unknown) => {
       displayName: string;
       email: string;
       roleKeys: string[];
+      primaryRoleKey?: string;
       phone?: string;
       nationalId?: string;
       homeAddress?: string;
     };
+    const primaryRoleKey = body.primaryRoleKey ?? body.roleKeys[0] ?? null;
     const created: StaffAccount = {
       id: "u-new",
       username: body.username,
@@ -83,7 +85,12 @@ const fakeFetch = vi.fn(async (input: unknown) => {
       nationalId: body.nationalId ?? null,
       homeAddress: body.homeAddress ?? null,
       status: "active",
-      roles: body.roleKeys,
+      // The server returns the primary first and the rest after it.
+      roles: [
+        ...(primaryRoleKey === null ? [] : [primaryRoleKey]),
+        ...body.roleKeys.filter((key) => key !== primaryRoleKey),
+      ],
+      primaryRoleKey,
       mustChangeCredentials: true,
     };
     accounts = [...accounts, created];
@@ -101,9 +108,29 @@ const fakeFetch = vi.fn(async (input: unknown) => {
   const patchMatch = /^\/v1\/users\/(.+)$/.exec(url.pathname);
   if (request.method === "PATCH" && patchMatch !== null) {
     const id = patchMatch[1];
-    const body = JSON.parse(requests.at(-1)?.body ?? "{}") as Partial<StaffAccount>;
+    const body = JSON.parse(requests.at(-1)?.body ?? "{}") as {
+      status?: StaffAccount["status"];
+      roleKeys?: string[];
+      primaryRoleKey?: string;
+    };
     const before = accounts.find((account) => account.id === id);
-    const updated = { ...(before as StaffAccount), ...body };
+    if (before === undefined) return json(404, { error: { code: "not_found", message: "nope" } });
+    // Mirrors the server: the primary comes first in `roles`, and a PATCH that
+    // replaces the set decides the primary from the body or the first key.
+    const primaryRoleKey = body.primaryRoleKey ?? body.roleKeys?.[0] ?? before.primaryRoleKey;
+    const updated: StaffAccount = {
+      ...before,
+      ...(body.status === undefined ? {} : { status: body.status }),
+      ...(body.roleKeys === undefined
+        ? {}
+        : {
+            roles: [
+              ...(primaryRoleKey === null ? [] : [primaryRoleKey]),
+              ...body.roleKeys.filter((key) => key !== primaryRoleKey),
+            ],
+          }),
+      primaryRoleKey,
+    };
     accounts = accounts.map((account) => (account.id === id ? updated : account));
     return json(200, { user: updated });
   }
@@ -205,6 +232,7 @@ describe("UsersPage", () => {
         homeAddress: null,
         status: "active",
         roles: ["finance_admin"],
+        primaryRoleKey: "finance_admin",
         mustChangeCredentials: false,
       },
       {
@@ -217,6 +245,7 @@ describe("UsersPage", () => {
         homeAddress: null,
         status: "disabled",
         roles: ["officer"],
+        primaryRoleKey: "officer",
         mustChangeCredentials: true,
       },
     ];
@@ -253,6 +282,7 @@ describe("UsersPage", () => {
       email: "new@example.com",
       password: "temp-pass-1",
       roleKeys: ["officer"],
+      primaryRoleKey: "officer",
     });
   });
 
@@ -285,6 +315,7 @@ describe("UsersPage", () => {
         homeAddress: null,
         status: "active",
         roles: ["officer"],
+        primaryRoleKey: "officer",
         mustChangeCredentials: false,
       },
     ];
@@ -310,6 +341,7 @@ describe("UsersPage", () => {
         homeAddress: null,
         status: "active",
         roles: ["officer"],
+        primaryRoleKey: "officer",
         mustChangeCredentials: false,
       },
     ];
@@ -343,6 +375,7 @@ describe("UsersPage", () => {
         homeAddress: null,
         status: "active",
         roles: ["officer"],
+        primaryRoleKey: "officer",
         mustChangeCredentials: false,
       },
     ];
@@ -366,6 +399,7 @@ describe("UsersPage", () => {
         homeAddress: null,
         status: "active",
         roles: ["finance_admin"],
+        primaryRoleKey: "finance_admin",
         mustChangeCredentials: false,
       },
     ];
@@ -436,6 +470,7 @@ describe("UsersPage", () => {
         homeAddress: null,
         status: "active",
         roles: ["officer"],
+        primaryRoleKey: "officer",
         mustChangeCredentials: true,
       },
     ];
@@ -466,7 +501,7 @@ describe("UsersPage", () => {
     expect(screen.queryByLabelText(/^Display name/)).toBeNull();
   });
 
-  it("replaces the chosen role instead of adding to it", async () => {
+  it("makes the second role the primary instead of adding a second one", async () => {
     renderPage();
     await screen.findByText("No accounts yet.");
 
@@ -480,7 +515,7 @@ describe("UsersPage", () => {
     fireEvent.click(screen.getByLabelText("Field Officer"));
     fireEvent.click(screen.getByLabelText("Collector"));
 
-    // One person, one role: the second choice clears the first.
+    // One primary role: the second choice replaces the first.
     expect((screen.getByLabelText("Field Officer") as HTMLInputElement).checked).toBe(false);
     expect((screen.getByLabelText("Collector") as HTMLInputElement).checked).toBe(true);
 
@@ -496,7 +531,93 @@ describe("UsersPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create account" }));
 
     await waitFor(() => {
-      expect(bodyOf("POST", "/v1/users")?.["roleKeys"]).toEqual(["collector"]);
+      const body = bodyOf("POST", "/v1/users");
+      expect(body?.["roleKeys"]).toEqual(["collector"]);
+      expect(body?.["primaryRoleKey"]).toBe("collector");
+    });
+  });
+
+  it("adds an extra role without making it the primary one", async () => {
+    renderPage();
+    await screen.findByText("No accounts yet.");
+
+    fireEvent.input(screen.getByLabelText(/^Username/), { target: { value: "new.officer" } });
+    fireEvent.input(screen.getByLabelText(/^Full name/), { target: { value: "Ada Officer" } });
+    fireEvent.input(screen.getByLabelText(/^Email/), { target: { value: "ada@example.com" } });
+    fireEvent.input(screen.getByLabelText(/^Temporary password/), {
+      target: { value: "temp-pass-1" },
+    });
+    fireEvent.click(screen.getByLabelText("Field Officer"));
+
+    // The extras panel is closed until asked for, so a role is never on screen
+    // twice: once as the primary radio, once as an extra.
+    expect(screen.queryByRole("group", { name: "Additional roles" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Additional roles/ }));
+    fireEvent.click(
+      within(screen.getByRole("group", { name: "Additional roles" })).getByLabelText("Collector"),
+    );
+
+    // A collector is a collector whichever slot the role is in, so the state's
+    // cash-handling details are still required.
+    expect(screen.getByLabelText(/^Phone number/)).toBeTruthy();
+    fireEvent.input(screen.getByLabelText(/^Phone number/), {
+      target: { value: "08012345678" },
+    });
+    fireEvent.input(screen.getByLabelText(/^National ID number/), {
+      target: { value: "12345678901" },
+    });
+    fireEvent.input(screen.getByLabelText(/^Home address/), {
+      target: { value: "12 Market Road" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+
+    await waitFor(() => {
+      const body = bodyOf("POST", "/v1/users");
+      // Primary first, then the extra.
+      expect(body?.["roleKeys"]).toEqual(["officer", "collector"]);
+      expect(body?.["primaryRoleKey"]).toBe("officer");
+    });
+  });
+
+  it("takes an extra role away when the administrator clears it", async () => {
+    accounts = [
+      {
+        id: "u1",
+        username: "musa.collector",
+        displayName: "Musa Collector",
+        email: "musa@example.com",
+        phone: "08012345678",
+        nationalId: "12345678901",
+        homeAddress: "12 Market Road",
+        status: "active",
+        roles: ["officer", "collector"],
+        primaryRoleKey: "officer",
+        mustChangeCredentials: false,
+      },
+    ];
+    renderPage();
+    await screen.findByText("musa.collector");
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit roles" }));
+    // Scoped: the "Add an account" form below has a role picker too, and both
+    // list the same role names.
+    const editor = within(screen.getByRole("group", { name: "Edit roles for musa.collector" }));
+    // The existing primary is the checked radio, and the extra is listed but not
+    // primary — that is what makes revoking it a deliberate act.
+    expect((editor.getByLabelText("Field Officer") as HTMLInputElement).checked).toBe(true);
+    expect((editor.getByLabelText("Collector") as HTMLInputElement).checked).toBe(false);
+    expect(editor.getByRole("button", { name: /Additional roles: Collector/ })).toBeTruthy();
+
+    fireEvent.click(editor.getByRole("button", { name: /Additional roles/ }));
+    fireEvent.click(
+      within(editor.getByRole("group", { name: "Additional roles" })).getByLabelText("Collector"),
+    );
+    fireEvent.click(editor.getByRole("button", { name: "Save roles" }));
+
+    await waitFor(() => {
+      const body = bodyOf("PATCH", "/v1/users/u1");
+      expect(body?.["roleKeys"]).toEqual(["officer"]);
+      expect(body?.["primaryRoleKey"]).toBe("officer");
     });
   });
 
@@ -544,6 +665,7 @@ describe("UsersPage", () => {
         email: "musa@example.com",
         password: "temp-pass-1",
         roleKeys: ["collector"],
+        primaryRoleKey: "collector",
         phone: "08012345678",
         nationalId: "12345678901",
         homeAddress: "12 Market Road",
@@ -608,6 +730,7 @@ describe("UsersPage", () => {
         homeAddress: "12 Market Road",
         status: "active",
         roles: ["collector"],
+        primaryRoleKey: "collector",
         mustChangeCredentials: false,
       },
     ];

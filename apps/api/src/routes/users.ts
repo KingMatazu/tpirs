@@ -108,6 +108,7 @@ export function registerUserRoutes(app: FastifyInstance, context: UserRoutesCont
       email?: unknown;
       password?: unknown;
       roleKeys?: unknown;
+      primaryRoleKey?: unknown;
       phone?: unknown;
       nationalId?: unknown;
       homeAddress?: unknown;
@@ -119,6 +120,7 @@ export function registerUserRoutes(app: FastifyInstance, context: UserRoutesCont
     const phone = asString(body.phone);
     const nationalId = asString(body.nationalId);
     const homeAddress = asString(body.homeAddress);
+    const primaryRoleKey = asString(body.primaryRoleKey);
     const roleKeys = Array.isArray(body.roleKeys)
       ? body.roleKeys.filter((key): key is string => typeof key === "string")
       : [];
@@ -140,6 +142,7 @@ export function registerUserRoutes(app: FastifyInstance, context: UserRoutesCont
         email,
         password,
         roleKeys,
+        ...(primaryRoleKey === undefined ? {} : { primaryRoleKey }),
         ...(phone === undefined ? {} : { phone }),
         ...(nationalId === undefined ? {} : { nationalId }),
         ...(homeAddress === undefined ? {} : { homeAddress }),
@@ -153,7 +156,12 @@ export function registerUserRoutes(app: FastifyInstance, context: UserRoutesCont
         // The account and its roles, never the national ID or the address: the
         // audit trail is append-only and read by auditors, and a person's
         // identity number cannot be taken back out of it.
-        after: { username: user.username, status: user.status, roles: user.roles },
+        after: {
+          username: user.username,
+          status: user.status,
+          roles: user.roles,
+          primaryRoleKey: user.primaryRoleKey,
+        },
       };
       return await reply.code(201).send({ user });
     } catch (error) {
@@ -170,16 +178,27 @@ export function registerUserRoutes(app: FastifyInstance, context: UserRoutesCont
       displayName?: unknown;
       status?: unknown;
       roleKeys?: unknown;
+      primaryRoleKey?: unknown;
     };
     const displayName = body.displayName === undefined ? undefined : asString(body.displayName);
     const status = body.status === "active" || body.status === "disabled" ? body.status : undefined;
+    const primaryRoleKey = asString(body.primaryRoleKey);
     const roleKeys = Array.isArray(body.roleKeys)
       ? body.roleKeys.filter((key): key is string => typeof key === "string")
       : undefined;
-    if (displayName === undefined && status === undefined && roleKeys === undefined) {
+    if (
+      displayName === undefined &&
+      status === undefined &&
+      roleKeys === undefined &&
+      primaryRoleKey === undefined
+    ) {
       // An empty patch is far more likely a client bug than an intent; saying so
       // is friendlier than a silent no-op the operator cannot see in the trail.
-      return badRequest(request, reply, "Nothing to update: send displayName, status or roleKeys");
+      return badRequest(
+        request,
+        reply,
+        "Nothing to update: send displayName, status, roleKeys or primaryRoleKey",
+      );
     }
 
     try {
@@ -192,6 +211,7 @@ export function registerUserRoutes(app: FastifyInstance, context: UserRoutesCont
         ...(displayName === undefined ? {} : { displayName }),
         ...(status === undefined ? {} : { status }),
         ...(roleKeys === undefined ? {} : { roleKeys }),
+        ...(primaryRoleKey === undefined ? {} : { primaryRoleKey }),
       });
       request.audit = {
         action: "user.update",
@@ -200,9 +220,15 @@ export function registerUserRoutes(app: FastifyInstance, context: UserRoutesCont
         before: {
           status: previous.status,
           roles: previous.roles,
+          primaryRoleKey: previous.primaryRoleKey,
           displayName: previous.displayName,
         },
-        after: { status: user.status, roles: user.roles, displayName: user.displayName },
+        after: {
+          status: user.status,
+          roles: user.roles,
+          primaryRoleKey: user.primaryRoleKey,
+          displayName: user.displayName,
+        },
       };
       return await reply.send({ user });
     } catch (error) {

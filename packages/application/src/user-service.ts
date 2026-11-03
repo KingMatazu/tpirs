@@ -1,7 +1,7 @@
 import { hashPassword } from "@tpirs/crypto";
 import { DEFAULT_NATIONAL_ID_PATTERN } from "@tpirs/config";
 import { repositories, withTenant } from "@tpirs/db";
-import type { AnyDb, UserRecord } from "@tpirs/db";
+import type { AnyDb, UserRecord, UserRoleGrant } from "@tpirs/db";
 
 /**
  * Staff account management (Phase 11, 11.0b).
@@ -72,7 +72,14 @@ export interface UserSummary {
   readonly nationalId: string | null;
   readonly homeAddress: string | null;
   readonly status: UserStatus;
+  /** The roles this account holds, primary first. */
   readonly roles: readonly string[];
+  /**
+   * The role the person was hired for. Null for an account whose grants were
+   * written without one — a row from before migration 0023 whose backfill found
+   * no role, or a caller that assigned roles directly.
+   */
+  readonly primaryRoleKey: string | null;
   /** True while the account still holds a temporary password. */
   readonly mustChangeCredentials: boolean;
 }
@@ -149,6 +156,26 @@ function roleIssues(roleKeys: readonly string[]): readonly UserIssue[] {
   return [];
 }
 
+/**
+ * The primary role has to be one of the roles being assigned. A key outside the
+ * list would either be silently ignored or added, and both are wrong: the first
+ * loses the administrator's choice, the second grants access they did not ask
+ * for. Saying so is the only honest answer.
+ */
+function primaryRoleIssues(
+  roleKeys: readonly string[],
+  primaryRoleKey: string | undefined,
+): readonly UserIssue[] {
+  if (primaryRoleKey === undefined) return [];
+  if (roleKeys.includes(primaryRoleKey)) return [];
+  return [
+    {
+      path: "primaryRoleKey",
+      message: "Choose the primary role from the roles you are assigning",
+    },
+  ];
+}
+
 /** The role whose holder takes cash from drivers and must be on file. */
 const COLLECTOR_ROLE = "collector";
 /** Digits, with an optional leading +, spaces and dashes as people write them. */
@@ -218,7 +245,8 @@ function isUniqueViolation(error: unknown): boolean {
   );
 }
 
-function toSummary(user: UserRecord, roles: readonly string[]): UserSummary {
+function toSummary(user: UserRecord, grants: readonly UserRoleGrant[]): UserSummary {
+  const primary = grants.find((grant) => grant.isPrimary);
   return {
     id: user.id,
     username: user.username,
@@ -228,7 +256,8 @@ function toSummary(user: UserRecord, roles: readonly string[]): UserSummary {
     nationalId: user.nationalId,
     homeAddress: user.homeAddress,
     status: user.status === "disabled" ? "disabled" : "active",
-    roles: [...roles],
+    roles: grants.map((grant) => grant.key),
+    primaryRoleKey: primary === undefined ? null : primary.key,
     mustChangeCredentials: user.mustChangeCredentials,
   };
 }
@@ -243,7 +272,7 @@ async function summarize(
   repos: ReturnType<typeof repositories>,
   user: UserRecord,
 ): Promise<UserSummary> {
-  return toSummary(user, await repos.roles.roleKeysForUser(user.id));
+  return toSummary(user, await repos.roles.rolesForUser(user.id));
 }
 
 export async function listUsers(db: AnyDb, tenantId: string): Promise<readonly UserSummary[]> {
@@ -279,25 +308,50 @@ export async function listRoles(db: AnyDb, tenantId: string): Promise<readonly R
   });
 }
 
-/** Rejects role keys that this tenant does not define (rather than silently dropping them). */
-async function resolveRoleIds(
+/**
+ * Rejects role keys that this tenant does not define (rather than silently
+ * dropping them), and returns the resolved grants so the caller can name the
+ * primary one without a second lookup.
+ */
+async function resolveRoles(
   repos: ReturnType<typeof repositories>,
   roleKeys: readonly string[],
-): Promise<{ roleIds: string[]; issues: UserIssue[] }> {
-  const roleIds: string[] = [];
+): Promise<{ roles: { id: string; key: string }[]; issues: UserIssue[] }> {
+  const roles: { id: string; key: string }[] = [];
   const unknown: string[] = [];
   for (const key of roleKeys) {
     const role = await repos.roles.findByKey(key);
     if (role === undefined) unknown.push(key);
-    else roleIds.push(role.id);
+    else roles.push({ id: role.id, key: role.key });
   }
   if (unknown.length > 0) {
     return {
-      roleIds: [],
+      roles: [],
       issues: [{ path: "roleKeys", message: `Unknown role: ${unknown.join(", ")}` }],
     };
   }
-  return { roleIds, issues: [] };
+  return { roles, issues: [] };
+}
+
+/**
+ * Records which of the resolved roles is the person's primary one.
+ *
+ * The default is the first key the caller sent, which is the only possible answer
+ * for a single-role account and keeps that common case free of an extra field. A
+ * key that is not in the resolved set is ignored here because `primaryRoleIssues`
+ * has already refused it — reaching this point with a stranger's key would mean
+ * the validation and the write disagree.
+ */
+async function markPrimary(
+  repos: ReturnType<typeof repositories>,
+  userId: string,
+  resolved: readonly { id: string; key: string }[],
+  primaryRoleKey: string | undefined,
+): Promise<void> {
+  const wanted = primaryRoleKey ?? resolved[0]?.key;
+  const primary = resolved.find((role) => role.key === wanted);
+  if (primary === undefined) return;
+  await repos.roles.setPrimaryRoleForUser({ userId, roleId: primary.id });
 }
 
 export interface CreateUserInput {
@@ -307,6 +361,12 @@ export interface CreateUserInput {
   readonly email: string;
   readonly password: string;
   readonly roleKeys: readonly string[];
+  /**
+   * The role the person is being hired for. Optional so a single-role account
+   * needs no extra field: it defaults to the first key, which for one role is the
+   * only possible answer.
+   */
+  readonly primaryRoleKey?: string;
   /** Contact and identity details; required only for a collector. */
   readonly phone?: string;
   readonly nationalId?: string;
@@ -327,6 +387,7 @@ export async function createUser(db: AnyDb, input: CreateUserInput): Promise<Use
   const issues = [
     ...identityIssues(input),
     ...roleIssues(input.roleKeys),
+    ...primaryRoleIssues(input.roleKeys, input.primaryRoleKey),
     ...collectorProfileIssues(
       profile,
       input.roleKeys,
@@ -342,7 +403,7 @@ export async function createUser(db: AnyDb, input: CreateUserInput): Promise<Use
   try {
     return await withTenant(db, input.tenantId, async (tx) => {
       const repos = repositories(tx);
-      const { roleIds, issues: roleProblems } = await resolveRoleIds(repos, input.roleKeys);
+      const { roles: resolved, issues: roleProblems } = await resolveRoles(repos, input.roleKeys);
       if (roleProblems.length > 0) throw new UserValidationError(roleProblems);
 
       const user = await repos.users.create({
@@ -359,9 +420,14 @@ export async function createUser(db: AnyDb, input: CreateUserInput): Promise<Use
         // construction: the first sign-in may only replace it.
         mustChangeCredentials: true,
       });
-      for (const roleId of roleIds) {
-        await repos.roles.assignToUser({ tenantId: input.tenantId, userId: user.id, roleId });
+      for (const role of resolved) {
+        await repos.roles.assignToUser({
+          tenantId: input.tenantId,
+          userId: user.id,
+          roleId: role.id,
+        });
       }
+      await markPrimary(repos, user.id, resolved, input.primaryRoleKey);
       return await summarize(repos, user);
     });
   } catch (error) {
@@ -380,6 +446,12 @@ export interface UpdateUserInput {
   readonly displayName?: string;
   readonly status?: UserStatus;
   readonly roleKeys?: readonly string[];
+  /**
+   * Moves the primary mark, either as part of a role replacement or on its own.
+   * Sending it without `roleKeys` only re-labels a grant the account already
+   * holds; it never grants the role, so a typo cannot widen access.
+   */
+  readonly primaryRoleKey?: string;
 }
 
 export async function updateUser(db: AnyDb, input: UpdateUserInput): Promise<UserSummary> {
@@ -397,6 +469,12 @@ export async function updateUser(db: AnyDb, input: UpdateUserInput): Promise<Use
     }
   }
   if (input.roleKeys !== undefined) issues.push(...roleIssues(input.roleKeys));
+  // Only checkable here when the role set is being replaced; a lone
+  // `primaryRoleKey` is checked against the grants inside the transaction, where
+  // they can actually be read.
+  if (input.roleKeys !== undefined) {
+    issues.push(...primaryRoleIssues(input.roleKeys, input.primaryRoleKey));
+  }
   if (issues.length > 0) throw new UserValidationError(issues);
 
   return withTenant(db, input.tenantId, async (tx) => {
@@ -404,11 +482,12 @@ export async function updateUser(db: AnyDb, input: UpdateUserInput): Promise<Use
     const existing = await repos.users.findById(input.userId);
     if (existing === undefined) throw new UserNotFoundError();
 
-    let roleIds: string[] | undefined;
-    if (input.roleKeys !== undefined) {
-      const resolved = await resolveRoleIds(repos, input.roleKeys);
-      if (resolved.issues.length > 0) throw new UserValidationError(resolved.issues);
-      roleIds = resolved.roleIds;
+    const roleKeys = input.roleKeys;
+    let resolved: { id: string; key: string }[] | undefined;
+    if (roleKeys !== undefined) {
+      const outcome = await resolveRoles(repos, roleKeys);
+      if (outcome.issues.length > 0) throw new UserValidationError(outcome.issues);
+      resolved = outcome.roles;
     }
 
     const updated = await repos.users.updateProfile(input.userId, {
@@ -417,11 +496,30 @@ export async function updateUser(db: AnyDb, input: UpdateUserInput): Promise<Use
     });
     if (updated === undefined) throw new UserNotFoundError();
 
-    if (roleIds !== undefined) {
+    if (resolved !== undefined) {
       await repos.roles.clearRolesForUser(input.userId);
-      for (const roleId of roleIds) {
-        await repos.roles.assignToUser({ tenantId: input.tenantId, userId: input.userId, roleId });
+      for (const role of resolved) {
+        await repos.roles.assignToUser({
+          tenantId: input.tenantId,
+          userId: input.userId,
+          roleId: role.id,
+        });
       }
+      await markPrimary(repos, input.userId, resolved, input.primaryRoleKey);
+    } else if (input.primaryRoleKey !== undefined) {
+      const held = await repos.roles.rolesForUser(input.userId);
+      const grant = held.find((role) => role.key === input.primaryRoleKey);
+      if (grant === undefined) {
+        throw new UserValidationError([
+          {
+            path: "primaryRoleKey",
+            message: "That role is not assigned to this account",
+          },
+        ]);
+      }
+      const role = await repos.roles.findByKey(input.primaryRoleKey);
+      if (role === undefined) throw new UserNotFoundError();
+      await repos.roles.setPrimaryRoleForUser({ userId: input.userId, roleId: role.id });
     }
     return await summarize(repos, updated);
   });

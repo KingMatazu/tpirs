@@ -523,6 +523,7 @@ const userSummary = {
     "homeAddress",
     "status",
     "roles",
+    "primaryRoleKey",
     "mustChangeCredentials",
   ],
   properties: {
@@ -536,7 +537,14 @@ const userSummary = {
     nationalId: { type: "string", nullable: true },
     homeAddress: { type: "string", nullable: true },
     status: { type: "string", enum: ["active", "disabled"] },
+    /** Primary first; the rest follow alphabetically. */
     roles: { type: "array", items: { type: "string" } },
+    /**
+     * The role the person was hired for. Null when no grant carries the mark —
+     * an account written before migration 0023 whose backfill found no role, or
+     * one whose roles were assigned directly.
+     */
+    primaryRoleKey: { type: "string", nullable: true },
     /** True while the account holds a temporary password and must replace it. */
     mustChangeCredentials: { type: "boolean" },
   },
@@ -870,6 +878,12 @@ export const createUserSchema: FastifySchema = {
       email: { type: "string", maxLength: 254 },
       password: { type: "string", minLength: 1, maxLength: 200 },
       roleKeys: { type: "array", items: { type: "string" }, minItems: 1 },
+      /**
+       * Optional: a single-role account is primary by construction, so the
+       * common case sends only `roleKeys`. When present it must be one of them,
+       * which the service checks and reports as a field issue.
+       */
+      primaryRoleKey: { type: "string", minLength: 1 },
       // Collector profile: the service requires all three when the role list
       // contains `collector`, and validates them whenever they are present.
       phone: { type: "string", maxLength: 32 },
@@ -894,6 +908,8 @@ export const updateUserSchema: FastifySchema = {
       displayName: { type: "string", minLength: 1, maxLength: 120 },
       status: { type: "string", enum: ["active", "disabled"] },
       roleKeys: { type: "array", items: { type: "string" }, minItems: 1 },
+      /** Moves the primary mark; with no `roleKeys` it only re-labels a held role. */
+      primaryRoleKey: { type: "string", minLength: 1 },
     },
   },
   response: {

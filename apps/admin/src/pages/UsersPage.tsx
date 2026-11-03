@@ -32,7 +32,10 @@ export interface StaffAccount {
   readonly nationalId: string | null;
   readonly homeAddress: string | null;
   readonly status: "active" | "disabled";
+  /** Primary first; the rest follow alphabetically, as the server returns them. */
   readonly roles: readonly string[];
+  /** The role the person was hired for; null when no grant carries the mark. */
+  readonly primaryRoleKey: string | null;
   readonly mustChangeCredentials: boolean;
 }
 
@@ -60,10 +63,114 @@ export function toggleRole(keys: readonly string[], key: string): readonly strin
 
 export function roleNames(roles: readonly RoleOption[], keys: readonly string[]): string {
   if (keys.length === 0) return "No role";
-  return keys
-    .map((key) => roles.find((role) => role.key === key)?.name ?? key)
-    .sort((a, b) => a.localeCompare(b))
-    .join(", ");
+  return keys.map((key) => roles.find((role) => role.key === key)?.name ?? key).join(", ");
+}
+
+/**
+ * Picks the role an account exists for, and any extra roles on top.
+ *
+ * The radio group is the primary role: one choice, and choosing another replaces
+ * it, which is what "who is this person" means. The panel below it lists every
+ * other role as a checkbox, so extra access is granted deliberately and — just as
+ * important — can be taken away again by clearing the box. Neither list can show
+ * the same role twice: the extras exclude whichever role is primary.
+ *
+ * A panel toggled by a button rather than a native multi-select: `select multiple`
+ * needs Ctrl-click, and an administrator who picks one role and sees it replace
+ * the previous one has no way to tell whether the form or the browser did that.
+ * The checkboxes are only rendered while the panel is open, so a role never
+ * appears twice on the screen at once — once as the primary radio, once as an
+ * extra — which would make the two indistinguishable to a screen reader.
+ */
+export function RolePicker({
+  name,
+  roles,
+  primary,
+  extras,
+  disabled = false,
+  error,
+  onPrimaryChange,
+  onExtrasChange,
+}: {
+  readonly name: string;
+  readonly roles: readonly RoleOption[];
+  readonly primary: string;
+  readonly extras: readonly string[];
+  readonly disabled?: boolean;
+  readonly error?: string;
+  readonly onPrimaryChange: (key: string) => void;
+  readonly onExtrasChange: (keys: readonly string[]) => void;
+}): ReactElement {
+  const [extrasOpen, setExtrasOpen] = useState(false);
+  const chosenExtras = extras.filter((key) => key !== primary);
+  const available = roles.filter((role) => role.key !== primary);
+  const panelId = `${name}-extras`;
+  return (
+    <fieldset>
+      <legend className="mb-1 text-sm font-medium text-slate-700">Role</legend>
+      <div className="flex flex-wrap gap-3">
+        {roles.map((role) => (
+          <label key={role.key} className="flex items-center gap-1 text-sm">
+            <input
+              type="radio"
+              name={name}
+              value={role.key}
+              checked={primary === role.key}
+              disabled={disabled}
+              onChange={() => {
+                // The new primary cannot also be an extra, so it leaves that list
+                // rather than appearing in both.
+                onExtrasChange(chosenExtras.filter((key) => key !== role.key));
+                onPrimaryChange(role.key);
+              }}
+            />
+            {role.name}
+          </label>
+        ))}
+      </div>
+      <button
+        type="button"
+        aria-expanded={extrasOpen}
+        aria-controls={panelId}
+        className="mt-2 text-xs font-medium text-slate-600 underline"
+        onClick={() => {
+          setExtrasOpen(!extrasOpen);
+        }}
+      >
+        Additional roles:{" "}
+        <span className="font-normal text-slate-500">
+          {chosenExtras.length === 0 ? "none" : roleNames(roles, chosenExtras)}
+        </span>
+      </button>
+      {extrasOpen ? (
+        <div
+          id={panelId}
+          role="group"
+          aria-label="Additional roles"
+          className="mt-1 flex flex-wrap gap-3"
+        >
+          {primary === "" ? (
+            <p className="text-xs text-slate-500">Choose a role first.</p>
+          ) : (
+            available.map((role) => (
+              <label key={role.key} className="flex items-center gap-1 text-xs">
+                <input
+                  type="checkbox"
+                  checked={chosenExtras.includes(role.key)}
+                  disabled={disabled}
+                  onChange={() => {
+                    onExtrasChange(toggleRole(chosenExtras, role.key));
+                  }}
+                />
+                {role.name}
+              </label>
+            ))
+          )}
+        </div>
+      ) : null}
+      {error === undefined ? null : <p className="mt-1 text-xs text-red-600">{error}</p>}
+    </fieldset>
+  );
 }
 
 function issueMap(issues: unknown): Record<string, string> {
@@ -99,12 +206,14 @@ export function UsersPage(): ReactElement {
     nationalId: "",
     homeAddress: "",
   });
-  const [formRoles, setFormRoles] = useState<readonly string[]>([]);
+  const [formPrimaryRole, setFormPrimaryRole] = useState("");
+  const [formExtraRoles, setFormExtraRoles] = useState<readonly string[]>([]);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
 
   const [rolesForId, setRolesForId] = useState<string | undefined>(undefined);
-  const [roleSelection, setRoleSelection] = useState<readonly string[]>([]);
+  const [editPrimaryRole, setEditPrimaryRole] = useState("");
+  const [editExtraRoles, setEditExtraRoles] = useState<readonly string[]>([]);
   const [passwordForId, setPasswordForId] = useState<string | undefined>(undefined);
   const [newPassword, setNewPassword] = useState("");
   /**
@@ -123,7 +232,12 @@ export function UsersPage(): ReactElement {
   // The state's national ID rule, for the hint and the local check. The server
   // is authoritative; when the config has not loaded yet, it decides alone.
   const nationalIdPattern = tenantPayload?.config.collectors?.nationalIdPattern;
-  const isCollector = formRoles.includes("collector");
+  /** The role set the API will receive: the primary one, then the extras. */
+  const formRoleKeys =
+    formPrimaryRole === ""
+      ? []
+      : [formPrimaryRole, ...formExtraRoles.filter((key) => key !== formPrimaryRole)];
+  const isCollector = formRoleKeys.includes("collector");
 
   const usersQuery = useQuery({
     queryKey: USERS_KEY,
@@ -155,6 +269,7 @@ export function UsersPage(): ReactElement {
     // A collector carries the state's cash, so the state needs to know who they
     // are and how to reach them. Everyone else is not asked.
     const local: Record<string, string> = {};
+    if (formPrimaryRole === "") local["roleKeys"] = "Choose a role";
     if (isCollector) {
       if (form.phone.trim() === "") local["phone"] = "Enter a phone number";
       if (form.nationalId.trim() === "") {
@@ -180,7 +295,8 @@ export function UsersPage(): ReactElement {
           displayName: form.displayName.trim(),
           email: form.email.trim(),
           password: form.password,
-          roleKeys: [...formRoles],
+          roleKeys: formRoleKeys,
+          primaryRoleKey: formPrimaryRole,
           ...(isCollector
             ? {
                 phone: form.phone.trim(),
@@ -220,7 +336,8 @@ export function UsersPage(): ReactElement {
         nationalId: "",
         homeAddress: "",
       });
-      setFormRoles([]);
+      setFormPrimaryRole("");
+      setFormExtraRoles([]);
       await refresh();
     } finally {
       setBusy(false);
@@ -252,10 +369,19 @@ export function UsersPage(): ReactElement {
   const saveRoles = async (account: StaffAccount): Promise<void> => {
     setBusy(true);
     try {
+      // The whole set is replaced, so unticking an extra role takes it away. The
+      // primary is always part of the set: an account with no role at all cannot
+      // open anything, and disabling it is the honest way to say that.
       await unwrap(
         api.PATCH("/v1/users/{id}", {
           params: { path: { id: account.id } },
-          body: { roleKeys: [...roleSelection] },
+          body: {
+            roleKeys: [
+              editPrimaryRole,
+              ...editExtraRoles.filter((key) => key !== editPrimaryRole),
+            ],
+            primaryRoleKey: editPrimaryRole,
+          },
         }),
       );
       pushToast({ kind: "success", message: `Roles updated for ${account.username}.` });
@@ -374,7 +500,11 @@ export function UsersPage(): ReactElement {
                       onClick={() => {
                         setPasswordForId(undefined);
                         setRolesForId(rolesForId === account.id ? undefined : account.id);
-                        setRoleSelection(account.roles);
+                        // The server returns the primary first; the fallback keeps
+                        // an account with no mark editable rather than stuck.
+                        const primary = account.primaryRoleKey ?? account.roles[0] ?? "";
+                        setEditPrimaryRole(primary);
+                        setEditExtraRoles(account.roles.filter((key) => key !== primary));
                       }}
                     >
                       Edit roles
@@ -413,25 +543,26 @@ export function UsersPage(): ReactElement {
                 ) : null}
 
                 {rolesForId === account.id ? (
-                  <div className="rounded-md border border-slate-200 p-2">
-                    <p className="mb-1 text-xs font-medium text-slate-600">Roles</p>
-                    <div className="flex flex-wrap gap-3">
-                      {roles.map((role) => (
-                        <label key={role.key} className="flex items-center gap-1 text-xs">
-                          <input
-                            type="checkbox"
-                            checked={roleSelection.includes(role.key)}
-                            onChange={() => {
-                              setRoleSelection(toggleRole(roleSelection, role.key));
-                            }}
-                          />
-                          {role.name}
-                        </label>
-                      ))}
-                    </div>
+                  <div
+                    className="rounded-md border border-slate-200 p-2"
+                    role="group"
+                    aria-label={`Edit roles for ${account.username}`}
+                  >
+                    <RolePicker
+                      name={`edit-roles-${account.id}`}
+                      roles={roles}
+                      primary={editPrimaryRole}
+                      extras={editExtraRoles}
+                      disabled={busy}
+                      onPrimaryChange={setEditPrimaryRole}
+                      onExtrasChange={setEditExtraRoles}
+                    />
+                    <p className="mt-1 text-xs text-slate-500">
+                      Clearing an additional role takes that access away when you save.
+                    </p>
                     <div className="mt-2 flex gap-2">
                       <Button
-                        disabled={busy || roleSelection.length === 0}
+                        disabled={busy || editPrimaryRole === ""}
                         onClick={() => {
                           void saveRoles(account);
                         }}
@@ -569,31 +700,16 @@ export function UsersPage(): ReactElement {
                 </div>
               </div>
             </div>
-            <fieldset>
-              <legend className="mb-1 text-sm font-medium text-slate-700">Role</legend>
-              <div className="flex flex-wrap gap-3">
-                {roles.map((role) => (
-                  <label key={role.key} className="flex items-center gap-1 text-sm">
-                    <input
-                      type="radio"
-                      // One person, one role: a radio group makes the second
-                      // choice clear the first, which is the behaviour a
-                      // checkbox row only pretends to have.
-                      name="new-account-role"
-                      value={role.key}
-                      checked={formRoles.includes(role.key)}
-                      onChange={() => {
-                        setFormRoles([role.key]);
-                      }}
-                    />
-                    {role.name}
-                  </label>
-                ))}
-              </div>
-              {formErrors["roleKeys"] === undefined ? null : (
-                <p className="mt-1 text-xs text-red-600">{formErrors["roleKeys"]}</p>
-              )}
-            </fieldset>
+            <RolePicker
+              name="new-account-role"
+              roles={roles}
+              primary={formPrimaryRole}
+              extras={formExtraRoles}
+              disabled={busy}
+              onPrimaryChange={setFormPrimaryRole}
+              onExtrasChange={setFormExtraRoles}
+              {...(formErrors["roleKeys"] === undefined ? {} : { error: formErrors["roleKeys"] })}
+            />
 
             {isCollector ? (
               <fieldset className="space-y-3 rounded-md border border-slate-200 p-3">

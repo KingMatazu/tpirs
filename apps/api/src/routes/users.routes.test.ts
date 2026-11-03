@@ -53,6 +53,7 @@ interface UserJson {
   homeAddress: string | null;
   status: "active" | "disabled";
   roles: string[];
+  primaryRoleKey: string | null;
   mustChangeCredentials: boolean;
 }
 
@@ -192,6 +193,7 @@ describeIntegration("api users e2e (integration)", () => {
   let staffToken = "";
   let otherTenantToken = "";
   let createdId = "";
+  let dualId = "";
   const temporaryPassword = "temporary-pass-1";
   const resetPassword = "reset-pass-2";
   const rotatedPassword = "rotated-pass-3";
@@ -245,6 +247,89 @@ describeIntegration("api users e2e (integration)", () => {
     expect(user.status).toBe("active");
     expect(user.roles).toEqual(["staff"]);
     createdId = user.id;
+  });
+
+  it("records the primary role and lists it first", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/users",
+      headers: { authorization: `Bearer ${managerToken}` },
+      payload: {
+        username: "um.dual",
+        displayName: "Dual Role",
+        email: "dual@example.com",
+        password: temporaryPassword,
+        roleKeys: ["staff", "collector"],
+        primaryRoleKey: "collector",
+        phone: "08012345678",
+        nationalId: "12345678901",
+        homeAddress: "12 Market Road",
+      },
+    });
+    expect(response.statusCode).toBe(201);
+    const user = (response.json() as { user: UserJson }).user;
+    // The set is unchanged; the order and the mark say which role it is for.
+    expect(user.roles).toEqual(["collector", "staff"]);
+    expect(user.primaryRoleKey).toBe("collector");
+    dualId = user.id;
+  });
+
+  it("refuses a primary role that is not being assigned", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/users",
+      headers: { authorization: `Bearer ${managerToken}` },
+      payload: {
+        username: "um.mismatch",
+        displayName: "Mismatch",
+        email: "mismatch@example.com",
+        password: temporaryPassword,
+        roleKeys: ["staff"],
+        primaryRoleKey: "account_manager",
+      },
+    });
+    expect(response.statusCode).toBe(422);
+    // A key outside the list is neither silently dropped nor silently granted.
+    expect(issuePaths(response)).toEqual(["primaryRoleKey"]);
+  });
+
+  it("moves the primary mark without changing the role set", async () => {
+    const response = await app.inject({
+      method: "PATCH",
+      url: `/v1/users/${dualId}`,
+      headers: { authorization: `Bearer ${managerToken}` },
+      payload: { primaryRoleKey: "staff" },
+    });
+    expect(response.statusCode).toBe(200);
+    const user = (response.json() as { user: UserJson }).user;
+    expect(user.roles).toEqual(["staff", "collector"]);
+    expect(user.primaryRoleKey).toBe("staff");
+  });
+
+  it("refuses to label a role the account does not hold", async () => {
+    const response = await app.inject({
+      method: "PATCH",
+      url: `/v1/users/${dualId}`,
+      headers: { authorization: `Bearer ${managerToken}` },
+      payload: { primaryRoleKey: "account_manager" },
+    });
+    expect(response.statusCode).toBe(422);
+    // Re-labelling never grants: an administrator who mistypes must not widen an
+    // account's access by accident.
+    expect(issuePaths(response)).toEqual(["primaryRoleKey"]);
+  });
+
+  it("takes an extra role away when the set is replaced", async () => {
+    const response = await app.inject({
+      method: "PATCH",
+      url: `/v1/users/${dualId}`,
+      headers: { authorization: `Bearer ${managerToken}` },
+      payload: { roleKeys: ["staff"], primaryRoleKey: "staff" },
+    });
+    expect(response.statusCode).toBe(200);
+    const user = (response.json() as { user: UserJson }).user;
+    expect(user.roles).toEqual(["staff"]);
+    expect(user.primaryRoleKey).toBe("staff");
   });
 
   it("requires the collector profile and records it", async () => {
