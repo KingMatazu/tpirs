@@ -136,6 +136,27 @@ avoids by using a scratch database.
   settings.
 - `AGENTS.md`: the repo state and the one-line rule a future change has to match.
 
+## Step 6: The collector's own details (delivered)
+
+A collector carries the state's cash, so the account needs more than a username:
+the state has to know who the person is and how to reach them. The account form
+gained three fields, shown and required only when the Collector role is ticked.
+
+- `users` gained nullable `phone`, `national_id` and `home_address`
+  (migration 0022, reversible). Nullable because the same table holds officers,
+  finance users and auditors who have no collector profile.
+- The national ID's shape is tenant config: `collectors.nationalIdPattern`, an
+  eleven-digit default, validated at load and applied by the service. A second
+  state changes YAML, not code (ADR 0054).
+- The form derives its hint from that pattern ("11 digits"), checks the value
+  before sending it, and the account row shows all three back.
+- No personal data reaches the audit trail: `user.create` still records only the
+  account, status and roles, and a test asserts the national ID never appears.
+
+Deferred: editing or clearing these details after creation, and a retention rule
+for a person's data on the `users` table (the compliance section governs audit
+rows, not staff records).
+
 ## Acceptance checks
 
 Checks 1, 3, 5 and 6 are covered by automated tests. Checks 2 and 4 are the same

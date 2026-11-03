@@ -162,7 +162,9 @@ After that `POST /v1/setup/tenant` returns `404` even with the token.
 Then:
 
 1. **Zones** — create the operating zones, or leave the list empty.
-2. **Users** — create the team's accounts with temporary passwords and roles.
+2. **Users** — create the team's accounts with temporary passwords and roles. A
+   collector account also needs a phone number, national ID and home address,
+   which the form asks for as soon as the Collector role is ticked.
 3. **Registry** — register one vehicle and download its sticker for a smoke test.
 4. Rotate or remove `SETUP_TOKEN` from the API project. It is unused after the
    first tenant exists, but there is no reason to keep a live secret around.
@@ -182,6 +184,12 @@ moment the account is created — and again after a password reset — containin
 read it down a phone); **Print** gives a slip for a shared handset. **Generate**
 fills a readable 16-character password, so nobody has to invent one under time
 pressure.
+
+A collector account also carries the person's phone number, national ID and home
+address. The form asks for them when the Collector role is ticked and refuses the
+account without them; the ID's format is the state's own rule
+(`collectors.nationalIdPattern`, eleven digits in the template). The three values
+are shown on the account row, and none of them is written to the audit trail.
 
 The card is the only place the password is ever shown: the server stores a hash,
 so closing it loses the value. Re-opening it from the **Handover** button on the

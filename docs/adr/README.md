@@ -56,3 +56,4 @@ Format: context, decision, consequences, alternatives considered.
 - [0051](./0051-account-management.md) Account management: administrator-only, temporary password, no self-service
 - [0052](./0052-split-origin-hosting.md) Split-origin hosting: opt-in CORS, SameSite=None, and a closed setup window in production
 - [0053](./0053-staff-first-sign-in.md) Staff first sign-in: password-only rotation, on the app the person was sent to
+- [0054](./0054-collector-profile.md) Collector profile: three fields, one tenant rule, and no personal data in the audit trail
