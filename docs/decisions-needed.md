@@ -1121,3 +1121,39 @@ from operations.
 - Note: the demo tenants' config is owned by `packages/db/src/seed.ts`, which
   refreshes it on every seed run, so a hand-edited demo config does not survive
   `pnpm db:seed`. A real tenant is unaffected.
+
+## D57: One role per account, or several
+
+**Status:** partly decided. The create form is single-select; the roles editor on
+an existing account still offers several, deliberately, until this is settled.
+
+The domain models roles as a set: `user_roles` is a join table, `POST /v1/users`
+takes a `roleKeys` array, `PATCH /v1/users/:id` replaces the set, and the account
+list joins the names (`"Field Officer, Collector"`). Operators do not think that
+way — a person is an officer or a collector — and the account form originally
+shipped as independent checkboxes, so ticking Collector and Auditor produced an
+account with both, which is not what the screen appeared to offer.
+
+- Decision (done): **the create form is a radio group.** Choosing a second role
+  clears the first, and the request still sends a one-element `roleKeys`. The API
+  and the schema are unchanged; a multi-role account can still be created through
+  the API.
+- Open: **the roles editor on an existing account is still a checkbox set.** A
+  single-select editor would silently drop every role but the chosen one when an
+  administrator saves — that is an access removal disguised as a UI tidy-up, and
+  an account with two roles (created through the API or the seed) would lose one
+  without anyone being told. Leaving it multi-select keeps the data model honest
+  at the cost of a screen that can still produce the state the create form now
+  prevents.
+- Options: (1) leave it as it is — single-select to create, multi-select to edit;
+  (2) make the editor single-select and show "choosing one replaces the rest"
+  whenever the account currently holds more than one; (3) accept multi-role as a
+  real capability and make the create form multi again with copy that says so;
+  (4) enforce one role per account in the API (a contract change, plus a data
+  audit and a migration for any account already holding two).
+- Recommendation: (2) when a pilot user next asks. It keeps the data model, stops
+  the accidental second role, and makes the loss visible before it happens. (4) is
+  the honest version if the product really is one-role-per-person, but it needs
+  the audit first — an account that legitimately holds two (a zone supervisor who
+  also collects) would be broken by it.
+- Safe default until decided: current behaviour, with this note as the record.
