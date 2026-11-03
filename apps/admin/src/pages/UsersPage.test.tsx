@@ -42,6 +42,11 @@ const fakeFetch = vi.fn(async (input: unknown) => {
   if (request.method === "GET" && url.pathname === "/v1/roles") {
     return json(200, { roles });
   }
+  if (request.method === "GET" && url.pathname === "/v1/tenants/current/config") {
+    // Only the slug is read by this screen; the rest of the config is the
+    // config viewer's business.
+    return json(200, { config: { identity: { slug: "katsina-state" } }, version: 1 });
+  }
   if (request.method === "POST" && url.pathname === "/v1/users") {
     if (issuesForCreate.length > 0) {
       return json(422, {
@@ -128,6 +133,18 @@ function bodyOf(method: string, path: string): Record<string, unknown> | undefin
   return found === undefined ? undefined : (JSON.parse(found.body) as Record<string, unknown>);
 }
 
+/** Fills the create form and submits it, with one role checked. */
+function createAccount(input: { username: string; password: string; role: string }): void {
+  fireEvent.input(screen.getByLabelText(/^Username/), { target: { value: input.username } });
+  fireEvent.input(screen.getByLabelText(/^Display name/), { target: { value: "New Officer" } });
+  fireEvent.input(screen.getByLabelText(/^Email/), { target: { value: "new@example.com" } });
+  fireEvent.input(screen.getByLabelText(/^Temporary password/), {
+    target: { value: input.password },
+  });
+  fireEvent.click(screen.getByLabelText(input.role));
+  fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+}
+
 beforeAll(() => {
   stubRelativeRequests();
   vi.stubGlobal("fetch", fakeFetch);
@@ -144,6 +161,7 @@ afterEach(() => {
   requests.length = 0;
   accounts = [];
   issuesForCreate = [];
+  vi.unstubAllEnvs();
 });
 
 describe("account helpers", () => {
@@ -258,7 +276,7 @@ describe("UsersPage", () => {
     expect(bodyOf("PATCH", "/v1/users/u2")).toEqual({ status: "disabled" });
   });
 
-  it("resets a password with the value typed, and never renders it", async () => {
+  it("resets a password and shows it once in the handover card", async () => {
     accounts = [
       {
         id: "u2",
@@ -282,6 +300,9 @@ describe("UsersPage", () => {
     await waitFor(() => {
       expect(bodyOf("POST", "/v1/users/u2/password")).toEqual({ password: "fresh-pass-9" });
     });
+    // Shown once, in the handover card, and gone when the card is dismissed.
+    expect(await screen.findByText("fresh-pass-9")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
     expect(screen.queryByText("fresh-pass-9")).toBeNull();
   });
 
@@ -322,5 +343,85 @@ describe("UsersPage", () => {
 
     expect(screen.queryByRole("button", { name: "Disable" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Edit roles" })).toBeNull();
+  });
+
+  it("hands over the officer app, the state and the password in one card", async () => {
+    vi.stubEnv("VITE_FIELD_APP_URL", "https://field.example.test");
+    renderPage();
+    await screen.findByText("No accounts yet.");
+
+    createAccount({ username: "new.officer", password: "temp-pass-1", role: "Field Officer" });
+
+    expect(await screen.findByText("Hand over to New Officer")).toBeTruthy();
+    expect(screen.getByText("https://field.example.test")).toBeTruthy();
+    expect(screen.getByText("katsina-state")).toBeTruthy();
+    expect(screen.getByText("temp-pass-1")).toBeTruthy();
+    // An officer has no business on the dashboard, so its address is not offered.
+    expect(screen.queryByText("Dashboard")).toBeNull();
+  });
+
+  it("sends a dashboard role to the dashboard address", async () => {
+    vi.stubEnv("VITE_ADMIN_APP_URL", "https://admin.example.test");
+    renderPage();
+    await screen.findByText("No accounts yet.");
+
+    createAccount({ username: "new.finance", password: "temp-pass-1", role: "Finance Admin" });
+
+    expect(await screen.findByText("https://admin.example.test")).toBeTruthy();
+    expect(screen.queryByText("Officer app")).toBeNull();
+  });
+
+  it("names the missing variable instead of linking nowhere", async () => {
+    renderPage();
+    await screen.findByText("No accounts yet.");
+
+    createAccount({ username: "new.officer", password: "temp-pass-1", role: "Field Officer" });
+
+    expect(await screen.findByText(/not configured in this build/i)).toBeTruthy();
+    expect(screen.getByText(/VITE_FIELD_APP_URL/)).toBeTruthy();
+  });
+
+  it("drops the password when the card is dismissed", async () => {
+    renderPage();
+    await screen.findByText("No accounts yet.");
+
+    createAccount({ username: "new.officer", password: "temp-pass-1", role: "Field Officer" });
+    await screen.findByText("Hand over to New Officer");
+
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    expect(screen.queryByText("temp-pass-1")).toBeNull();
+    expect(screen.queryByText("Hand over to New Officer")).toBeNull();
+  });
+
+  it("reopens the card for an account still holding its temporary password", async () => {
+    accounts = [
+      {
+        id: "u2",
+        username: "sam.staff",
+        displayName: "Sam",
+        email: "sam@example.com",
+        status: "active",
+        roles: ["officer"],
+        mustChangeCredentials: true,
+      },
+    ];
+    renderPage();
+    await screen.findByText("sam.staff");
+
+    fireEvent.click(screen.getByRole("button", { name: "Handover" }));
+
+    expect(await screen.findByText("Hand over to Sam")).toBeTruthy();
+    // The server cannot read the password back, so the card says so.
+    expect(screen.getByText(/not stored in a readable form/i)).toBeTruthy();
+  });
+
+  it("generates a temporary password when asked", async () => {
+    renderPage();
+    await screen.findByText("No accounts yet.");
+
+    fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+
+    const input = screen.getByLabelText(/^Temporary password/) as HTMLInputElement;
+    expect(input.value).toMatch(/^[abcdefghijkmnpqrstuvwxyz23456789]{16}$/);
   });
 });

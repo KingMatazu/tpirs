@@ -4,8 +4,13 @@ import { api } from "../api/client.js";
 import { unwrap, errorFrom, type ApiResult } from "../api/unwrap.js";
 import { Badge, Button, Card, EmptyState, Field, ReadOnlyNote, TextInput } from "../components/ui.js";
 import type { BadgeTone } from "../components/ui.js";
+import { destinationsForRoles } from "../lib/appLinks.js";
+import type { AppDestination, HandoverDetails } from "../lib/appLinks.js";
+import { temporaryPassword } from "../lib/temporaryPassword.js";
+import { useTenantConfig } from "../lib/tenantConfig.js";
 import { describeError, pushToast } from "../toast.js";
 import { useSession } from "../session.js";
+import { HandoverCard } from "./HandoverCard.js";
 
 /**
  * Staff accounts (Phase 11, 11.0b).
@@ -94,6 +99,19 @@ export function UsersPage(): ReactElement {
   const [roleSelection, setRoleSelection] = useState<readonly string[]>([]);
   const [passwordForId, setPasswordForId] = useState<string | undefined>(undefined);
   const [newPassword, setNewPassword] = useState("");
+  /**
+   * The handover card, which exists only while the password is still known: the
+   * server hashes it and cannot give it back, so create and reset are the only
+   * two moments that can produce one.
+   */
+  const [handover, setHandover] = useState<
+    { readonly details: HandoverDetails; readonly destinations: readonly AppDestination[] } | undefined
+  >(undefined);
+
+  // The slug every sign-in form asks for, from the config this screen already
+  // holds — so the card cannot disagree with what the apps expect.
+  const { config: tenantPayload } = useTenantConfig();
+  const slug = tenantPayload?.config.identity.slug;
 
   const usersQuery = useQuery({
     queryKey: USERS_KEY,
@@ -137,10 +155,21 @@ export function UsersPage(): ReactElement {
         else pushToast({ kind: "error", ...describeError(errorFrom(result)) });
         return;
       }
-      pushToast({
-        kind: "success",
-        message: `Account "${form.username.trim()}" created. Hand over the temporary password directly; it must be replaced at first sign-in.`,
-      });
+      const created = result.data?.user;
+      if (created !== undefined) {
+        // The password is known only here: it is in the form, not in the
+        // response. Handing over anything less than the whole card is what made
+        // an officer ask "which app, and what is the state called?".
+        setHandover({
+          details: {
+            displayName: created.displayName,
+            username: created.username,
+            password: form.password,
+            slug,
+          },
+          destinations: destinationsForRoles(created.roles),
+        });
+      }
       setForm({ username: "", displayName: "", email: "", password: "" });
       setFormRoles([]);
       await refresh();
@@ -203,6 +232,18 @@ export function UsersPage(): ReactElement {
         kind: "success",
         message: `Password reset for ${account.username}. Their sessions ended and the new password must be replaced at next sign-in.`,
       });
+      // A reset is the other moment the password is known, so it produces the
+      // same card: the person needs the address and the slug as much as the
+      // password.
+      setHandover({
+        details: {
+          displayName: account.displayName,
+          username: account.username,
+          password: newPassword,
+          slug,
+        },
+        destinations: destinationsForRoles(account.roles),
+      });
       setPasswordForId(undefined);
       setNewPassword("");
       await refresh();
@@ -221,6 +262,16 @@ export function UsersPage(): ReactElement {
         with a temporary password that must be replaced at its first sign-in; nobody can change
         their own roles or status here.
       </ReadOnlyNote>
+
+      {handover === undefined ? null : (
+        <HandoverCard
+          details={handover.details}
+          destinations={handover.destinations}
+          onDone={() => {
+            setHandover(undefined);
+          }}
+        />
+      )}
 
       <Card title="Accounts" description={`${users.length} in this tenant`}>
         {usersQuery.isLoading ? <p className="text-sm text-slate-500">Loading accounts…</p> : null}
@@ -280,6 +331,26 @@ export function UsersPage(): ReactElement {
                     >
                       Reset password
                     </Button>
+                    {account.mustChangeCredentials ? (
+                      <Button
+                        variant="ghost"
+                        onClick={() => {
+                          // Re-opens the card without the password: the server
+                          // cannot read it back, so this is the reminder, not
+                          // the secret.
+                          setHandover({
+                            details: {
+                              displayName: account.displayName,
+                              username: account.username,
+                              slug,
+                            },
+                            destinations: destinationsForRoles(account.roles),
+                          });
+                        }}
+                      >
+                        Handover
+                      </Button>
+                    ) : null}
                   </div>
                 ) : null}
 
@@ -427,6 +498,16 @@ export function UsersPage(): ReactElement {
                     autoComplete="new-password"
                   />
                 </Field>
+                <div className="mt-1">
+                  <Button
+                    variant="ghost"
+                    onClick={() => {
+                      setForm({ ...form, password: temporaryPassword() });
+                    }}
+                  >
+                    Generate
+                  </Button>
+                </div>
               </div>
             </div>
             <fieldset>

@@ -91,7 +91,7 @@ holding.
   six-character rule inline, and sign-out as the way out.
 - `App.tsx` in both renders that screen before any other while the flag is set.
 
-## Step 3: The handover card (planned)
+## Step 3: The handover card (delivered)
 
 - `apps/admin/src/lib/appLinks.ts`: resolves the three destinations from
   `import.meta.env`, admin defaulting to the current origin.
