@@ -575,6 +575,9 @@ export interface paths {
                         email: string;
                         password: string;
                         roleKeys: string[];
+                        phone?: string;
+                        nationalId?: string;
+                        homeAddress?: string;
                     };
                 };
             };
@@ -3502,6 +3505,9 @@ export interface components {
             username: string;
             displayName: string;
             email: string | null;
+            phone: string | null;
+            nationalId: string | null;
+            homeAddress: string | null;
             /** @enum {string} */
             status: "active" | "disabled";
             roles: string[];

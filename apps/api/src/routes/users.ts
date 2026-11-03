@@ -11,8 +11,10 @@ import {
   updateUser,
 } from "@tpirs/application";
 import type { UserIssue } from "@tpirs/application";
+import { DEFAULT_NATIONAL_ID_PATTERN, nationalIdPattern } from "@tpirs/config";
 import type { AnyDb } from "@tpirs/db";
 import { requirePermission } from "../auth.js";
+import { makeTenantConfigLoader } from "../services.js";
 import {
   createUserSchema,
   listRolesSchema,
@@ -78,6 +80,10 @@ function asString(value: unknown): string | undefined {
 }
 
 export function registerUserRoutes(app: FastifyInstance, context: UserRoutesContext): void {
+  // The national ID's shape is the tenant's rule, so the route resolves the
+  // config once and hands the pattern to the service.
+  const loadConfig = makeTenantConfigLoader(context.db);
+
   app.get("/v1/users", { schema: listUsersSchema }, async (request, reply) => {
     const principal = requirePermission(request, "user:read");
     const users = await listUsers(context.db, principal.tenantId);
@@ -102,11 +108,17 @@ export function registerUserRoutes(app: FastifyInstance, context: UserRoutesCont
       email?: unknown;
       password?: unknown;
       roleKeys?: unknown;
+      phone?: unknown;
+      nationalId?: unknown;
+      homeAddress?: unknown;
     };
     const username = asString(body.username);
     const displayName = asString(body.displayName);
     const email = asString(body.email);
     const password = asString(body.password);
+    const phone = asString(body.phone);
+    const nationalId = asString(body.nationalId);
+    const homeAddress = asString(body.homeAddress);
     const roleKeys = Array.isArray(body.roleKeys)
       ? body.roleKeys.filter((key): key is string => typeof key === "string")
       : [];
@@ -120,6 +132,7 @@ export function registerUserRoutes(app: FastifyInstance, context: UserRoutesCont
     }
 
     try {
+      const config = await loadConfig(principal.tenantId);
       const user = await createUser(context.db, {
         tenantId: principal.tenantId,
         username,
@@ -127,11 +140,19 @@ export function registerUserRoutes(app: FastifyInstance, context: UserRoutesCont
         email,
         password,
         roleKeys,
+        ...(phone === undefined ? {} : { phone }),
+        ...(nationalId === undefined ? {} : { nationalId }),
+        ...(homeAddress === undefined ? {} : { homeAddress }),
+        nationalIdPattern:
+          config === undefined ? DEFAULT_NATIONAL_ID_PATTERN : nationalIdPattern(config),
       });
       request.audit = {
         action: "user.create",
         entityType: "user",
         entityId: user.id,
+        // The account and its roles, never the national ID or the address: the
+        // audit trail is append-only and read by auditors, and a person's
+        // identity number cannot be taken back out of it.
         after: { username: user.username, status: user.status, roles: user.roles },
       };
       return await reply.code(201).send({ user });

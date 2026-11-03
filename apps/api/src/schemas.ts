@@ -513,12 +513,28 @@ const zone = {
 const userSummary = {
   $id: "UserSummary",
   type: "object",
-  required: ["id", "username", "displayName", "email", "status", "roles", "mustChangeCredentials"],
+  required: [
+    "id",
+    "username",
+    "displayName",
+    "email",
+    "phone",
+    "nationalId",
+    "homeAddress",
+    "status",
+    "roles",
+    "mustChangeCredentials",
+  ],
   properties: {
     id: { type: "string" },
     username: { type: "string" },
     displayName: { type: "string" },
     email: { type: "string", nullable: true },
+    /** Contact number, recorded for a collector and optional otherwise. */
+    phone: { type: "string", nullable: true },
+    /** National identification number, in the tenant's own format. */
+    nationalId: { type: "string", nullable: true },
+    homeAddress: { type: "string", nullable: true },
     status: { type: "string", enum: ["active", "disabled"] },
     roles: { type: "array", items: { type: "string" } },
     /** True while the account holds a temporary password and must replace it. */
@@ -854,6 +870,11 @@ export const createUserSchema: FastifySchema = {
       email: { type: "string", maxLength: 254 },
       password: { type: "string", minLength: 1, maxLength: 200 },
       roleKeys: { type: "array", items: { type: "string" }, minItems: 1 },
+      // Collector profile: the service requires all three when the role list
+      // contains `collector`, and validates them whenever they are present.
+      phone: { type: "string", maxLength: 32 },
+      nationalId: { type: "string", maxLength: 32 },
+      homeAddress: { type: "string", maxLength: 200 },
     },
   },
   response: {

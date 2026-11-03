@@ -62,6 +62,15 @@ export interface UserTable {
   displayName: string;
   /** Account identifier; unique per tenant where present (migration 0019). */
   email: string | null;
+  /** Contact number; required by the API for an account with the collector role. */
+  phone: string | null;
+  /**
+   * National identification number. The format is the tenant's own
+   * `collectors.nationalIdPattern` (migration 0022); the column holds no rule.
+   */
+  nationalId: string | null;
+  /** Home address on file; required by the API for a collector. */
+  homeAddress: string | null;
   passwordHash: string;
   totpSecret: string | null;
   /**

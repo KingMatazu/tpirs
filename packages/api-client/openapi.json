@@ -66,6 +66,9 @@
           "username",
           "displayName",
           "email",
+          "phone",
+          "nationalId",
+          "homeAddress",
           "status",
           "roles",
           "mustChangeCredentials"
@@ -81,6 +84,18 @@
             "type": "string"
           },
           "email": {
+            "type": "string",
+            "nullable": true
+          },
+          "phone": {
+            "type": "string",
+            "nullable": true
+          },
+          "nationalId": {
+            "type": "string",
+            "nullable": true
+          },
+          "homeAddress": {
             "type": "string",
             "nullable": true
           },
@@ -1638,6 +1653,18 @@
                       "type": "string"
                     },
                     "minItems": 1
+                  },
+                  "phone": {
+                    "type": "string",
+                    "maxLength": 32
+                  },
+                  "nationalId": {
+                    "type": "string",
+                    "maxLength": 32
+                  },
+                  "homeAddress": {
+                    "type": "string",
+                    "maxLength": 200
                   }
                 }
               }

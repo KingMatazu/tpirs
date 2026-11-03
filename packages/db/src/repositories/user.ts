@@ -6,6 +6,9 @@ export interface UserRecord {
   readonly username: string;
   readonly displayName: string;
   readonly email: string | null;
+  readonly phone: string | null;
+  readonly nationalId: string | null;
+  readonly homeAddress: string | null;
   readonly status: string;
   readonly totpSecret: string | null;
   readonly passwordHash: string;
@@ -19,6 +22,10 @@ export interface CreateUserInput {
   readonly passwordHash: string;
   readonly totpSecret: string | null;
   readonly email?: string | null;
+  /** Contact and identity details; the API requires them for a collector only. */
+  readonly phone?: string | null;
+  readonly nationalId?: string | null;
+  readonly homeAddress?: string | null;
   /**
    * Set for an account created with a known temporary password: the session it
    * obtains may reach only the route that replaces that password.
@@ -37,6 +44,9 @@ const USER_COLUMNS = [
   "username",
   "displayName",
   "email",
+  "phone",
+  "nationalId",
+  "homeAddress",
   "status",
   "totpSecret",
   "passwordHash",
@@ -56,6 +66,9 @@ export class UserRepository {
         passwordHash: input.passwordHash,
         totpSecret: input.totpSecret,
         email: input.email ?? null,
+        phone: input.phone ?? null,
+        nationalId: input.nationalId ?? null,
+        homeAddress: input.homeAddress ?? null,
         mustChangeCredentials: input.mustChangeCredentials ?? false,
       })
       .returning(USER_COLUMNS)

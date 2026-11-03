@@ -24,8 +24,8 @@ const config: AppConfig = {
   metricsEnabled: false,
 };
 
-function tenantConfig(slug: string) {
-  return defaultTenantConfig({
+function tenantConfig(slug: string, nationalIdPattern?: string) {
+  const base = defaultTenantConfig({
     name: "User Test",
     slug,
     legalEntity: "User Test Revenue",
@@ -40,6 +40,7 @@ function tenantConfig(slug: string) {
     bikeFeeMinor: 20000,
     tuktukFeeMinor: 30000,
   });
+  return nationalIdPattern === undefined ? base : { ...base, collectors: { nationalIdPattern } };
 }
 
 interface UserJson {
@@ -47,9 +48,19 @@ interface UserJson {
   username: string;
   displayName: string;
   email: string | null;
+  phone: string | null;
+  nationalId: string | null;
+  homeAddress: string | null;
   status: "active" | "disabled";
   roles: string[];
   mustChangeCredentials: boolean;
+}
+
+/** The field paths a 422 reported, in the order the service listed them. */
+function issuePaths(response: { json(): unknown }): string[] {
+  return (response.json() as { error: { issues: { path: string }[] } }).error.issues.map(
+    (issue) => issue.path,
+  );
 }
 
 /**
@@ -91,6 +102,12 @@ describeIntegration("api users e2e (integration)", () => {
         name: "Staff",
         permissions: ["asset:read"],
       });
+      await repos.roles.create({
+        tenantId: tenantA.id,
+        key: "collector",
+        name: "Collector",
+        permissions: ["cash:intake"],
+      });
       for (const [username, roleId] of [
         ["um.manager", managerRole.id],
         ["um.staff", staffRole.id],
@@ -109,13 +126,20 @@ describeIntegration("api users e2e (integration)", () => {
         slug: slugB,
         name: "User E2E B",
         legalEntity: "User E2E B Revenue",
-        config: tenantConfig(slugB),
+        // A different state, a different ID: nine digits instead of eleven.
+        config: tenantConfig(slugB, "^[0-9]{9}$"),
       });
       const bRole = await repos.roles.create({
         tenantId: tenantB.id,
         key: "account_manager",
         name: "Account Manager",
         permissions: ["user:read", "user:manage", "role:read"],
+      });
+      await repos.roles.create({
+        tenantId: tenantB.id,
+        key: "collector",
+        name: "Collector",
+        permissions: ["cash:intake"],
       });
       const bUser = await repos.users.create({
         tenantId: tenantB.id,
@@ -194,7 +218,11 @@ describeIntegration("api users e2e (integration)", () => {
     });
     expect(roles.statusCode).toBe(200);
     const catalogue = (roles.json() as { roles: { key: string; permissions: string[] }[] }).roles;
-    expect(catalogue.map((role) => role.key).sort()).toEqual(["account_manager", "staff"]);
+    expect(catalogue.map((role) => role.key).sort()).toEqual([
+      "account_manager",
+      "collector",
+      "staff",
+    ]);
     expect(catalogue.find((role) => role.key === "staff")?.permissions).toEqual(["asset:read"]);
   });
 
@@ -217,6 +245,91 @@ describeIntegration("api users e2e (integration)", () => {
     expect(user.status).toBe("active");
     expect(user.roles).toEqual(["staff"]);
     createdId = user.id;
+  });
+
+  it("requires the collector profile and records it", async () => {
+    const base = {
+      displayName: "Collector One",
+      email: "collector.one@example.com",
+      password: temporaryPassword,
+      roleKeys: ["collector"],
+    };
+
+    const missing = await app.inject({
+      method: "POST",
+      url: "/v1/users",
+      headers: { authorization: `Bearer ${managerToken}` },
+      payload: { ...base, username: "um.collector" },
+    });
+    expect(missing.statusCode).toBe(422);
+    expect(issuePaths(missing).sort()).toEqual(["homeAddress", "nationalId", "phone"]);
+
+    const wrongShape = await app.inject({
+      method: "POST",
+      url: "/v1/users",
+      headers: { authorization: `Bearer ${managerToken}` },
+      payload: {
+        ...base,
+        username: "um.collector",
+        phone: "08012345678",
+        nationalId: "12345",
+        homeAddress: "12 Market Road",
+      },
+    });
+    expect(wrongShape.statusCode).toBe(422);
+    expect(issuePaths(wrongShape)).toEqual(["nationalId"]);
+
+    const created = await app.inject({
+      method: "POST",
+      url: "/v1/users",
+      headers: { authorization: `Bearer ${managerToken}` },
+      payload: {
+        ...base,
+        username: "um.collector",
+        phone: "08012345678",
+        nationalId: "12345678901",
+        homeAddress: "12 Market Road",
+      },
+    });
+    expect(created.statusCode).toBe(201);
+    const user = (created.json() as { user: UserJson }).user;
+    expect(user.phone).toBe("08012345678");
+    expect(user.nationalId).toBe("12345678901");
+    expect(user.homeAddress).toBe("12 Market Road");
+    expect(user.roles).toEqual(["collector"]);
+  });
+
+  it("applies each tenant's own national ID pattern", async () => {
+    const other = await login(slugB, "ub.manager", seedPassword);
+    const token = other.token ?? "";
+    const payload = {
+      displayName: "Collector B",
+      email: "collector.b@example.com",
+      password: temporaryPassword,
+      roleKeys: ["collector"],
+      phone: "+2348000000001",
+      homeAddress: "5 Market Road",
+    };
+
+    const nine = await app.inject({
+      method: "POST",
+      url: "/v1/users",
+      headers: { authorization: `Bearer ${token}` },
+      payload: { ...payload, username: "ub.collector", nationalId: "123456789" },
+    });
+    expect(nine.statusCode).toBe(201);
+    expect((nine.json() as { user: UserJson }).user.nationalId).toBe("123456789");
+
+    // The eleven-digit default would have accepted this one; tenant B's config
+    // does not, which is the point of the pattern being configuration.
+    const eleven = await app.inject({
+      method: "POST",
+      url: "/v1/users",
+      headers: { authorization: `Bearer ${token}` },
+      payload: { ...payload, username: "ub.collector2", nationalId: "12345678901" },
+    });
+    expect(eleven.statusCode).toBe(422);
+    expect(issuePaths(eleven)).toEqual(["nationalId"]);
   });
 
   it("gates the new account at its first sign-in", async () => {
@@ -482,5 +595,7 @@ describeIntegration("api users e2e (integration)", () => {
     expect(trail).not.toContain(resetPassword);
     expect(trail).not.toContain(rotatedPassword);
     expect(trail).not.toContain(seedPassword);
+    // Personal data stays out of the append-only trail for the same reason.
+    expect(trail).not.toContain("12345678901");
   });
 });

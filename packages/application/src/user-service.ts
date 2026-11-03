@@ -1,4 +1,5 @@
 import { hashPassword } from "@tpirs/crypto";
+import { DEFAULT_NATIONAL_ID_PATTERN } from "@tpirs/config";
 import { repositories, withTenant } from "@tpirs/db";
 import type { AnyDb, UserRecord } from "@tpirs/db";
 
@@ -65,6 +66,11 @@ export interface UserSummary {
   readonly username: string;
   readonly displayName: string;
   readonly email: string | null;
+  /** Contact number, recorded for every collector and optional otherwise. */
+  readonly phone: string | null;
+  /** National identification number in the tenant's own format. */
+  readonly nationalId: string | null;
+  readonly homeAddress: string | null;
   readonly status: UserStatus;
   readonly roles: readonly string[];
   /** True while the account still holds a temporary password. */
@@ -143,6 +149,69 @@ function roleIssues(roleKeys: readonly string[]): readonly UserIssue[] {
   return [];
 }
 
+/** The role whose holder takes cash from drivers and must be on file. */
+const COLLECTOR_ROLE = "collector";
+/** Digits, with an optional leading +, spaces and dashes as people write them. */
+const PHONE_PATTERN = /^\+?[0-9][0-9\s-]{6,19}$/;
+const ADDRESS_MIN = 5;
+const ADDRESS_MAX = 200;
+
+export interface CollectorProfile {
+  readonly phone: string;
+  readonly nationalId: string;
+  readonly homeAddress: string;
+}
+
+/**
+ * The three details a state records about a person who carries its cash.
+ *
+ * Required only for an account with the collector role: an officer or a finance
+ * user is not holding money, and forcing a national ID onto them would be
+ * collecting personal data for no purpose — which the brief forbids. When the
+ * fields are present they are validated whatever the role, because a phone number
+ * that is not one is no use in an emergency.
+ *
+ * The ID's shape is the tenant's rule (`collectors.nationalIdPattern`), not a
+ * constant: eleven digits here, something else in another state.
+ */
+export function collectorProfileIssues(
+  profile: CollectorProfile,
+  roleKeys: readonly string[],
+  nationalIdPattern: string,
+): readonly UserIssue[] {
+  const issues: UserIssue[] = [];
+  const isCollector = roleKeys.includes(COLLECTOR_ROLE);
+  const phone = profile.phone.trim();
+  const nationalId = profile.nationalId.trim();
+  const homeAddress = profile.homeAddress.trim();
+
+  if (phone === "") {
+    if (isCollector) issues.push({ path: "phone", message: "Enter a phone number" });
+  } else if (!PHONE_PATTERN.test(phone)) {
+    issues.push({ path: "phone", message: "Enter a phone number with at least 7 digits" });
+  }
+
+  if (nationalId === "") {
+    if (isCollector) issues.push({ path: "nationalId", message: "Enter the national ID number" });
+  } else if (!new RegExp(nationalIdPattern).test(nationalId)) {
+    issues.push({
+      path: "nationalId",
+      message: "Enter the national ID in the format this state uses",
+    });
+  }
+
+  if (homeAddress === "") {
+    if (isCollector) issues.push({ path: "homeAddress", message: "Enter a home address" });
+  } else if (homeAddress.length < ADDRESS_MIN || homeAddress.length > ADDRESS_MAX) {
+    issues.push({
+      path: "homeAddress",
+      message: `Use between ${String(ADDRESS_MIN)} and ${String(ADDRESS_MAX)} characters`,
+    });
+  }
+
+  return issues;
+}
+
 function isUniqueViolation(error: unknown): boolean {
   return (
     typeof error === "object" && error !== null && (error as { code?: unknown }).code === "23505"
@@ -155,6 +224,9 @@ function toSummary(user: UserRecord, roles: readonly string[]): UserSummary {
     username: user.username,
     displayName: user.displayName,
     email: user.email,
+    phone: user.phone,
+    nationalId: user.nationalId,
+    homeAddress: user.homeAddress,
     status: user.status === "disabled" ? "disabled" : "active",
     roles: [...roles],
     mustChangeCredentials: user.mustChangeCredentials,
@@ -235,12 +307,31 @@ export interface CreateUserInput {
   readonly email: string;
   readonly password: string;
   readonly roleKeys: readonly string[];
+  /** Contact and identity details; required only for a collector. */
+  readonly phone?: string;
+  readonly nationalId?: string;
+  readonly homeAddress?: string;
+  /**
+   * The tenant's national ID rule. Defaults to the platform pattern so a caller
+   * that does not load config still applies one.
+   */
+  readonly nationalIdPattern?: string;
 }
 
 export async function createUser(db: AnyDb, input: CreateUserInput): Promise<UserSummary> {
+  const profile: CollectorProfile = {
+    phone: input.phone ?? "",
+    nationalId: input.nationalId ?? "",
+    homeAddress: input.homeAddress ?? "",
+  };
   const issues = [
     ...identityIssues(input),
     ...roleIssues(input.roleKeys),
+    ...collectorProfileIssues(
+      profile,
+      input.roleKeys,
+      input.nationalIdPattern ?? DEFAULT_NATIONAL_ID_PATTERN,
+    ),
     ...userPasswordIssues({ username: input.username.trim(), password: input.password }),
   ];
   if (issues.length > 0) throw new UserValidationError(issues);
@@ -259,6 +350,9 @@ export async function createUser(db: AnyDb, input: CreateUserInput): Promise<Use
         username,
         displayName: input.displayName.trim(),
         email,
+        phone: profile.phone.trim() === "" ? null : profile.phone.trim(),
+        nationalId: profile.nationalId.trim() === "" ? null : profile.nationalId.trim(),
+        homeAddress: profile.homeAddress.trim() === "" ? null : profile.homeAddress.trim(),
         passwordHash: await hashPassword(input.password),
         totpSecret: null,
         // The administrator knows this password, so it is temporary by
