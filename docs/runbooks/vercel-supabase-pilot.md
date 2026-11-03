@@ -183,9 +183,10 @@ moment the account is created — and again after a password reset — containin
 - the username and the temporary password.
 
 **Copy handover text** writes all of it as one message (paste it into WhatsApp, or
-read it down a phone); **Print** gives a slip for a shared handset. **Generate**
-fills a readable 16-character password, so nobody has to invent one under time
-pressure.
+read it down a phone). **Print or save as PDF** prints the card on its own — not
+the dashboard around it — and "Save as PDF" in the browser's print dialog is the
+PDF copy. **Generate** fills a readable 16-character password, so nobody has to
+invent one under time pressure.
 
 A collector account also carries the person's phone number, national ID and home
 address. The form asks for them when Collector appears anywhere in the role set —
@@ -205,7 +206,10 @@ The form masks the password as you type it; **Show** reveals it so you can check
 what you generated before submitting, and **Hide** puts it back. The card is the
 only place the password appears afterwards: the server stores a hash, so closing
 it loses the value. Re-opening it from the **Handover** button on the account row
-shows everything except the password.
+shows everything except the password — a password that has already been handed
+over cannot be read back, so that card offers **Set a new temporary password**
+instead. It issues a fresh one, puts it on the card, and stops the old one
+working.
 
 What the person does:
 

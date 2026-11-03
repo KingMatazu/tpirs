@@ -26,3 +26,49 @@ body {
   color: #0f172a;
   background: #f1f5f9;
 }
+
+/*
+ * Printing a handover card prints the card, not the dashboard around it.
+ *
+ * The card is one element in a long page, and `window.print()` has no idea which
+ * part of it the administrator meant. Everything is removed from the print
+ * layout, then the card and the elements that contain it are put back — the
+ * ancestor chain has to come back too, because `display: none` on a parent
+ * cannot be undone by a child. That is what the `:has()` rule does, and it is
+ * why this is not the usual `visibility: hidden` trick: hidden elements still
+ * occupy their height, so a long account list below the card would print as
+ * several blank pages.
+ *
+ * `:has()` needs Chrome 105 / Safari 15.4 / Firefox 121. The dashboard already
+ * requires `Intl.supportedValuesOf` (the setup wizard's timezone and currency
+ * lists), which has the same baseline.
+ *
+ * `no-print` drops the controls that only exist on screen — the Copy buttons,
+ * Print itself, Done.
+ *
+ * The browser's own "Save as PDF" destination is the PDF: no library, no extra
+ * dependency, and the administrator can still send it to a real printer.
+ */
+@media print {
+  body * {
+    display: none !important;
+  }
+
+  body *:has([data-print="handover"]),
+  [data-print="handover"],
+  [data-print="handover"] * {
+    display: revert !important;
+  }
+
+  /* The card is a bordered panel on screen; on paper the border is just ink. */
+  [data-print="handover"] > section {
+    border: none;
+    box-shadow: none;
+    padding: 0;
+  }
+
+  /* Last, so it wins the tie with the rule above for elements inside the card. */
+  .no-print {
+    display: none !important;
+  }
+}

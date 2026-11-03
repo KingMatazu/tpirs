@@ -238,10 +238,15 @@ export function UsersPage(): ReactElement {
   /**
    * The handover card, which exists only while the password is still known: the
    * server hashes it and cannot give it back, so create and reset are the only
-   * two moments that can produce one.
+   * two moments that can produce one. `accountId` is present when the card was
+   * re-opened from the account row, where it can offer to issue a new password.
    */
   const [handover, setHandover] = useState<
-    | { readonly details: HandoverDetails; readonly destinations: readonly AppDestination[] }
+    | {
+        readonly details: HandoverDetails;
+        readonly destinations: readonly AppDestination[];
+        readonly accountId?: string;
+      }
     | undefined
   >(undefined);
 
@@ -450,6 +455,45 @@ export function UsersPage(): ReactElement {
     }
   };
 
+  /**
+   * Issues a fresh temporary password for an account whose original one is gone.
+   *
+   * This is the only honest answer to "show me the password again": the server
+   * stores a hash, so the old value cannot be recovered. Setting a new one ends
+   * the account's sessions and re-flags it, which is what a re-handover means —
+   * the old password stops working the moment this succeeds.
+   */
+  const issueNewPassword = async (accountId: string): Promise<void> => {
+    const password = temporaryPassword();
+    setBusy(true);
+    try {
+      const result = (await unwrap(
+        api.POST("/v1/users/{id}/password", {
+          params: { path: { id: accountId } },
+          body: { password },
+        }),
+      )) as { user: StaffAccount };
+      pushToast({
+        kind: "success",
+        message: `A new temporary password was set for ${result.user.username}. The old one no longer works.`,
+      });
+      setHandover({
+        details: {
+          displayName: result.user.displayName,
+          username: result.user.username,
+          password,
+          slug,
+        },
+        destinations: destinationsForRoles(result.user.roles),
+      });
+      await refresh();
+    } catch (error) {
+      pushToast({ kind: "error", ...describeError(error) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <h1 className="text-xl font-semibold text-slate-900">Accounts</h1>
@@ -463,6 +507,14 @@ export function UsersPage(): ReactElement {
         <HandoverCard
           details={handover.details}
           destinations={handover.destinations}
+          busy={busy}
+          {...(handover.accountId === undefined
+            ? {}
+            : {
+                onNewPassword: () => {
+                  void issueNewPassword(handover.accountId ?? "");
+                },
+              })}
           onDone={() => {
             setHandover(undefined);
           }}
@@ -555,6 +607,9 @@ export function UsersPage(): ReactElement {
                               slug,
                             },
                             destinations: destinationsForRoles(account.roles),
+                            // The password is gone, so the card can only offer
+                            // to issue a new one — which needs the account id.
+                            accountId: account.id,
                           });
                         }}
                       >

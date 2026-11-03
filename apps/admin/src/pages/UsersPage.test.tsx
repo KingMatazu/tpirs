@@ -484,6 +484,74 @@ describe("UsersPage", () => {
     expect(screen.getByText(/not stored in a readable form/i)).toBeTruthy();
   });
 
+  it("issues a new password for a re-opened card so the handover text carries one", async () => {
+    const copied: string[] = [];
+    Object.defineProperty(globalThis.navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: async (value: string) => {
+          copied.push(value);
+        },
+      },
+    });
+    accounts = [
+      {
+        id: "u2",
+        username: "sam.staff",
+        displayName: "Sam",
+        email: "sam@example.com",
+        phone: null,
+        nationalId: null,
+        homeAddress: null,
+        status: "active",
+        roles: ["officer"],
+        primaryRoleKey: "officer",
+        mustChangeCredentials: true,
+      },
+    ];
+    renderPage();
+    await screen.findByText("sam.staff");
+
+    fireEvent.click(screen.getByRole("button", { name: "Handover" }));
+    await screen.findByText("Hand over to Sam");
+
+    fireEvent.click(screen.getByRole("button", { name: "Set a new temporary password" }));
+
+    await waitFor(() => {
+      expect(bodyOf("POST", "/v1/users/u2/password")).toBeTruthy();
+    });
+    const issued = bodyOf("POST", "/v1/users/u2/password")?.["password"];
+    expect(typeof issued).toBe("string");
+    // The password it just issued is on the card, not a pointer to whoever made
+    // the account: the whole point of re-issuing is that the old one is gone.
+    expect(await screen.findByText(String(issued))).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy handover text" }));
+
+    await waitFor(() => {
+      expect(copied.at(-1)).toContain(`Temporary password: ${String(issued)}`);
+    });
+  });
+
+  it("prints the card alone, not the dashboard around it", async () => {
+    const print = vi.fn();
+    vi.stubGlobal("print", print);
+    renderPage();
+    await screen.findByText("No accounts yet.");
+
+    createAccount({ username: "new.officer", password: "temp-pass-1", role: "Field Officer" });
+    await screen.findByText("Hand over to New Officer");
+
+    const target = document.querySelector('[data-print="handover"]');
+    expect(target).not.toBeNull();
+    // Everything that only exists on screen is marked so the print stylesheet can
+    // drop it: the Copy buttons, Print itself, the Done button.
+    expect(target?.querySelector(".no-print")).not.toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Print or save as PDF" }));
+    expect(print).toHaveBeenCalledTimes(1);
+  });
+
   it("generates a temporary password when asked", async () => {
     renderPage();
     await screen.findByText("No accounts yet.");
