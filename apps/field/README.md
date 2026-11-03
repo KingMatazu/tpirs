@@ -56,10 +56,11 @@ know.
 
 ## Icons
 
-`public/*.png` are generated, not designed: `node scripts/generate-icons.mjs`
-writes them from a described shape (a lens: ring plus dot) using nothing but
-`node:zlib`. Re-run it after changing the mark; the output is committed so a build
-never depends on the script.
+`public/*.png` are generated, not designed: `node scripts/generate-pwa-icons.mjs
+--out apps/field/public --mark lens` (from the repo root) writes them from a
+described shape (a lens: ring plus dot) using nothing but `node:zlib`. The
+collector app uses the same script with `--mark cash`. Re-run it after changing
+the mark; the output is committed so a build never depends on the script.
 
 ## Commands
 
