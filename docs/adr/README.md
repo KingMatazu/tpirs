@@ -57,3 +57,4 @@ Format: context, decision, consequences, alternatives considered.
 - [0052](./0052-split-origin-hosting.md) Split-origin hosting: opt-in CORS, SameSite=None, and a closed setup window in production
 - [0053](./0053-staff-first-sign-in.md) Staff first sign-in: password-only rotation, on the app the person was sent to
 - [0054](./0054-collector-profile.md) Collector profile: three fields, one tenant rule, and no personal data in the audit trail
+- [0055](./0055-primary-role.md) One primary role per person, with extra roles that can be revoked

@@ -162,9 +162,11 @@ After that `POST /v1/setup/tenant` returns `404` even with the token.
 Then:
 
 1. **Zones** — create the operating zones, or leave the list empty.
-2. **Users** — create the team's accounts with temporary passwords and roles. A
-   collector account also needs a phone number, national ID and home address,
-   which the form asks for as soon as the Collector role is ticked.
+2. **Users** — create the team's accounts with temporary passwords and roles. The
+   first role is the **primary** one — the job the person was hired for — and the
+   **Additional roles** panel adds extra access on top. A collector account also
+   needs a phone number, national ID and home address, which the form asks for as
+   soon as Collector appears anywhere in the role set, primary or extra.
 3. **Registry** — register one vehicle and download its sticker for a smoke test.
 4. Rotate or remove `SETUP_TOKEN` from the API project. It is unused after the
    first tenant exists, but there is no reason to keep a live secret around.
@@ -186,10 +188,18 @@ fills a readable 16-character password, so nobody has to invent one under time
 pressure.
 
 A collector account also carries the person's phone number, national ID and home
-address. The form asks for them when the Collector role is ticked and refuses the
-account without them; the ID's format is the state's own rule
-(`collectors.nationalIdPattern`, eleven digits in the template). The three values
-are shown on the account row, and none of them is written to the audit trail.
+address. The form asks for them when Collector appears anywhere in the role set —
+primary or an additional role — and refuses the account without them; the ID's
+format is the state's own rule (`collectors.nationalIdPattern`, eleven digits in
+the template). The three values are shown on the account row, and none of them is
+written to the audit trail.
+
+**Edit roles** on an account row uses the same picker as the create form: the
+primary role as a radio, every other role as a checkbox behind the **Additional
+roles** button. Clearing a checkbox and saving takes that access away, which is
+how a supervisor who has moved off cash handling stops being a collector. The
+primary role itself cannot be removed — choose a different one, or disable the
+account.
 
 The card is the only place the password is ever shown: the server stores a hash,
 so closing it loses the value. Re-opening it from the **Handover** button on the

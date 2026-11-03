@@ -1124,36 +1124,40 @@ from operations.
 
 ## D57: One role per account, or several
 
-**Status:** partly decided. The create form is single-select; the roles editor on
-an existing account still offers several, deliberately, until this is settled.
+**Status:** resolved (ADR 0055). One primary role per person, stored, with extra
+roles on top that can be granted and revoked.
 
 The domain models roles as a set: `user_roles` is a join table, `POST /v1/users`
-takes a `roleKeys` array, `PATCH /v1/users/:id` replaces the set, and the account
-list joins the names (`"Field Officer, Collector"`). Operators do not think that
-way — a person is an officer or a collector — and the account form originally
-shipped as independent checkboxes, so ticking Collector and Auditor produced an
-account with both, which is not what the screen appeared to offer.
+takes a `roleKeys` array, `PATCH /v1/users/:id` replaces the set, and permissions
+are the union of every role. Operators do not think that way — a person is an
+officer or a collector — and the account form originally shipped as independent
+checkboxes, so ticking Collector and Auditor produced an account with both, which
+is not what the screen appeared to offer.
 
-- Decision (done): **the create form is a radio group.** Choosing a second role
-  clears the first, and the request still sends a one-element `roleKeys`. The API
-  and the schema are unchanged; a multi-role account can still be created through
-  the API.
-- Open: **the roles editor on an existing account is still a checkbox set.** A
-  single-select editor would silently drop every role but the chosen one when an
-  administrator saves — that is an access removal disguised as a UI tidy-up, and
-  an account with two roles (created through the API or the seed) would lose one
-  without anyone being told. Leaving it multi-select keeps the data model honest
-  at the cost of a screen that can still produce the state the create form now
-  prevents.
-- Options: (1) leave it as it is — single-select to create, multi-select to edit;
-  (2) make the editor single-select and show "choosing one replaces the rest"
-  whenever the account currently holds more than one; (3) accept multi-role as a
-  real capability and make the create form multi again with copy that says so;
-  (4) enforce one role per account in the API (a contract change, plus a data
-  audit and a migration for any account already holding two).
-- Recommendation: (2) when a pilot user next asks. It keeps the data model, stops
-  the accidental second role, and makes the loss visible before it happens. (4) is
-  the honest version if the product really is one-role-per-person, but it needs
-  the audit first — an account that legitimately holds two (a zone supervisor who
-  also collects) would be broken by it.
-- Safe default until decided: current behaviour, with this note as the record.
+The first attempt was a radio group on create only, which left the "Edit roles"
+panel as a checkbox set: a single-select editor there would have dropped every
+role but the chosen one on save, so the two screens disagreed on purpose. That is
+not a state to leave a pilot in, and the collector profile made it concrete —
+"required for a collector" is unanswerable when an account can hold collector as
+an afterthought.
+
+- Decision: **the primary role is stored** as `user_roles.is_primary` (migration
+  0023), with a partial unique index allowing one per user. `POST /v1/users` takes
+  an optional `primaryRoleKey` that must be one of the `roleKeys` being assigned,
+  and defaults to the first key; `PATCH` accepts it with or without `roleKeys`,
+  and never grants a role the account does not already hold.
+- Decision: **`roles` is returned primary first** and `UserSummary` carries
+  `primaryRoleKey`, so the list, the handover card and the editor agree.
+- Decision: **create and edit share one control** — a radio group for the primary
+  role, and a panel of checkboxes for the extras, excluding the primary so no role
+  is listed twice. Clearing an extra and saving revokes that access, visibly.
+- Decision: **primary grants nothing.** Permissions stay the union of the set, and
+  the collector profile is required whenever the set contains `collector`, not
+  only when it is the primary role.
+- Rejected: enforcing one role per account in the API. Multi-role is a real
+  capability (a zone supervisor who also collects), so the API keeps accepting a
+  set and the primary is a label on one member of it, not a cap of one role.
+- Consequence to watch: an account whose grants were written directly by an import
+  or a test can carry no primary (`primaryRoleKey: null`). The editor then treats
+  the first returned role as the primary, which is a default rather than a stored
+  fact — acceptable for staff accounts, which are created through the API.
