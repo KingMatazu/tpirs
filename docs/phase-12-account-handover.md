@@ -126,14 +126,21 @@ Postgres on this machine produced timeouts in unrelated suites; each package is
 green on its own, which is the same contention `scripts/ci/integration.sh`
 avoids by using a scratch database.
 
-## Step 5: Documentation (planned)
+## Step 5: Documentation (delivered)
 
-- `docs/runbooks/vercel-supabase-pilot.md`: a "Handing over an account" section
-  with the exact words an administrator reads out, and the two Vercel variables.
-- `docs/adr/0053-staff-first-sign-in.md`: why staff rotation is password-only and
-  why the addresses are build-time settings.
+- `docs/runbooks/vercel-supabase-pilot.md`: the three `VITE_*_APP_URL` variables
+  and a "Handing over an account" section with the exact script an administrator
+  follows.
+- `docs/adr/0053-staff-first-sign-in.md`: why staff rotation is password-only, why
+  the route is separate from onboarding, and why the addresses are build-time
+  settings.
+- `AGENTS.md`: the repo state and the one-line rule a future change has to match.
 
 ## Acceptance checks
+
+Checks 1, 3, 5 and 6 are covered by automated tests. Checks 2 and 4 are the same
+flow twice (officer, collector) and need one pass on the deployed pilot, where
+the handover card's addresses are real.
 
 1. An administrator creates an officer account and the card names the officer app,
    the state slug, the username and the password, all copyable in one action.

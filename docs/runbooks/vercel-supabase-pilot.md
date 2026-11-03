@@ -89,16 +89,30 @@ Vercel then uses the `packageManager` field in `package.json`.
 
 Create three more projects from the same repository:
 
-| Project           | Root Directory   | Build config                 | Environment variable              |
-| ----------------- | ---------------- | ---------------------------- | --------------------------------- |
-| `tpirs-admin`     | `apps/admin`     | `apps/admin/vercel.json`     | `VITE_API_BASE_URL=https://<api>` |
-| `tpirs-field`     | `apps/field`     | `apps/field/vercel.json`     | `VITE_API_BASE_URL=https://<api>` |
-| `tpirs-collector` | `apps/collector` | `apps/collector/vercel.json` | `VITE_API_BASE_URL=https://<api>` |
+| Project           | Root Directory   | Build config                 | Environment variable                                                 |
+| ----------------- | ---------------- | ---------------------------- | -------------------------------------------------------------------- |
+| `tpirs-admin`     | `apps/admin`     | `apps/admin/vercel.json`     | `VITE_API_BASE_URL=https://<api>` plus the three app addresses below |
+| `tpirs-field`     | `apps/field`     | `apps/field/vercel.json`     | `VITE_API_BASE_URL=https://<api>`                                    |
+| `tpirs-collector` | `apps/collector` | `apps/collector/vercel.json` | `VITE_API_BASE_URL=https://<api>`                                    |
 
 The `VITE_API_BASE_URL` value must match the API origin exactly (scheme + host,
 no trailing slash). It is read at build time, so set it before the first build
 and redeploy after changing it. Each build also builds the workspace packages it
 imports (`pnpm --filter @tpirs/<app>... build`).
+
+`tpirs-admin` also carries the addresses the account handover card prints, so an
+administrator can tell a new officer where to sign in:
+
+```sh
+VITE_ADMIN_APP_URL=https://tpirs-admin.vercel.app
+VITE_FIELD_APP_URL=https://tpirs-field.vercel.app
+VITE_COLLECTOR_APP_URL=https://tpirs-collector.vercel.app
+```
+
+`VITE_ADMIN_APP_URL` is optional (the dashboard defaults to the origin serving
+it). The other two are not: unset, the card says "not configured in this build"
+and names the variable, rather than linking nowhere. All three are build-time
+values, so changing one means redeploying `tpirs-admin`.
 
 The PWA service workers are scoped to each project's domain; installing the
 officer and collector apps works the same as locally.
@@ -152,6 +166,41 @@ Then:
 3. **Registry** — register one vehicle and download its sticker for a smoke test.
 4. Rotate or remove `SETUP_TOKEN` from the API project. It is unused after the
    first tenant exists, but there is no reason to keep a live secret around.
+
+### Handing over an account
+
+An account created in **Accounts → Add an account** starts with a temporary
+password the server will not let anyone keep. The screen produces a card at the
+moment the account is created — and again after a password reset — containing:
+
+- the app address for the roles chosen: officer → officer app, collector →
+  collector app, everything else → dashboard;
+- the state slug, which every sign-in form asks for;
+- the username and the temporary password.
+
+**Copy handover text** writes all of it as one message (paste it into WhatsApp, or
+read it down a phone); **Print** gives a slip for a shared handset. **Generate**
+fills a readable 16-character password, so nobody has to invent one under time
+pressure.
+
+The card is the only place the password is ever shown: the server stores a hash,
+so closing it loses the value. Re-opening it from the **Handover** button on the
+account row shows everything except the password.
+
+What the person does:
+
+1. Open the address on the card.
+2. Enter the state, the username and the temporary password.
+3. Choose their own password. That screen is the only thing they can reach until
+   they do, and the username stays exactly as handed over.
+4. The temporary password stops working and any other session it created ends.
+
+If the card is lost, an administrator resets the password from the same screen;
+the reset re-flags the account and produces a new card.
+
+Accounts created **before** this change are still flagged and were previously
+unusable on the officer and collector apps. They now reach the password screen on
+their next sign-in; nothing needs to be reset.
 
 ## 6. What does not run without the worker
 
