@@ -1,4 +1,5 @@
-import { buildApp } from "./build-app.js";
+import Fastify from "fastify";
+import { buildApp, fastifyOptions } from "./build-app.js";
 import type { AppConfig } from "./config.js";
 import type { Services } from "./services.js";
 import { buildServices, makeTenantConfigLoader } from "./services.js";
@@ -150,6 +151,9 @@ async function main(): Promise<void> {
   }
 
   const app = await buildApp({
+    // Created here so Vercel's zero-config Fastify detector sees this entrypoint
+    // import and use `fastify` (see fastifyOptions).
+    fastify: Fastify(fastifyOptions(config)),
     config,
     telemetry,
     objectStorage,

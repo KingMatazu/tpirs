@@ -1,4 +1,5 @@
 import type { ObjectStorage, Telemetry, IdentityProvider } from "@tpirs/ports";
+import type { FastifyInstance } from "fastify";
 import type { TenantConfig } from "@tpirs/config";
 import type { AnyDb } from "@tpirs/db";
 import type { Services } from "./services.js";
@@ -36,6 +37,12 @@ export interface AppConfig {
 
 export interface BuildAppOptions {
   readonly config: AppConfig;
+  /**
+   * A pre-created Fastify server. The process entrypoint builds it so Vercel's
+   * Fastify detector sees `fastify` imported by the entrypoint; tests omit it
+   * and `buildApp` creates one with the same options.
+   */
+  readonly fastify?: FastifyInstance;
   readonly telemetry: Telemetry;
   /** Injected so routes use the port, never the environment directly. */
   readonly objectStorage?: ObjectStorage;

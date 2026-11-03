@@ -4,8 +4,8 @@ import sensible from "@fastify/sensible";
 import cookie from "@fastify/cookie";
 import cors from "@fastify/cors";
 import swagger from "@fastify/swagger";
-import type { FastifyInstance } from "fastify";
-import type { BuildAppOptions } from "./config.js";
+import type { FastifyInstance, FastifyServerOptions } from "fastify";
+import type { AppConfig, BuildAppOptions } from "./config.js";
 import { clientErrorMessage, defaultErrorCode, errorEnvelope } from "./errors.js";
 import { authenticate, enforceCredentialRotation, UnauthorizedError } from "./auth.js";
 import { auditOnSuccess } from "./audit.js";
@@ -56,6 +56,29 @@ const REQUEST_TIMEOUT_MS = 30_000;
 const KEEP_ALIVE_TIMEOUT_MS = 72_000;
 
 /**
+ * The Fastify server options, exported so the process entrypoint can create the
+ * server itself. Vercel's zero-config Fastify detector requires the entrypoint
+ * module to import and use `fastify`; this keeps that true without duplicating
+ * the limits or the logger redaction here and in `index.ts`.
+ */
+export function fastifyOptions(config: AppConfig): FastifyServerOptions {
+  return {
+    // Behind Vercel/Railway the socket peer is the proxy; trusting the forwarded
+    // address is what keeps per-IP throttling about the visitor (ADR 0052).
+    trustProxy: config.trustProxy ?? false,
+    logger: {
+      level: config.logLevel,
+      redact: { paths: [...LOG_REDACT_PATHS], censor: "[redacted]" },
+    },
+    genReqId: () => randomUUID(),
+    bodyLimit: BODY_LIMIT_BYTES,
+    connectionTimeout: CONNECTION_TIMEOUT_MS,
+    requestTimeout: REQUEST_TIMEOUT_MS,
+    keepAliveTimeout: KEEP_ALIVE_TIMEOUT_MS,
+  };
+}
+
+/**
  * Fields the logger must never print, wherever they appear (pino `redact`).
  * Bodies are not logged by default; this is defence in depth for a future
  * serializer, and for the headers a proxy might add.
@@ -71,20 +94,7 @@ export const LOG_REDACT_PATHS = [
 
 export async function buildApp(options: BuildAppOptions): Promise<FastifyInstance> {
   const { config, telemetry } = options;
-  const app = Fastify({
-    // Behind Vercel/Railway the socket peer is the proxy; trusting the forwarded
-    // address is what keeps per-IP throttling about the visitor (ADR 0052).
-    trustProxy: config.trustProxy ?? false,
-    logger: {
-      level: config.logLevel,
-      redact: { paths: [...LOG_REDACT_PATHS], censor: "[redacted]" },
-    },
-    genReqId: () => randomUUID(),
-    bodyLimit: BODY_LIMIT_BYTES,
-    connectionTimeout: CONNECTION_TIMEOUT_MS,
-    requestTimeout: REQUEST_TIMEOUT_MS,
-    keepAliveTimeout: KEEP_ALIVE_TIMEOUT_MS,
-  });
+  const app = options.fastify ?? Fastify(fastifyOptions(config));
 
   await app.register(sensible);
   // A split-origin deployment (Vercel UIs, API elsewhere) opts in by listing
