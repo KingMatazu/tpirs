@@ -89,6 +89,7 @@ const REQUIRED: Readonly<Record<string, readonly Permission[]>> = {
   "POST /v1/users": ["user:manage"],
   "PATCH /v1/users/:id": ["user:manage"],
   "POST /v1/users/:id/password": ["user:manage"],
+  "DELETE /v1/users/:id": ["user:manage"],
   "POST /v1/auth/temporary-password": ["user:manage"],
   "GET /v1/roles": ["role:read"],
   "GET /v1/verifications/search": ["asset:read"],

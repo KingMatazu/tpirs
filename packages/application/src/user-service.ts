@@ -1,4 +1,4 @@
-import { generateTemporaryPassword, hashPassword } from "@tpirs/crypto";
+import { generateTemporaryPassword, hashPassword, randomOpaqueId } from "@tpirs/crypto";
 import { DEFAULT_NATIONAL_ID_PATTERN } from "@tpirs/config";
 import { repositories, withSystem, withTenant } from "@tpirs/db";
 import type { AnyDb, UserRecord, UserRoleGrant } from "@tpirs/db";
@@ -186,6 +186,33 @@ function primaryRoleIssues(
 /** The role whose holder takes cash from drivers and must be on file. */
 const COLLECTOR_ROLE = "collector";
 const SUPERVISOR_ROLE = "zone_supervisor";
+
+/**
+ * Roles that are concepts, not assignments.
+ *
+ * `driver` predates the Registry: a driver was once an account with a login. A
+ * driver is now an owner plus an asset and pays with the short code on their
+ * sticker, so assigning the role creates a login nobody uses. The role stays in
+ * the catalogue so an account that still holds one can be edited, but it cannot
+ * be granted — only kept or removed.
+ */
+const NON_ASSIGNABLE_ROLES: readonly string[] = ["driver"];
+
+function nonAssignableRoleIssues(
+  roleKeys: readonly string[],
+  heldKeys: readonly string[],
+): readonly UserIssue[] {
+  const refused = roleKeys.filter(
+    (key) => NON_ASSIGNABLE_ROLES.includes(key) && !heldKeys.includes(key),
+  );
+  if (refused.length === 0) return [];
+  return [
+    {
+      path: "roleKeys",
+      message: "Drivers are registered in the Registry, not as staff accounts",
+    },
+  ];
+}
 /** Digits, with an optional leading +, spaces and dashes as people write them. */
 const PHONE_PATTERN = /^\+?[0-9][0-9\s-]{6,19}$/;
 const ADDRESS_MIN = 5;
@@ -332,7 +359,11 @@ export async function getUser(
   return withTenant(db, tenantId, async (tx) => {
     const repos = repositories(tx);
     const user = await repos.users.findById(userId);
-    return user === undefined ? undefined : await summarize(repos, user);
+    // A deleted account has no login and is not part of the account list; the row
+    // exists only as the subject of its history.
+    if (user === undefined) return undefined;
+    if (user.deletedAt !== null) return undefined;
+    return await summarize(repos, user);
   });
 }
 
@@ -435,6 +466,7 @@ export async function createUser(db: AnyDb, input: CreateUserInput): Promise<Use
       input.nationalIdPattern ?? DEFAULT_NATIONAL_ID_PATTERN,
     ),
     ...zoneIssues(input.roleKeys, input.zoneId),
+    ...nonAssignableRoleIssues(input.roleKeys, []),
     ...userPasswordIssues({ username: input.username.trim(), password: input.password }),
   ];
   if (issues.length > 0) throw new UserValidationError(issues);
@@ -548,8 +580,16 @@ export async function updateUser(db: AnyDb, input: UpdateUserInput): Promise<Use
     if (existing === undefined) throw new UserNotFoundError();
 
     const roleKeys = input.roleKeys;
+    const held = await repos.roles.rolesForUser(input.userId);
     let resolved: { id: string; key: string }[] | undefined;
     if (roleKeys !== undefined) {
+      // A role that cannot be granted may still be removed: the set is allowed to
+      // drop `driver`, never to add it.
+      const refused = nonAssignableRoleIssues(
+        roleKeys,
+        held.map((grant) => grant.key),
+      );
+      if (refused.length > 0) throw new UserValidationError(refused);
       const outcome = await resolveRoles(repos, roleKeys);
       if (outcome.issues.length > 0) throw new UserValidationError(outcome.issues);
       resolved = outcome.roles;
@@ -557,8 +597,7 @@ export async function updateUser(db: AnyDb, input: UpdateUserInput): Promise<Use
 
     // The effective role set decides whether a zone is required: a role edit can
     // make an account a supervisor, and then the zone must come with it.
-    const effectiveRoles =
-      roleKeys ?? (await repos.roles.rolesForUser(input.userId)).map((grant) => grant.key);
+    const effectiveRoles = roleKeys ?? held.map((grant) => grant.key);
     const wantsZone = effectiveRoles.includes(SUPERVISOR_ROLE);
     const requestedZone = input.zoneId === undefined ? existing.zoneId : input.zoneId;
     let zoneId: string | null = existing.zoneId;
@@ -820,5 +859,72 @@ export async function reissueAdminTemporaryPassword(
       },
     });
     return { username: admin.username, password };
+  });
+}
+
+export interface DeleteUserInput {
+  readonly tenantId: string;
+  readonly actorUserId: string;
+  readonly userId: string;
+}
+
+/**
+ * Deletes a staff account: the login and the person's details go, the history
+ * stays.
+ *
+ * A hard delete is not available by design. `audit_log`, `ledger_entries`, cash
+ * intakes, scans and reversals all reference `users(id)` and the audit trail is
+ * append-only, so removing the row would either fail on a foreign key or erase
+ * the name behind money movements. The account is therefore tombstoned
+ * (migration 0027): disabled, renamed to a value nobody knows, stripped of its
+ * details and password, removed from the account list, and no longer able to
+ * sign in.
+ *
+ * Two accounts cannot be deleted this way: your own (the same rule as every
+ * other edit here, so an administrator cannot quietly remove their own trace),
+ * and the last active system administrator — that would leave the tenant with
+ * nobody who can manage accounts.
+ */
+export async function deleteUser(db: AnyDb, input: DeleteUserInput): Promise<void> {
+  assertNotSelf(input.actorUserId, input.userId);
+
+  await withTenant(db, input.tenantId, async (tx) => {
+    const repos = repositories(tx);
+    const existing = await repos.users.findById(input.userId);
+    if (existing === undefined) throw new UserNotFoundError();
+    if (existing.deletedAt !== null) throw new UserNotFoundError();
+
+    const grants = await repos.roles.rolesForUser(input.userId);
+    if (grants.some((grant) => grant.key === "system_admin")) {
+      const admins = await repos.users.countActiveWithRole("system_admin");
+      if (admins <= 1) {
+        throw new UserConflictError(
+          "This is the last system administrator. Give another account that role before deleting this one",
+        );
+      }
+    }
+
+    const updated = await repos.users.markDeleted(existing.id, {
+      // The name is freed for reuse; the row keeps a tombstone that cannot be
+      // guessed and does not collide with a real username.
+      username: `deleted-${existing.id.slice(0, 12)}`,
+      // A random hash, not the old one: the person may reuse that password
+      // somewhere that matters, and the hash is the only copy here.
+      passwordHash: await hashPassword(randomOpaqueId()),
+    });
+    if (updated === undefined) throw new UserNotFoundError();
+    await repos.roles.clearRolesForUser(existing.id);
+    await repos.sessions.revokeAllForUser(existing.id);
+    await repos.audit.record({
+      tenantId: input.tenantId,
+      actorUserId: input.actorUserId,
+      action: "user.delete",
+      entityType: "user",
+      entityId: existing.id,
+      before: { username: existing.username, roles: grants.map((grant) => grant.key) },
+      // No email, phone, national ID or address: the trail says an account was
+      // deleted, not who the person was.
+      after: { deleted: true, username: updated.username },
+    });
   });
 }

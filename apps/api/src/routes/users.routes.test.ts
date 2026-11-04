@@ -4,7 +4,7 @@ import path from "node:path";
 import { buildApp } from "../build-app.js";
 import type { AppConfig } from "../config.js";
 import { createMockTelemetry } from "@tpirs/telemetry-mock";
-import { createDb, migrateUp, repositories, withSystem } from "@tpirs/db";
+import { createDb, migrateUp, repositories, withSystem, withTenant } from "@tpirs/db";
 import type { AnyDb } from "@tpirs/db";
 import { createDbIdentityProvider } from "@tpirs/identity-provider-db";
 import { hashPassword } from "@tpirs/crypto";
@@ -116,6 +116,19 @@ describeIntegration("api users e2e (integration)", () => {
         key: "zone_supervisor",
         name: "Zone Supervisor",
         permissions: ["asset:create"],
+      });
+      // Present in the catalogue, never granted: a driver is not a login.
+      await repos.roles.create({
+        tenantId: tenantA.id,
+        key: "driver",
+        name: "Driver",
+        permissions: [],
+      });
+      await repos.roles.create({
+        tenantId: tenantA.id,
+        key: "system_admin",
+        name: "System Admin",
+        permissions: ["user:manage", "user:read", "role:read"],
       });
       const central = await repos.zones.create({
         tenantId: tenantA.id,
@@ -252,7 +265,9 @@ describeIntegration("api users e2e (integration)", () => {
     expect(catalogue.map((role) => role.key).sort()).toEqual([
       "account_manager",
       "collector",
+      "driver",
       "staff",
+      "system_admin",
       "zone_supervisor",
     ]);
     expect(catalogue.find((role) => role.key === "staff")?.permissions).toEqual(["asset:read"]);
@@ -775,6 +790,155 @@ describeIntegration("api users e2e (integration)", () => {
     expect(foreign.statusCode).toBe(404);
   });
 
+  it("refuses to grant the driver role, and keeps it removable", async () => {
+    const refused = await app.inject({
+      method: "POST",
+      url: "/v1/users",
+      headers: { authorization: `Bearer ${managerToken}` },
+      payload: {
+        username: "um.driver",
+        displayName: "Driver Account",
+        email: "driver@example.com",
+        password: temporaryPassword,
+        roleKeys: ["driver"],
+      },
+    });
+    expect(refused.statusCode).toBe(422);
+    expect(issuePaths(refused)).toEqual(["roleKeys"]);
+
+    // A grant written before this rule (a direct row, as an import would) can
+    // still be taken away: the check refuses a grant, not a removal.
+    const tenant = await withSystem(db, (tx) => repositories(tx).tenants.findBySlug(slugA));
+    const driverRole = await withTenant(db, tenant?.id ?? "", (tx) =>
+      repositories(tx).roles.findByKey("driver"),
+    );
+    await withTenant(db, tenant?.id ?? "", (tx) =>
+      repositories(tx).roles.assignToUser({
+        tenantId: tenant?.id ?? "",
+        userId: createdId,
+        roleId: driverRole?.id ?? "",
+      }),
+    );
+
+    const removed = await app.inject({
+      method: "PATCH",
+      url: `/v1/users/${createdId}`,
+      headers: { authorization: `Bearer ${managerToken}` },
+      payload: { roleKeys: ["staff"], primaryRoleKey: "staff" },
+    });
+    expect(removed.statusCode).toBe(200);
+    expect((removed.json() as { user: UserJson }).user.roles).toEqual(["staff"]);
+  });
+
+  it("deletes an account: the login goes, the history stays", async () => {
+    const created = await app.inject({
+      method: "POST",
+      url: "/v1/users",
+      headers: { authorization: `Bearer ${managerToken}` },
+      payload: {
+        username: "um.deleted",
+        displayName: "Deleted Person",
+        email: "deleted@example.com",
+        password: temporaryPassword,
+        roleKeys: ["staff"],
+      },
+    });
+    expect(created.statusCode).toBe(201);
+    const victim = (created.json() as { user: UserJson }).user;
+    const signedIn = await login(slugA, "um.deleted", temporaryPassword);
+    expect(signedIn.status).toBe(200);
+
+    const deleted = await app.inject({
+      method: "DELETE",
+      url: `/v1/users/${victim.id}`,
+      headers: { authorization: `Bearer ${managerToken}` },
+    });
+    expect(deleted.statusCode).toBe(200);
+    expect(deleted.json()).toEqual({ deleted: true });
+
+    // Gone from the list, and the session it opened is dead.
+    const list = await app.inject({
+      method: "GET",
+      url: "/v1/users",
+      headers: { authorization: `Bearer ${managerToken}` },
+    });
+    const usernames = (list.json() as { users: UserJson[] }).users.map((user) => user.username);
+    expect(usernames).not.toContain("um.deleted");
+
+    const stale = await app.inject({
+      method: "GET",
+      url: "/v1/auth/me",
+      headers: { authorization: `Bearer ${signedIn.token ?? ""}` },
+    });
+    expect(stale.statusCode).toBe(401);
+
+    // The username is free again, and the old password signs nobody in.
+    const oldLogin = await login(slugA, "um.deleted", temporaryPassword);
+    expect(oldLogin.status).toBe(401);
+    const reused = await app.inject({
+      method: "POST",
+      url: "/v1/users",
+      headers: { authorization: `Bearer ${managerToken}` },
+      payload: {
+        username: "um.deleted",
+        displayName: "Someone New",
+        email: "new@example.com",
+        password: temporaryPassword,
+        roleKeys: ["staff"],
+      },
+    });
+    expect(reused.statusCode).toBe(201);
+  });
+
+  it("refuses to delete your own account, or the last system administrator", async () => {
+    const self = await app.inject({
+      method: "GET",
+      url: "/v1/auth/me",
+      headers: { authorization: `Bearer ${managerToken}` },
+    });
+    const selfId = (self.json() as { userId: string }).userId;
+    const selfDelete = await app.inject({
+      method: "DELETE",
+      url: `/v1/users/${selfId}`,
+      headers: { authorization: `Bearer ${managerToken}` },
+    });
+    expect(selfDelete.statusCode).toBe(409);
+
+    const createAdmin = async (username: string): Promise<string> => {
+      const response = await app.inject({
+        method: "POST",
+        url: "/v1/users",
+        headers: { authorization: `Bearer ${managerToken}` },
+        payload: {
+          username,
+          displayName: username,
+          email: `${username}@example.com`,
+          password: temporaryPassword,
+          roleKeys: ["system_admin"],
+        },
+      });
+      expect(response.statusCode).toBe(201);
+      return (response.json() as { user: UserJson }).user.id;
+    };
+
+    const firstAdmin = await createAdmin("um.admin-one");
+    const lastAdmin = await app.inject({
+      method: "DELETE",
+      url: `/v1/users/${firstAdmin}`,
+      headers: { authorization: `Bearer ${managerToken}` },
+    });
+    expect(lastAdmin.statusCode).toBe(409);
+
+    // With a second administrator the tenant stays manageable, so the first can go.
+    await createAdmin("um.admin-two");
+    const allowed = await app.inject({
+      method: "DELETE",
+      url: `/v1/users/${firstAdmin}`,
+      headers: { authorization: `Bearer ${managerToken}` },
+    });
+    expect(allowed.statusCode).toBe(200);
+  });
+
   it("lets an administrator re-issue their own temporary password", async () => {
     // Without `user:manage` there is nothing to re-issue: this is the
     // administrator recovery path, not a self-service password change.
@@ -839,6 +1003,7 @@ describeIntegration("api users e2e (integration)", () => {
     expect(actions).toContain("user.password.reset");
     expect(actions).toContain("auth.credentials_changed");
     expect(actions).toContain("user.password.self_reissued");
+    expect(actions).toContain("user.delete");
 
     const trail = JSON.stringify(entries);
     expect(trail).not.toContain(temporaryPassword);

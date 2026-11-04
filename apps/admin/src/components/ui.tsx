@@ -10,7 +10,7 @@ export function Button(
   props: Readonly<{
     children: ReactNode;
     readonly type?: "button" | "submit";
-    readonly variant?: "primary" | "secondary" | "ghost";
+    readonly variant?: "primary" | "secondary" | "ghost" | "danger";
     readonly disabled?: boolean;
     readonly onClick?: () => void;
     /** Accessible name when the visible text is a single word, e.g. "Show". */
@@ -22,7 +22,9 @@ export function Button(
       ? "bg-[var(--tpirs-color-secondary)] text-white"
       : props.variant === "ghost"
         ? "border border-slate-300 bg-transparent text-slate-800 hover:bg-slate-100"
-        : "bg-[var(--tpirs-color-primary)] text-white";
+        : props.variant === "danger"
+          ? "bg-red-600 text-white hover:bg-red-700"
+          : "bg-[var(--tpirs-color-primary)] text-white";
   return (
     <button
       type={props.type ?? "button"}

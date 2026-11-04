@@ -982,6 +982,22 @@ export const updateUserSchema: FastifySchema = {
   },
 };
 
+/**
+ * Deleting an account tombstones it (migration 0027): the login and personal
+ * details go, the audit trail keeps resolving the id. There is nothing to return
+ * but the fact that it happened.
+ */
+export const deleteUserSchema: FastifySchema = {
+  params: idParams,
+  response: {
+    200: {
+      type: "object",
+      required: ["deleted"],
+      properties: { deleted: { type: "boolean" } },
+    },
+  },
+};
+
 export const resetUserPasswordSchema: FastifySchema = {
   params: idParams,
   body: {

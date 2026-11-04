@@ -76,6 +76,27 @@ export function statusLabel(status: StaffAccount["status"]): string {
   return status === "active" ? "Active" : "Disabled";
 }
 
+/**
+ * Roles the product will not grant.
+ *
+ * A driver is an owner plus an asset and pays with the short code on their
+ * sticker, so a driver *account* is a login nobody uses; drivers are registered
+ * in the Registry. The role stays visible on an account that already holds one,
+ * so it can be removed — it is the only way to clear a grant made before this
+ * rule existed.
+ */
+export const NON_ASSIGNABLE_ROLE_KEYS: readonly string[] = ["driver"];
+
+/** The roles a picker offers: assignable ones, plus any the account already holds. */
+export function assignableRoles(
+  roles: readonly RoleOption[],
+  held: readonly string[],
+): readonly RoleOption[] {
+  return roles.filter(
+    (role) => !NON_ASSIGNABLE_ROLE_KEYS.includes(role.key) || held.includes(role.key),
+  );
+}
+
 /** Adds or removes a role key without mutating the input list. */
 export function toggleRole(keys: readonly string[], key: string): readonly string[] {
   return keys.includes(key) ? keys.filter((candidate) => candidate !== key) : [...keys, key];
@@ -123,13 +144,16 @@ export function RolePicker({
 }): ReactElement {
   const [extrasOpen, setExtrasOpen] = useState(false);
   const chosenExtras = extras.filter((key) => key !== primary);
-  const available = roles.filter((role) => role.key !== primary);
+  // The offered list excludes roles that cannot be granted, unless the account
+  // already holds one — then it is shown so it can be cleared.
+  const offered = assignableRoles(roles, [primary, ...extras]);
+  const available = offered.filter((role) => role.key !== primary);
   const panelId = `${name}-extras`;
   return (
     <fieldset>
       <legend className="mb-1 text-sm font-medium text-slate-700">Role</legend>
       <div className="flex flex-wrap gap-3">
-        {roles.map((role) => (
+        {offered.map((role) => (
           <label key={role.key} className="flex items-center gap-1 text-sm">
             <input
               type="radio"
@@ -309,6 +333,8 @@ export function UsersPage(): ReactElement {
   const [selfPassword, setSelfPassword] = useState("");
   const [showSelfPassword, setShowSelfPassword] = useState(false);
   const [selfBusy, setSelfBusy] = useState(false);
+  /** The account whose delete confirmation is open. One at a time, like the editors. */
+  const [deleteForId, setDeleteForId] = useState<string | undefined>(undefined);
   /**
    * The handover card, which exists only while the password is still known: the
    * server hashes it and cannot give it back, so create and reset are the only
@@ -630,13 +656,36 @@ export function UsersPage(): ReactElement {
     }
   };
 
+  /**
+   * Deletes an account. The server tombstones it — the login and personal
+   * details go, the audit trail keeps what the account did — so the confirm
+   * text says exactly that rather than implying the history disappears.
+   */
+  const removeAccount = async (account: StaffAccount): Promise<void> => {
+    setBusy(true);
+    try {
+      await unwrap(api.DELETE("/v1/users/{id}", { params: { path: { id: account.id } } }));
+      pushToast({
+        kind: "success",
+        message: `${account.username} was deleted. Their history stays in the audit trail.`,
+      });
+      setDeleteForId(undefined);
+      await refresh();
+    } catch (error) {
+      pushToast({ kind: "error", ...describeError(error) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <h1 className="text-xl font-semibold text-slate-900">Accounts</h1>
       <ReadOnlyNote>
         Staff accounts and the roles that decide which screens they can open. A new account starts
         with a temporary password that must be replaced at its first sign-in; nobody can change
-        their own roles or status here.
+        their own roles or status here. Deleting an account removes its login and personal details
+        and leaves its history in the audit trail; a driver is registered in the Registry, not here.
       </ReadOnlyNote>
 
       {handover === undefined ? null : (
@@ -784,6 +833,16 @@ export function UsersPage(): ReactElement {
                     >
                       Reset password
                     </Button>
+                    <Button
+                      variant="ghost"
+                      onClick={() => {
+                        setRolesForId(undefined);
+                        setPasswordForId(undefined);
+                        setDeleteForId(deleteForId === account.id ? undefined : account.id);
+                      }}
+                    >
+                      Delete
+                    </Button>
                     {account.mustChangeCredentials ? (
                       <Button
                         variant="ghost"
@@ -850,6 +909,39 @@ export function UsersPage(): ReactElement {
                         variant="ghost"
                         onClick={() => {
                           setRolesForId(undefined);
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
+
+                {deleteForId === account.id ? (
+                  <div
+                    className="rounded-md border border-red-200 bg-red-50 p-2"
+                    role="group"
+                    aria-label={`Delete ${account.username}`}
+                  >
+                    <p className="text-sm text-red-800">
+                      Delete {account.username}? The login and their personal details are removed
+                      and the account disappears from this list. What they did stays in the audit
+                      trail, because money movements and history point at it. This cannot be undone.
+                    </p>
+                    <div className="mt-2 flex gap-2">
+                      <Button
+                        variant="danger"
+                        disabled={busy}
+                        onClick={() => {
+                          void removeAccount(account);
+                        }}
+                      >
+                        Delete account
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        onClick={() => {
+                          setDeleteForId(undefined);
                         }}
                       >
                         Cancel

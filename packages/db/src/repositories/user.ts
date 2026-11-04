@@ -15,6 +15,8 @@ export interface UserRecord {
   readonly totpSecret: string | null;
   readonly passwordHash: string;
   readonly mustChangeCredentials: boolean;
+  /** Non-null once the account was deleted; its login no longer exists. */
+  readonly deletedAt: Date | null;
 }
 
 export interface CreateUserInput {
@@ -56,6 +58,7 @@ const USER_COLUMNS = [
   "totpSecret",
   "passwordHash",
   "mustChangeCredentials",
+  "deletedAt",
 ] as const;
 
 export class UserRepository {
@@ -150,9 +153,14 @@ export class UserRepository {
       .executeTakeFirst();
   }
 
-  /** Every account in the tenant, oldest name first. Tenant scope is RLS. */
+  /** Every live account in the tenant, oldest name first. Tenant scope is RLS. */
   async list(): Promise<readonly UserRecord[]> {
-    return this.db.selectFrom("users").select(USER_COLUMNS).orderBy("username").execute();
+    return this.db
+      .selectFrom("users")
+      .select(USER_COLUMNS)
+      .where("deletedAt", "is", null)
+      .orderBy("username")
+      .execute();
   }
 
   /**
@@ -210,6 +218,53 @@ export class UserRepository {
    * Setting the flag here (not in the route) keeps "new password" and "must
    * change it" from ever being written separately.
    */
+  /**
+   * Turns an account into a tombstone: the login stops existing, the person's
+   * details are cleared, and the row stays as the subject of its history.
+   *
+   * The username is replaced rather than freed by a delete, so the name can be
+   * issued again; the password hash is replaced with a random one, so no
+   * previously known password can ever match it.
+   */
+  async markDeleted(
+    id: string,
+    input: { readonly username: string; readonly passwordHash: string },
+  ): Promise<UserRecord | undefined> {
+    return this.db
+      .updateTable("users")
+      .set({
+        username: input.username,
+        displayName: "Deleted account",
+        email: null,
+        phone: null,
+        nationalId: null,
+        homeAddress: null,
+        zoneId: null,
+        status: "disabled",
+        passwordHash: input.passwordHash,
+        mustChangeCredentials: false,
+        deletedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where("id", "=", id)
+      .returning(USER_COLUMNS)
+      .executeTakeFirst();
+  }
+
+  /** Active, undeleted accounts holding a role — the last-admin guard reads it. */
+  async countActiveWithRole(roleKey: string): Promise<number> {
+    const row = await this.db
+      .selectFrom("userRoles")
+      .innerJoin("roles", "roles.id", "userRoles.roleId")
+      .innerJoin("users", "users.id", "userRoles.userId")
+      .select(({ fn }) => fn.countAll<string>().as("count"))
+      .where("roles.key", "=", roleKey)
+      .where("users.status", "=", "active")
+      .where("users.deletedAt", "is", null)
+      .executeTakeFirst();
+    return Number(row?.count ?? 0);
+  }
+
   async setTemporaryPassword(id: string, passwordHash: string): Promise<UserRecord | undefined> {
     return this.db
       .updateTable("users")

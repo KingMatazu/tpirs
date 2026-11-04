@@ -1227,3 +1227,28 @@ in North.
 - Options if reads stay open: (a) accept it for the pilot and document that a
   supervisor's zone is a registration boundary, not a visibility boundary; (b)
   scope reads and add a "whole state" permission for the roles that need it.
+
+---
+
+## D62: What does deleting a staff account mean, and can a driver still be a login
+
+**Status:** resolved (ADR 0062). Delete is a tombstone; `driver` cannot be granted.
+
+The Accounts screen offered the `driver` role, so a driver could still be created
+as a staff account even after drivers moved to the Registry. There was also no
+delete: only disable, which left a mistyped account in the list forever.
+
+- Decision: deleting an account disables it, clears the person's details, removes
+  its roles and sessions, tombstones the username, and hides it from the list. The
+  row stays because the audit trail and money movements reference it; the
+  confirmation says so.
+- Decision: you cannot delete your own account, or the last active system
+  administrator.
+- Decision: `driver` is refused as a new grant but can still be removed from an
+  account that holds one, so legacy grants can be cleaned up.
+- Rejected: hard delete (foreign keys and append-only audit), disable-only (keeps
+  the person in the list), and cascading the references (blanks the actor behind
+  money).
+- Open follow-up: the `driver` role row still exists in the catalogue for every
+  tenant. If drivers ever get self-service logins, the role comes back with a
+  permission set; until then it grants nothing.

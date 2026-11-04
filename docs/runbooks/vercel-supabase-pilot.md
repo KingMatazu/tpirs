@@ -226,6 +226,22 @@ Accounts created **before** this change are still flagged and were previously
 unusable on the officer and collector apps. They now reach the password screen on
 their next sign-in; nothing needs to be reset.
 
+### Removing an account
+
+**Accounts → Delete** on an account row (not your own) removes it after a
+confirmation. It is a tombstone, not a hard delete (ADR 0062): the login, personal
+details, roles and sessions go, the account disappears from the list, and the
+username becomes free again — but the row stays so the audit trail and any money
+movement still resolve the person who made it. The confirmation says this, and the
+toast repeats it.
+
+Two refusals are deliberate: your own account, and the last active system
+administrator. Give someone else the role before deleting that one.
+
+The **Driver** role is not offered when adding an account: drivers are registered
+in the Registry, not as logins. An account that already holds the role still shows
+it under **Edit roles**, so the grant can be removed.
+
 ### Recovering the administrator who created the tenant
 
 There is no email sender yet, so a forgotten administrator password has two

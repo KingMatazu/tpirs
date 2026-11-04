@@ -27,6 +27,8 @@ const roles: RoleOption[] = [
   { key: "officer", name: "Field Officer", permissions: ["scan:record"] },
   { key: "collector", name: "Collector", permissions: ["cash:intake"] },
   { key: "zone_supervisor", name: "Zone Supervisor", permissions: ["asset:create"] },
+  // Kept in the catalogue, never granted: a driver is an owner plus an asset.
+  { key: "driver", name: "Driver", permissions: [] },
 ];
 
 const zones = [
@@ -151,6 +153,15 @@ const fakeFetch = vi.fn(async (input: unknown) => {
     return json(200, { user: updated.find((account) => account.id === id) });
   }
   const patchMatch = /^\/v1\/users\/(.+)$/.exec(url.pathname);
+  const deleteMatch = /^\/v1\/users\/(.+)$/.exec(url.pathname);
+  if (request.method === "DELETE" && deleteMatch !== null) {
+    const id = deleteMatch[1];
+    const before = accounts.find((account) => account.id === id);
+    if (before === undefined) return json(404, { error: { code: "not_found", message: "nope" } });
+    // The server tombstones the row; the list simply stops returning it.
+    accounts = accounts.filter((account) => account.id !== id);
+    return json(200, { deleted: true });
+  }
   if (request.method === "PATCH" && patchMatch !== null) {
     const id = patchMatch[1];
     const body = JSON.parse(requests.at(-1)?.body ?? "{}") as {
@@ -878,6 +889,88 @@ describe("UsersPage", () => {
     // will ask for a real password next.
     await waitFor(() => {
       expect(useSession.getState().user?.mustChangeCredentials).toBe(true);
+    });
+  });
+
+  it("does not offer the driver role when adding an account", async () => {
+    renderPage();
+    await screen.findByText("No accounts yet.");
+
+    // Drivers are registered in the Registry; a driver account is a login nobody
+    // uses, so the picker does not offer it.
+    expect(screen.queryByLabelText("Driver")).toBeNull();
+    expect(screen.getByLabelText("Field Officer")).toBeTruthy();
+  });
+
+  it("shows a driver role the account already holds, so it can be removed", async () => {
+    accounts = [
+      {
+        id: "u-driver",
+        username: "driver.legacy",
+        displayName: "Legacy Driver",
+        email: "legacy@example.com",
+        phone: null,
+        nationalId: null,
+        homeAddress: null,
+        status: "active",
+        roles: ["driver"],
+        primaryRoleKey: "driver",
+        mustChangeCredentials: false,
+        zoneId: null,
+        zoneName: null,
+      },
+    ];
+    renderPage();
+    await screen.findByText("driver.legacy");
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit roles" }));
+    const panel = screen.getByRole("group", { name: /Edit roles for driver.legacy/ });
+    expect(within(panel).getByLabelText("Driver")).toBeTruthy();
+
+    fireEvent.click(within(panel).getByLabelText("Field Officer"));
+    fireEvent.click(within(panel).getByRole("button", { name: "Save roles" }));
+
+    await waitFor(() => {
+      expect(bodyOf("PATCH", "/v1/users/u-driver")).toMatchObject({
+        roleKeys: ["officer"],
+      });
+    });
+  });
+
+  it("deletes an account after a confirmation and drops it from the list", async () => {
+    accounts = [
+      {
+        id: "u-off",
+        username: "officer.one",
+        displayName: "Officer One",
+        email: "officer@example.com",
+        phone: null,
+        nationalId: null,
+        homeAddress: null,
+        status: "active",
+        roles: ["officer"],
+        primaryRoleKey: "officer",
+        mustChangeCredentials: false,
+        zoneId: null,
+        zoneName: null,
+      },
+    ];
+    renderPage();
+    await screen.findByText("officer.one");
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    const panel = screen.getByRole("group", { name: /Delete officer.one/ });
+    // The confirmation says what deletion means: the history is not removed.
+    expect(within(panel).getByText(/stays in the audit trail/i)).toBeTruthy();
+    fireEvent.click(within(panel).getByRole("button", { name: "Delete account" }));
+
+    await waitFor(() => {
+      expect(
+        requests.some((row) => row.method === "DELETE" && row.path === "/v1/users/u-off"),
+      ).toBe(true);
+    });
+    await waitFor(() => {
+      expect(screen.queryByText("officer.one")).toBeNull();
     });
   });
 

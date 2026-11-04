@@ -4,6 +4,7 @@ import {
   UserNotFoundError,
   UserValidationError,
   createUser,
+  deleteUser,
   getUser,
   listRoles,
   listUsers,
@@ -17,6 +18,7 @@ import { requirePermission } from "../auth.js";
 import { makeTenantConfigLoader } from "../services.js";
 import {
   createUserSchema,
+  deleteUserSchema,
   listRolesSchema,
   listUsersSchema,
   resetUserPasswordSchema,
@@ -246,6 +248,30 @@ export function registerUserRoutes(app: FastifyInstance, context: UserRoutesCont
         },
       };
       return await reply.send({ user });
+    } catch (error) {
+      const sent = sendError(request, reply, error);
+      if (sent !== undefined) return sent;
+      throw error;
+    }
+  });
+
+  /**
+   * Deletes an account.
+   *
+   * The service writes the audit row itself, because it is the only caller that
+   * knows the roles the account held; a second descriptor here would describe
+   * the same deletion twice.
+   */
+  app.delete("/v1/users/:id", { schema: deleteUserSchema }, async (request, reply) => {
+    const principal = requirePermission(request, "user:manage");
+    const { id } = request.params as { id: string };
+    try {
+      await deleteUser(context.db, {
+        tenantId: principal.tenantId,
+        actorUserId: principal.userId,
+        userId: id,
+      });
+      return await reply.send({ deleted: true });
     } catch (error) {
       const sent = sendError(request, reply, error);
       if (sent !== undefined) return sent;

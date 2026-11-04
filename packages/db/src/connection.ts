@@ -81,6 +81,11 @@ export interface UserTable {
    */
   mustChangeCredentials: Generated<boolean>;
   status: Generated<string>;
+  /**
+   * Set when the account was deleted (migration 0027). The row stays because the
+   * audit trail and money movements reference it; the login is gone.
+   */
+  deletedAt: Timestamp | null;
   createdAt: Generated<Timestamp>;
   updatedAt: Generated<Timestamp>;
 }
