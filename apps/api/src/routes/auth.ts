@@ -83,7 +83,7 @@ async function sessionReply(
   },
   secure: boolean,
   sameSite: "strict" | "lax" | "none",
-  mustChangeCredentials: boolean,
+  account: { mustChangeCredentials: boolean; zoneId: string | null },
 ): Promise<unknown> {
   setRefreshCookie(reply, session.refreshToken, session.refreshExpiresAt, secure, sameSite);
   return reply.send({
@@ -94,7 +94,10 @@ async function sessionReply(
       tenantId: session.user.tenantId,
       displayName: session.user.displayName,
       roles: session.user.roles,
-      mustChangeCredentials,
+      mustChangeCredentials: account.mustChangeCredentials,
+      // A zone supervisor's zone, so a client can lock the driver form to it
+      // instead of offering a choice the server would refuse.
+      zoneId: account.zoneId,
     },
     refreshToken: session.refreshToken,
     refreshExpiresAt: session.refreshExpiresAt.toISOString(),
@@ -111,15 +114,18 @@ async function sessionReply(
  * client is never told "you are free to go" by a response the server would then
  * refuse.
  */
-async function mustChangeCredentials(
+async function sessionAccount(
   context: AuthContext,
   tenantId: string,
   userId: string,
-): Promise<boolean> {
+): Promise<{ mustChangeCredentials: boolean; zoneId: string | null }> {
   const user = await withTenant(context.db, tenantId, (tx) =>
     repositories(tx).users.findById(userId),
   );
-  return user?.mustChangeCredentials ?? false;
+  return {
+    mustChangeCredentials: user?.mustChangeCredentials ?? false,
+    zoneId: user?.zoneId ?? null,
+  };
 }
 
 /**
@@ -215,7 +221,7 @@ export function registerAuthRoutes(app: FastifyInstance, context: AuthContext): 
         session,
         secureCookies,
         sameSiteCookies,
-        await mustChangeCredentials(context, session.user.tenantId, session.user.userId),
+        await sessionAccount(context, session.user.tenantId, session.user.userId),
       );
     } catch (error) {
       if (error instanceof PortError && error.code === "unauthorized") {
@@ -259,7 +265,7 @@ export function registerAuthRoutes(app: FastifyInstance, context: AuthContext): 
         rotated,
         secureCookies,
         sameSiteCookies,
-        await mustChangeCredentials(context, rotated.user.tenantId, rotated.user.userId),
+        await sessionAccount(context, rotated.user.tenantId, rotated.user.userId),
       );
     } catch (error) {
       if (error instanceof PortError && error.code === "unauthorized") {
@@ -339,6 +345,7 @@ export function registerAuthRoutes(app: FastifyInstance, context: AuthContext): 
       roles: principal.roles,
       permissions: principal.permissions,
       mustChangeCredentials: principal.mustChangeCredentials,
+      zoneId: principal.zoneId,
     });
   });
 
@@ -424,7 +431,13 @@ export function registerAuthRoutes(app: FastifyInstance, context: AuthContext): 
       });
       // The service recorded `auth.credentials_changed` in the same transaction
       // as the rename; a second audit row here would describe the same event.
-      return await sessionReply(reply, session, secureCookies, sameSiteCookies, false);
+      return await sessionReply(
+        reply,
+        session,
+        secureCookies,
+        sameSiteCookies,
+        await sessionAccount(context, session.user.tenantId, session.user.userId),
+      );
     },
   );
 
@@ -501,7 +514,13 @@ export function registerAuthRoutes(app: FastifyInstance, context: AuthContext): 
         username: changed.username,
         password,
       });
-      return await sessionReply(reply, session, secureCookies, sameSiteCookies, false);
+      return await sessionReply(
+        reply,
+        session,
+        secureCookies,
+        sameSiteCookies,
+        await sessionAccount(context, session.user.tenantId, session.user.userId),
+      );
     },
   );
 }

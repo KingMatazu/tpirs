@@ -31,7 +31,8 @@ export interface RegisterAssetInput {
   readonly assetTypeKey: string;
   readonly zoneId?: string | null;
   readonly ownerId?: string | null;
-  readonly owner?: { readonly displayName: string; readonly phone: string } | undefined;
+  readonly owner?:
+    { readonly displayName: string; readonly phone: string; readonly email?: string } | undefined;
   readonly attributes: Readonly<Record<string, unknown>>;
   readonly createdByUserId?: string | null;
 }
@@ -138,6 +139,7 @@ export function createAssetService(deps: AssetServiceDeps) {
           tenantId: input.tenantId,
           displayName: input.owner.displayName,
           phone: input.owner.phone,
+          email: input.owner.email ?? null,
         });
         ownerId = created.id;
       }

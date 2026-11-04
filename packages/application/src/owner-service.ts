@@ -9,6 +9,8 @@ export interface CreateOwnerInput {
   readonly tenantId: string;
   readonly displayName: string;
   readonly phone: string;
+  /** Optional contact address; the dashboard's driver form offers it. */
+  readonly email?: string | null;
 }
 
 /**
@@ -23,6 +25,7 @@ export function createOwnerService(deps: OwnerServiceDeps) {
         tenantId: input.tenantId,
         displayName: input.displayName,
         phone: input.phone,
+        email: input.email ?? null,
       }),
     );
   }

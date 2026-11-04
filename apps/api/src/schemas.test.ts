@@ -59,6 +59,7 @@ const sampleOwner = {
   id: "own_1",
   displayName: "Ada Obi",
   phone: "+2348000000001",
+  email: null,
   phoneVerifiedAt: null,
 };
 
@@ -199,6 +200,7 @@ describe("declared response schemas serialize complete payloads", () => {
       roles: ["finance_admin"],
       permissions: ["payment:read"],
       mustChangeCredentials: false,
+      zoneId: null,
     }));
     app.get("/v1/verify/:token", { schema: verifyTokenSchema }, async () => ({
       status: "active",
@@ -337,6 +339,7 @@ describe("declared response schemas serialize complete payloads", () => {
       roles: ["finance_admin"],
       permissions: ["payment:read"],
       mustChangeCredentials: false,
+      zoneId: null,
     });
   });
 

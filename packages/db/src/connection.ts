@@ -153,6 +153,8 @@ export interface OwnerTable {
   tenantId: string;
   displayName: string;
   phone: string;
+  /** Optional contact address (migration 0026); nothing sends to it yet. */
+  email: string | null;
   phoneVerifiedAt: Timestamp | null;
   createdAt: Generated<Timestamp>;
   updatedAt: Generated<Timestamp>;

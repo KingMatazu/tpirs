@@ -74,7 +74,20 @@ const fakeFetch = vi.fn(async (input: unknown, init?: RequestInit): Promise<Resp
     case "/v1/tenants/current/config":
       return json(200, { config: JSON.parse(JSON.stringify(config)), version: 3 });
     case "/v1/assets":
+      if ((request?.method ?? init?.method ?? "GET") === "POST") {
+        const parsed = JSON.parse(body) as Record<string, unknown>;
+        return json(201, {
+          asset: {
+            ...asset,
+            id: "as_new",
+            shortCode: "B999",
+            attributes: (parsed["attributes"] as Record<string, unknown> | undefined) ?? {},
+          },
+        });
+      }
       return json(200, { assets: [asset] });
+    case "/v1/zones":
+      return json(200, { zones: [{ id: "zone-a", parentZoneId: null, name: "Zone A" }] });
     case "/v1/assets/as_1":
       return json(200, {
         asset,
@@ -127,6 +140,8 @@ function json(status: number, body: unknown): Response {
 }
 
 const ALL_PERMISSIONS = ["asset:read", "asset:manage"];
+/** The set that may add a driver: `asset:create` is the supervisory permission. */
+const CREATE_PERMISSIONS = [...ALL_PERMISSIONS, "asset:create"];
 
 function renderPage(permissions: readonly string[] = ALL_PERMISSIONS): void {
   const queryClient = new QueryClient({
@@ -341,6 +356,76 @@ describe("RegistryPage", () => {
     expect(screen.queryByLabelText("Attributes JSON")).toBeNull();
     // The screen only ever reads; a hidden control must not fire either.
     expect(requests.some((row) => row.method !== "GET")).toBe(false);
+  });
+
+  it("offers Add a driver only to a role that may register", async () => {
+    renderPage(ALL_PERMISSIONS);
+    await screen.findByText("B123");
+    expect(screen.queryByText("Add a driver")).toBeNull();
+
+    cleanup();
+    renderPage(CREATE_PERMISSIONS);
+    expect(await screen.findByText("Add a driver")).toBeTruthy();
+  });
+
+  it("registers a driver from four fields, with no password and no account", async () => {
+    renderPage(CREATE_PERMISSIONS);
+    await screen.findByText("Add a driver");
+    // The form writes into the tenant's asset-type schema, so it waits for the
+    // config rather than submitting against an empty type list.
+    await screen.findByRole("option", { name: "Motorbike" });
+
+    fireEvent.input(screen.getByLabelText(/^Full name/), { target: { value: "Musa Driver" } });
+    fireEvent.input(screen.getByLabelText(/^Phone number/), {
+      target: { value: "08012345678" },
+    });
+    fireEvent.input(screen.getByLabelText(/^Plate number/), { target: { value: "XYZ123" } });
+    fireEvent.input(screen.getByLabelText(/^Email/), { target: { value: "musa@example.com" } });
+    fireEvent.click(screen.getByText("Register driver"));
+
+    await waitFor(() => {
+      expect(bodyOf("/v1/assets", "POST")).toBeDefined();
+    });
+    const body = bodyOf("/v1/assets", "POST") ?? {};
+    // The plate goes into the tenant's own attribute key, and the owner is
+    // created inline: a driver is an owner plus an asset, never a login.
+    expect(body).toMatchObject({
+      assetTypeKey: "bike",
+      attributes: { plate_number: "XYZ123" },
+      owner: { displayName: "Musa Driver", phone: "08012345678", email: "musa@example.com" },
+    });
+    expect(JSON.stringify(body)).not.toContain("password");
+  });
+
+  it("shows the new driver's sticker, printable on its own", async () => {
+    const printed = vi.fn();
+    vi.stubGlobal("print", printed);
+    renderPage(CREATE_PERMISSIONS);
+    await screen.findByText("Add a driver");
+    // The form writes into the tenant's asset-type schema, so it waits for the
+    // config rather than submitting against an empty type list.
+    await screen.findByRole("option", { name: "Motorbike" });
+
+    fireEvent.input(screen.getByLabelText(/^Full name/), { target: { value: "Musa Driver" } });
+    fireEvent.input(screen.getByLabelText(/^Phone number/), {
+      target: { value: "08012345678" },
+    });
+    fireEvent.input(screen.getByLabelText(/^Plate number/), { target: { value: "XYZ123" } });
+    fireEvent.click(screen.getByText("Register driver"));
+
+    // The sticker is the point of registering: the code under the QR is what an
+    // officer types and what the driver quotes.
+    expect(await screen.findByText("B999")).toBeTruthy();
+    const printable = document.querySelector('[data-print="sticker"]');
+    expect(printable).not.toBeNull();
+    expect(printable?.textContent).toContain("B999");
+
+    fireEvent.click(screen.getByText("Print sticker"));
+    await waitFor(() => {
+      expect(printed).toHaveBeenCalledTimes(1);
+    });
+    vi.unstubAllGlobals();
+    vi.stubGlobal("fetch", fakeFetch);
   });
 
   it("hides the screen entirely without asset:read", async () => {

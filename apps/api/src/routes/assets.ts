@@ -54,6 +54,7 @@ function serializeOwner(owner: OwnerRecord) {
     id: owner.id,
     displayName: owner.displayName,
     phone: owner.phone,
+    email: owner.email,
     phoneVerifiedAt: owner.phoneVerifiedAt === null ? null : owner.phoneVerifiedAt.toISOString(),
   };
 }
@@ -99,12 +100,14 @@ export function registerAssetRoutes(app: FastifyInstance, context: AssetRoutesCo
     const ownerRecord = asRecord(body.owner);
     const zoneId = asString(body.zoneId);
     const ownerId = asString(body.ownerId);
+    const ownerEmail = ownerRecord === undefined ? undefined : asString(ownerRecord.email);
     const ownerInput =
       ownerRecord === undefined
         ? undefined
         : {
             displayName: asString(ownerRecord.displayName) ?? "",
             phone: asString(ownerRecord.phone) ?? "",
+            ...(ownerEmail === undefined ? {} : { email: ownerEmail }),
           };
     try {
       const asset = await services.asset.register({
@@ -293,6 +296,7 @@ export function registerAssetRoutes(app: FastifyInstance, context: AssetRoutesCo
     const body = asRecord(request.body);
     const displayName = body === undefined ? undefined : asString(body.displayName);
     const phone = body === undefined ? undefined : asString(body.phone);
+    const email = body === undefined ? undefined : asString(body.email);
     if (displayName === undefined || phone === undefined) {
       return badRequest(request, reply, "displayName and phone are required");
     }
@@ -300,6 +304,7 @@ export function registerAssetRoutes(app: FastifyInstance, context: AssetRoutesCo
       tenantId: principal.tenantId,
       displayName,
       phone,
+      ...(email === undefined ? {} : { email }),
     });
     request.audit = { action: "owner.create", entityType: "owner", entityId: owner.id };
     return reply.code(201).send({ owner: serializeOwner(owner) });

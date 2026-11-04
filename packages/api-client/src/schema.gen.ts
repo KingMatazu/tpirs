@@ -262,6 +262,7 @@ export interface paths {
                             roles: string[];
                             permissions: string[];
                             mustChangeCredentials: boolean;
+                            zoneId: string | null;
                         };
                     };
                 };
@@ -2554,6 +2555,7 @@ export interface paths {
                         owner?: {
                             displayName: string;
                             phone: string;
+                            email?: string;
                         };
                     };
                 };
@@ -2836,6 +2838,7 @@ export interface paths {
                     "application/json": {
                         displayName: string;
                         phone: string;
+                        email?: string;
                     };
                 };
             };
@@ -3499,6 +3502,7 @@ export interface components {
             tenantId: string;
             displayName: string;
             roles: string[];
+            zoneId: string | null;
             mustChangeCredentials: boolean;
         };
         /** Zone */
@@ -3549,6 +3553,7 @@ export interface components {
             id: string;
             displayName: string;
             phone: string;
+            email: string | null;
             phoneVerifiedAt: string | null;
         };
         /** Payment */

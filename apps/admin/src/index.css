@@ -28,16 +28,16 @@ body {
 }
 
 /*
- * Printing a handover card prints the card, not the dashboard around it.
+ * Printing one element prints that element, not the dashboard around it.
  *
- * The card is one element in a long page, and `window.print()` has no idea which
- * part of it the administrator meant. Everything is removed from the print
- * layout, then the card and the elements that contain it are put back — the
- * ancestor chain has to come back too, because `display: none` on a parent
- * cannot be undone by a child. That is what the `:has()` rule does, and it is
- * why this is not the usual `visibility: hidden` trick: hidden elements still
- * occupy their height, so a long account list below the card would print as
- * several blank pages.
+ * A handover card and a driver's sticker are each one element in a long page,
+ * and `window.print()` has no idea which part the administrator meant.
+ * Everything is removed from the print layout, then the element marked
+ * `data-print` and the elements that contain it are put back — the ancestor
+ * chain has to come back too, because `display: none` on a parent cannot be
+ * undone by a child. That is what the `:has()` rule does, and it is why this is
+ * not the usual `visibility: hidden` trick: hidden elements still occupy their
+ * height, so a long list below the card would print as several blank pages.
  *
  * `:has()` needs Chrome 105 / Safari 15.4 / Firefox 121. The dashboard already
  * requires `Intl.supportedValuesOf` (the setup wizard's timezone and currency
@@ -54,14 +54,15 @@ body {
     display: none !important;
   }
 
-  body *:has([data-print="handover"]),
-  [data-print="handover"],
-  [data-print="handover"] * {
+  body *:has([data-print]),
+  [data-print],
+  [data-print] * {
     display: revert !important;
   }
 
-  /* The card is a bordered panel on screen; on paper the border is just ink. */
-  [data-print="handover"] > section {
+  /* A bordered panel on screen is just ink on paper. */
+  [data-print="handover"] > section,
+  [data-print="sticker"] {
     border: none;
     box-shadow: none;
     padding: 0;

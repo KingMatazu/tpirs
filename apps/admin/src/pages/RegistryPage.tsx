@@ -1,9 +1,9 @@
-import { useState, type FormEvent, type ReactElement } from "react";
+import { useEffect, useState, type FormEvent, type ReactElement } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { TenantAssetType } from "@tpirs/config";
 import { api } from "../api/client.js";
 import { AuthenticatedImage } from "../components/AuthenticatedImage.js";
-import { unwrap } from "../api/unwrap.js";
+import { unwrap, errorFrom, type ApiResult } from "../api/unwrap.js";
 import {
   Badge,
   Button,
@@ -23,6 +23,8 @@ import {
   attributesJsonText,
   correctionBody,
   downloadSticker,
+  driverBody,
+  fetchSticker,
   findAssetType,
   ownerCreateBody,
   ownerVerifyConfirmBody,
@@ -43,6 +45,27 @@ import { useSession } from "../session.js";
 const PAGE_SIZE = 50;
 
 /**
+ * The API's 422 issues as `path -> message`, so a refused attribute can be shown
+ * under the field that caused it. The attribute paths are the tenant's own keys,
+ * which is why the plate field looks up its key from the asset type rather than
+ * hardcoding one.
+ */
+function issueMap(error: unknown): Record<string, string> {
+  const mapped: Record<string, string> = {};
+  // openapi-fetch hands back the response body, which is the error envelope.
+  const envelope = (error as { error?: { issues?: unknown } } | null)?.error;
+  const issues = envelope?.issues;
+  if (!Array.isArray(issues)) return mapped;
+  for (const item of issues) {
+    if (typeof item !== "object" || item === null) continue;
+    const record = item as Record<string, unknown>;
+    if (typeof record.path !== "string" || typeof record.message !== "string") continue;
+    mapped[record.path] = record.message;
+  }
+  return mapped;
+}
+
+/**
  * Phase 9, Step 2: the asset registry.
  *
  * Search, open, correct and suspend an asset, and manage its owner's phone
@@ -60,6 +83,7 @@ const PAGE_SIZE = 50;
  */
 export function RegistryPage(): ReactElement {
   const canRead = useSession((state) => state.hasPermission("asset:read"));
+  const canCreate = useSession((state) => state.hasPermission("asset:create"));
   const { config } = useTenantConfig();
   const queryClient = useQueryClient();
 
@@ -79,6 +103,13 @@ export function RegistryPage(): ReactElement {
     queryKey: ["registry-assets", params],
     queryFn: async () => await fetchAssets(params),
     enabled: canRead,
+  });
+  // The driver form offers a zone. A supervisor's zone comes from their session
+  // and is fixed; a system admin picks one. Only fetched when the form is shown.
+  const zones = useQuery({
+    queryKey: ["zones"],
+    enabled: canCreate,
+    queryFn: async () => (await unwrap(await api.GET("/v1/zones"))).zones,
   });
 
   const refresh = async (): Promise<void> => {
@@ -106,6 +137,16 @@ export function RegistryPage(): ReactElement {
           laid out from the tenant's asset-type schema, so a new asset type needs config only.
         </p>
       </div>
+
+      {canCreate ? (
+        <AddDriver
+          assetTypes={assetTypes}
+          zones={zones.data ?? []}
+          onRegistered={() => {
+            void refresh();
+          }}
+        />
+      ) : null}
 
       <Card title="Find assets" description="Free text matches a short code or a plate/identifier.">
         <form
@@ -246,13 +287,402 @@ function AssetTable(props: {
   );
 }
 
+/**
+ * Adds a driver from four answers: full name, phone, plate and an optional
+ * email.
+ *
+ * A driver is an owner plus an asset, never a login: they pay by USSD or SMS
+ * with the short code on their sticker, so there is no password field here and
+ * no account is created. The plate is written to the asset type's own required
+ * attribute, so a tenant that names it differently still gets a working form.
+ *
+ * The sticker is shown straight after registration with a Print button, because
+ * the sticker is the reason the driver was added: it is what the officer scans.
+ */
+function AddDriver(props: {
+  readonly assetTypes: readonly TenantAssetType[];
+  readonly zones: readonly { readonly id: string; readonly name: string }[];
+  readonly onRegistered: () => void;
+}): ReactElement {
+  const lockedZoneId = useSession((state) => state.user?.zoneId ?? null);
+  const [form, setForm] = useState({
+    displayName: "",
+    phone: "",
+    plate: "",
+    email: "",
+    zoneId: "",
+  });
+  const [typeKey, setTypeKey] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [created, setCreated] = useState<
+    | {
+        readonly id: string;
+        readonly shortCode: string;
+        readonly displayName: string;
+        readonly plate: string;
+        readonly assetTypeKey: string;
+      }
+    | undefined
+  >(undefined);
+
+  const defaultTypeKey = props.assetTypes[0]?.key ?? "";
+  const effectiveTypeKey = typeKey === "" ? defaultTypeKey : typeKey;
+  const selectedType = props.assetTypes.find((type) => type.key === effectiveTypeKey);
+  const zoneOptions = props.zones;
+
+  const submit = async (event: FormEvent): Promise<void> => {
+    event.preventDefault();
+    const local: Record<string, string> = {};
+    if (form.displayName.trim() === "") local["owner"] = "Enter the driver's full name";
+    if (form.phone.trim() === "") local["phone"] = "Enter a phone number";
+    if (form.plate.trim() === "") local["plate"] = "Enter the plate number";
+    if (selectedType === undefined) local["assetTypeKey"] = "This tenant has no vehicle types";
+    if (Object.keys(local).length > 0) {
+      setErrors(local);
+      return;
+    }
+    const assetType = selectedType;
+    if (assetType === undefined) return;
+
+    setBusy(true);
+    setErrors({});
+    try {
+      const body = driverBody({
+        displayName: form.displayName,
+        phone: form.phone,
+        plate: form.plate,
+        email: form.email,
+        assetTypeKey: assetType.key,
+        assetType,
+        zoneId: lockedZoneId ?? form.zoneId,
+      });
+      const result = (await api.POST("/v1/assets", {
+        // The generated body type is the API's own; `driverBody` builds exactly
+        // that shape from the tenant's schema.
+        body: body as never,
+      })) as ApiResult<{ asset: AssetView }>;
+      if (result.error !== undefined && result.error !== null) {
+        const issues = issueMap(result.error);
+        setErrors(Object.keys(issues).length > 0 ? issues : {});
+        if (Object.keys(issues).length === 0) {
+          pushToast({ kind: "error", ...describeError(errorFrom(result)) });
+        }
+        return;
+      }
+      const asset = result.data?.asset;
+      if (asset === undefined) {
+        pushToast({ kind: "error", message: "The vehicle was saved but the response was empty." });
+        return;
+      }
+      setCreated({
+        id: asset.id,
+        shortCode: asset.shortCode,
+        displayName: form.displayName.trim(),
+        plate: form.plate.trim(),
+        assetTypeKey: asset.assetTypeKey,
+      });
+      setForm({ displayName: "", phone: "", plate: "", email: "", zoneId: "" });
+      props.onRegistered();
+    } catch (error) {
+      pushToast({ kind: "error", ...describeError(error) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (created !== undefined) {
+    return (
+      <Card
+        title="Driver registered"
+        description="Hand over the sticker, or print it again later from the registry."
+      >
+        <StickerPreview
+          assetId={created.id}
+          shortCode={created.shortCode}
+          caption={`${created.displayName} · ${created.plate} · ${assetTypeLabel(props.assetTypes, created.assetTypeKey)}`}
+          autoLoad={true}
+        />
+        <div className="mt-3">
+          <Button
+            variant="ghost"
+            onClick={() => {
+              setCreated(undefined);
+            }}
+          >
+            Register another driver
+          </Button>
+        </div>
+      </Card>
+    );
+  }
+
+  return (
+    <Card
+      title="Add a driver"
+      description="Full name, phone, plate and an optional email. No password: a driver pays with the short code, not an account."
+    >
+      <form className="space-y-3" onSubmit={(event) => void submit(event)}>
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="w-56">
+            <Field
+              label="Full name"
+              {...(errors["owner"] === undefined ? {} : { error: errors["owner"] })}
+            >
+              <TextInput
+                name="driver-name"
+                value={form.displayName}
+                onValueChange={(value) => {
+                  setForm({ ...form, displayName: value });
+                }}
+                autoComplete="off"
+              />
+            </Field>
+          </div>
+          <div className="w-52">
+            <Field
+              label="Phone number"
+              {...(errors["phone"] === undefined ? {} : { error: errors["phone"] })}
+            >
+              <TextInput
+                name="driver-phone"
+                value={form.phone}
+                onValueChange={(value) => {
+                  setForm({ ...form, phone: value });
+                }}
+                inputMode="tel"
+                autoComplete="off"
+              />
+            </Field>
+          </div>
+          <div className="w-48">
+            <Field
+              label="Plate number"
+              {...(errors["plate"] === undefined ? {} : { error: errors["plate"] })}
+            >
+              <TextInput
+                name="driver-plate"
+                value={form.plate}
+                onValueChange={(value) => {
+                  setForm({ ...form, plate: value });
+                }}
+                autoComplete="off"
+              />
+            </Field>
+          </div>
+          <div className="w-64">
+            <Field
+              label="Email (optional)"
+              {...(errors["email"] === undefined ? {} : { error: errors["email"] })}
+            >
+              <TextInput
+                name="driver-email"
+                value={form.email}
+                onValueChange={(value) => {
+                  setForm({ ...form, email: value });
+                }}
+                autoComplete="off"
+              />
+            </Field>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-end gap-3">
+          {props.assetTypes.length > 1 ? (
+            <div className="w-48">
+              <Field
+                label="Vehicle type"
+                {...(errors["assetTypeKey"] === undefined ? {} : { error: errors["assetTypeKey"] })}
+              >
+                <select
+                  aria-label="Vehicle type"
+                  className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
+                  value={effectiveTypeKey}
+                  onChange={(event) => {
+                    setTypeKey(event.currentTarget.value);
+                  }}
+                >
+                  {props.assetTypes.map((type) => (
+                    <option key={type.key} value={type.key}>
+                      {type.label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+          ) : null}
+
+          {lockedZoneId === null ? (
+            <div className="w-56">
+              <Field label="Zone (optional)" hint="Leave empty if the vehicle is not zoned.">
+                <select
+                  aria-label="Zone"
+                  className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
+                  value={form.zoneId}
+                  onChange={(event) => {
+                    setForm({ ...form, zoneId: event.currentTarget.value });
+                  }}
+                >
+                  <option value="">No zone</option>
+                  {zoneOptions.map((zone) => (
+                    <option key={zone.id} value={zone.id}>
+                      {zone.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+          ) : (
+            <p className="pb-2 text-sm text-slate-600">
+              Your zone: {zoneOptions.find((zone) => zone.id === lockedZoneId)?.name ?? "assigned"}
+            </p>
+          )}
+
+          <Button type="submit" disabled={busy || props.assetTypes.length === 0}>
+            {busy ? "Saving…" : "Register driver"}
+          </Button>
+        </div>
+      </form>
+    </Card>
+  );
+}
+
+/**
+ * The sticker, on screen, printable on its own.
+ *
+ * The print rule in `index.css` keeps only the `[data-print]` element, so the
+ * button prints the QR and the short code underneath it rather than the
+ * dashboard around it. The SVG is fetched with the bearer and shown from an
+ * object URL: a plain link would carry no token.
+ */
+function StickerPreview(props: {
+  readonly assetId: string;
+  readonly shortCode: string;
+  readonly caption?: string;
+  readonly autoLoad?: boolean;
+}): ReactElement {
+  const [url, setUrl] = useState<string | undefined>(undefined);
+  const [busy, setBusy] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [error, setError] = useState<string | undefined>(undefined);
+
+  useEffect(() => {
+    return () => {
+      if (url !== undefined) {
+        try {
+          URL.revokeObjectURL(url);
+        } catch {
+          // jsdom has no object URLs; nothing to revoke.
+        }
+      }
+    };
+  }, [url]);
+
+  const load = async (): Promise<Blob | undefined> => {
+    setBusy(true);
+    setError(undefined);
+    try {
+      const blob = await fetchSticker({
+        assetId: props.assetId,
+        token: useSession.getState().accessToken,
+      });
+      try {
+        setUrl(URL.createObjectURL(blob));
+      } catch {
+        setError("The sticker cannot be previewed in this browser, but it can still be printed.");
+      }
+      return blob;
+    } catch {
+      setError("The sticker could not be loaded. Try again.");
+      return undefined;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  useEffect(() => {
+    // Deliberately keyed on the asset and the flag, not on `load`: the function
+    // is re-created every render because it reads the current bearer token, and
+    // re-running the effect on every render would loop.
+    if (props.autoLoad === true) void load();
+  }, [props.assetId, props.autoLoad]);
+
+  const download = async (): Promise<void> => {
+    setDownloading(true);
+    try {
+      const filename = await downloadSticker({
+        assetId: props.assetId,
+        shortCode: props.shortCode,
+        token: useSession.getState().accessToken,
+      });
+      pushToast({ kind: "success", message: `Downloaded ${filename}.` });
+    } catch (error) {
+      pushToast({ kind: "error", ...describeError(error) });
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  return (
+    <div data-print="sticker" className="rounded-md border border-slate-200 p-3">
+      <div className="no-print flex flex-wrap gap-2">
+        <Button
+          variant="ghost"
+          disabled={busy}
+          onClick={() => {
+            void load();
+          }}
+        >
+          {busy ? "Loading sticker…" : "Show sticker"}
+        </Button>
+        <Button
+          variant="ghost"
+          disabled={busy}
+          onClick={() => {
+            // Print after the image is in the DOM, so the paper carries the QR
+            // rather than a placeholder.
+            void (async () => {
+              if (url === undefined) await load();
+              window.print();
+            })();
+          }}
+        >
+          Print sticker
+        </Button>
+        <Button
+          variant="ghost"
+          disabled={downloading}
+          onClick={() => {
+            void download();
+          }}
+        >
+          {downloading ? "Preparing sticker…" : "Download sticker"}
+        </Button>
+      </div>
+      {url === undefined ? null : (
+        <img
+          src={url}
+          alt={`Sticker for ${props.shortCode}`}
+          className="mx-auto mt-2 w-56 bg-white"
+        />
+      )}
+      {props.caption === undefined ? null : (
+        <p className="mt-1 text-center text-sm text-slate-600">{props.caption}</p>
+      )}
+      <p className="mt-1 text-center font-mono text-lg font-semibold text-slate-900">
+        {props.shortCode}
+      </p>
+      {error === undefined ? null : <p className="mt-1 text-sm text-red-700">{error}</p>}
+    </div>
+  );
+}
+
 function AssetDetail(props: {
   readonly assetId: string;
   readonly assetTypes: readonly TenantAssetType[];
   readonly onChanged: () => Promise<void>;
 }): ReactElement {
   const canManage = useSession((state) => state.hasPermission("asset:manage"));
-  const [downloading, setDownloading] = useState(false);
 
   const detail = useQuery({
     queryKey: ["registry-asset", props.assetId],
@@ -268,22 +698,6 @@ function AssetDetail(props: {
   const photos = detail.data.photos;
   const assetType = findAssetType(props.assetTypes, asset.assetTypeKey);
   const rows = attributeRows(assetType, asset.attributes);
-
-  const download = async (): Promise<void> => {
-    setDownloading(true);
-    try {
-      const filename = await downloadSticker({
-        assetId: asset.id,
-        shortCode: asset.shortCode,
-        token: useSession.getState().accessToken,
-      });
-      pushToast({ kind: "success", message: `Downloaded ${filename}.` });
-    } catch (error) {
-      pushToast({ kind: "error", ...describeError(error) });
-    } finally {
-      setDownloading(false);
-    }
-  };
 
   return (
     <div className="space-y-4">
@@ -306,15 +720,7 @@ function AssetDetail(props: {
           <dd className="font-mono text-xs text-slate-900">{asset.ownerId ?? "—"}</dd>
         </dl>
         <div className="mt-3">
-          <Button
-            variant="ghost"
-            disabled={downloading}
-            onClick={() => {
-              void download();
-            }}
-          >
-            {downloading ? "Preparing sticker…" : "Download sticker"}
-          </Button>
+          <StickerPreview assetId={asset.id} shortCode={asset.shortCode} />
         </div>
         {canManage ? null : (
           <div className="mt-3">

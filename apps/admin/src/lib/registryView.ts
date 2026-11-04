@@ -252,6 +252,57 @@ export function attributesJson(text: string, assetType?: TenantAssetType): Attri
   return { ok: true, attributes };
 }
 
+/**
+ * The attribute that holds a driver's plate.
+ *
+ * The dashboard's driver form asks for four things, but a tenant names its
+ * attributes: the default config uses `plate_number`, another state may use
+ * `registration` or `plateNumber`. The form writes the plate into the type's own
+ * required string attribute, falling back to the first attribute, so a tenant
+ * with a different schema still gets a working form without a code change.
+ */
+export function plateAttributeKey(assetType: TenantAssetType | undefined): string | undefined {
+  const attributes = assetType?.attributes ?? [];
+  return (
+    attributes.find((attribute) => attribute.key === "plate_number")?.key ??
+    attributes.find((attribute) => attribute.required && attribute.type === "string")?.key ??
+    attributes[0]?.key
+  );
+}
+
+export interface DriverInput {
+  readonly displayName: string;
+  readonly phone: string;
+  readonly plate: string;
+  readonly email?: string;
+  readonly assetTypeKey: string;
+  readonly assetType: TenantAssetType | undefined;
+  readonly zoneId?: string;
+}
+
+/**
+ * The body `POST /v1/assets` takes for the dashboard's "Add a driver" form.
+ *
+ * One request creates the owner and the asset, which is the same shape the
+ * collector app used to send: a driver is an owner plus a vehicle, never a login.
+ * A missing plate attribute is left out so the API answers with its own
+ * per-attribute reason rather than the form inventing one.
+ */
+export function driverBody(input: DriverInput): Record<string, unknown> {
+  const attributeKey = plateAttributeKey(input.assetType);
+  const email = input.email?.trim() ?? "";
+  return {
+    assetTypeKey: input.assetTypeKey,
+    attributes: attributeKey === undefined ? {} : { [attributeKey]: input.plate.trim() },
+    owner: {
+      displayName: input.displayName.trim(),
+      phone: input.phone.trim(),
+      ...(email === "" ? {} : { email }),
+    },
+    ...(input.zoneId === undefined || input.zoneId === "" ? {} : { zoneId: input.zoneId }),
+  };
+}
+
 /** The sticker file name a download saves under, derived from the short code. */
 export function stickerFilename(shortCode: string): string {
   const safe = shortCode
@@ -336,6 +387,25 @@ export async function downloadSticker(
   dependencies: StickerDependencies = {},
 ): Promise<string> {
   const path = `/v1/assets/${encodeURIComponent(request.assetId)}/sticker`;
+  const blob = await fetchSticker(request, dependencies);
+  const filename = stickerFilename(request.shortCode);
+  (dependencies.saveBlob ?? saveBlobInBrowser)(blob, filename, path);
+  return filename;
+}
+
+/**
+ * Fetches the sticker as a blob, for the on-screen preview and for printing.
+ *
+ * Same seam as the download: the generated client parses JSON, and the sticker
+ * is an SVG behind the in-memory bearer. Returning a Blob lets the page show it
+ * from an object URL — which is also what makes "Print sticker" print the image
+ * rather than a broken icon.
+ */
+export async function fetchSticker(
+  request: Pick<StickerDownloadRequest, "assetId" | "token">,
+  dependencies: StickerDependencies = {},
+): Promise<Blob> {
+  const path = `/v1/assets/${encodeURIComponent(request.assetId)}/sticker`;
   const fetchImpl = dependencies.fetchImpl ?? fetch;
   const response = await fetchImpl(path, {
     method: "GET",
@@ -347,10 +417,7 @@ export async function downloadSticker(
   if (!response.ok) {
     throw new Error(`Sticker download failed with status ${response.status}`);
   }
-  const filename = stickerFilename(request.shortCode);
-  const blob = await response.blob();
-  (dependencies.saveBlob ?? saveBlobInBrowser)(blob, filename, path);
-  return filename;
+  return await response.blob();
 }
 
 /**

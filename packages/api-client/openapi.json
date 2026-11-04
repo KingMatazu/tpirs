@@ -14,7 +14,8 @@
           "tenantId",
           "displayName",
           "roles",
-          "mustChangeCredentials"
+          "mustChangeCredentials",
+          "zoneId"
         ],
         "properties": {
           "userId": {
@@ -31,6 +32,10 @@
             "items": {
               "type": "string"
             }
+          },
+          "zoneId": {
+            "type": "string",
+            "nullable": true
           },
           "mustChangeCredentials": {
             "type": "boolean"
@@ -210,6 +215,7 @@
           "id",
           "displayName",
           "phone",
+          "email",
           "phoneVerifiedAt"
         ],
         "properties": {
@@ -221,6 +227,10 @@
           },
           "phone": {
             "type": "string"
+          },
+          "email": {
+            "type": "string",
+            "nullable": true
           },
           "phoneVerifiedAt": {
             "type": "string",
@@ -1298,7 +1308,8 @@
                     "homeAddress",
                     "roles",
                     "permissions",
-                    "mustChangeCredentials"
+                    "mustChangeCredentials",
+                    "zoneId"
                   ],
                   "properties": {
                     "userId": {
@@ -1339,6 +1350,10 @@
                     },
                     "mustChangeCredentials": {
                       "type": "boolean"
+                    },
+                    "zoneId": {
+                      "type": "string",
+                      "nullable": true
                     }
                   }
                 }
@@ -4123,6 +4138,10 @@
                       },
                       "phone": {
                         "type": "string"
+                      },
+                      "email": {
+                        "type": "string",
+                        "maxLength": 254
                       }
                     }
                   }
@@ -4515,6 +4534,10 @@
                   },
                   "phone": {
                     "type": "string"
+                  },
+                  "email": {
+                    "type": "string",
+                    "maxLength": 254
                   }
                 }
               }

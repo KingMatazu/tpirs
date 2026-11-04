@@ -5,6 +5,8 @@ export interface OwnerRecord {
   readonly id: string;
   readonly displayName: string;
   readonly phone: string;
+  /** Optional contact address; nothing sends to it yet (migration 0026). */
+  readonly email: string | null;
   readonly phoneVerifiedAt: Date | null;
 }
 
@@ -12,7 +14,10 @@ export interface CreateOwnerInput {
   readonly tenantId: string;
   readonly displayName: string;
   readonly phone: string;
+  readonly email?: string | null;
 }
+
+const OWNER_COLUMNS = ["id", "displayName", "phone", "email", "phoneVerifiedAt"] as const;
 
 export class OwnerRepository {
   constructor(private readonly db: Transaction<Database>) {}
@@ -24,15 +29,16 @@ export class OwnerRepository {
         tenantId: input.tenantId,
         displayName: input.displayName,
         phone: input.phone,
+        email: input.email ?? null,
       })
-      .returning(["id", "displayName", "phone", "phoneVerifiedAt"])
+      .returning(OWNER_COLUMNS)
       .executeTakeFirstOrThrow();
   }
 
   async findById(id: string): Promise<OwnerRecord | undefined> {
     return this.db
       .selectFrom("owners")
-      .select(["id", "displayName", "phone", "phoneVerifiedAt"])
+      .select(OWNER_COLUMNS)
       .where("id", "=", id)
       .executeTakeFirst();
   }
@@ -40,7 +46,7 @@ export class OwnerRepository {
   async findByPhone(phone: string): Promise<OwnerRecord | undefined> {
     return this.db
       .selectFrom("owners")
-      .select(["id", "displayName", "phone", "phoneVerifiedAt"])
+      .select(OWNER_COLUMNS)
       .where("phone", "=", phone)
       .executeTakeFirst();
   }
@@ -51,7 +57,7 @@ export class OwnerRepository {
       .updateTable("owners")
       .set({ phoneVerifiedAt: new Date(), updatedAt: new Date() })
       .where("id", "=", id)
-      .returning(["id", "displayName", "phone", "phoneVerifiedAt"])
+      .returning(OWNER_COLUMNS)
       .executeTakeFirstOrThrow();
   }
 }

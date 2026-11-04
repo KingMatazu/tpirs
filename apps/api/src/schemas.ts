@@ -28,12 +28,14 @@ const UUID_SCHEMA_PATTERN =
 const staffUser = {
   $id: "StaffUser",
   type: "object",
-  required: ["userId", "tenantId", "displayName", "roles", "mustChangeCredentials"],
+  required: ["userId", "tenantId", "displayName", "roles", "mustChangeCredentials", "zoneId"],
   properties: {
     userId: { type: "string" },
     tenantId: { type: "string" },
     displayName: { type: "string" },
     roles: { type: "array", items: { type: "string" } },
+    /** The zone a supervisor is responsible for; null for every other role. */
+    zoneId: { type: "string", nullable: true },
     /**
      * True while the account still holds the credentials it was provisioned
      * with. A client must send the user to the credential step rather than the
@@ -95,11 +97,13 @@ const photoRef = {
 const owner = {
   $id: "Owner",
   type: "object",
-  required: ["id", "displayName", "phone", "phoneVerifiedAt"],
+  required: ["id", "displayName", "phone", "email", "phoneVerifiedAt"],
   properties: {
     id: { type: "string" },
     displayName: { type: "string" },
     phone: { type: "string" },
+    /** Optional contact address (migration 0026); nothing sends to it yet. */
+    email: { type: "string", nullable: true },
     phoneVerifiedAt: { type: "string", nullable: true },
   },
 };
@@ -723,6 +727,7 @@ export const authMeSchema: FastifySchema = {
         "roles",
         "permissions",
         "mustChangeCredentials",
+        "zoneId",
       ],
       properties: {
         userId: { type: "string" },
@@ -735,6 +740,8 @@ export const authMeSchema: FastifySchema = {
         roles: { type: "array", items: { type: "string" } },
         permissions: { type: "array", items: { type: "string" } },
         mustChangeCredentials: { type: "boolean" },
+        /** The zone a supervisor is responsible for; null for other roles. */
+        zoneId: { type: "string", nullable: true },
       },
     },
   },
@@ -969,7 +976,11 @@ export const createAssetSchema: FastifySchema = {
       owner: {
         type: "object",
         required: ["displayName", "phone"],
-        properties: { displayName: { type: "string" }, phone: { type: "string" } },
+        properties: {
+          displayName: { type: "string" },
+          phone: { type: "string" },
+          email: { type: "string", maxLength: 254 },
+        },
       },
     },
   },
@@ -1061,7 +1072,11 @@ export const createOwnerSchema: FastifySchema = {
   body: {
     type: "object",
     required: ["displayName", "phone"],
-    properties: { displayName: { type: "string" }, phone: { type: "string" } },
+    properties: {
+      displayName: { type: "string" },
+      phone: { type: "string" },
+      email: { type: "string", maxLength: 254 },
+    },
   },
   response: {
     201: { type: "object", required: ["owner"], properties: { owner: { $ref: "Owner#" } } },

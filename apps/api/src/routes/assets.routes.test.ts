@@ -411,6 +411,36 @@ describeIntegration("api asset registry e2e (integration)", () => {
     expect((verified.json() as { status: string }).status).toBe("suspended");
   });
 
+  it("registers a driver's owner with an optional email", async () => {
+    // The dashboard's driver form sends the owner inline; the email is optional
+    // and is the one field a driver does not need to pay.
+    const created = await app.inject({
+      method: "POST",
+      url: "/v1/assets",
+      headers: { authorization: `Bearer ${managerToken}` },
+      payload: {
+        assetTypeKey: "bike",
+        attributes: { plate_number: "DRV001" },
+        owner: {
+          displayName: "Musa Driver",
+          phone: "+2348055556666",
+          email: "musa@example.com",
+        },
+      },
+    });
+    expect(created.statusCode).toBe(201);
+    const asset = (created.json() as { asset: { ownerId: string; shortCode: string } }).asset;
+    const owner = await app.inject({
+      method: "GET",
+      url: `/v1/owners/${asset.ownerId}`,
+      headers: { authorization: `Bearer ${managerToken}` },
+    });
+    expect(owner.statusCode).toBe(200);
+    expect((owner.json() as { owner: { email: string | null } }).owner.email).toBe(
+      "musa@example.com",
+    );
+  });
+
   it("verifies an owner's phone end to end through the SMS provider", async () => {
     const ownerResponse = await app.inject({
       method: "POST",

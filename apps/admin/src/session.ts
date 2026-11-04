@@ -10,6 +10,11 @@ export interface StaffUser {
   readonly roles: readonly string[];
   readonly permissions: readonly string[];
   /**
+   * The zone a supervisor is responsible for. Null for every other role; the
+   * driver form locks to it rather than offering a choice the server refuses.
+   */
+  readonly zoneId?: string | null;
+  /**
    * True while the account still holds the credentials it was provisioned with.
    * The server refuses every route except the completion one until it is false;
    * the client mirrors that by sending such an account to the credential screen.

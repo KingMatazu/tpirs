@@ -12,11 +12,14 @@ import {
   attributesJsonText,
   correctionBody,
   downloadSticker,
+  driverBody,
+  fetchSticker,
   findAssetType,
   ownerCreateBody,
   ownerVerifiedLabel,
   ownerVerifyConfirmBody,
   ownerVerifyRequestBody,
+  plateAttributeKey,
   registryQueryParams,
   stickerFilename,
   suspendBody,
@@ -308,3 +311,79 @@ function headerValue(headers: HeadersInit | undefined): string | undefined {
   const record = headers as Record<string, string>;
   return record["authorization"];
 }
+
+describe("driver registration", () => {
+  const config = loadFixtureConfig();
+  const bike = findAssetType(config.assetTypes, "bike");
+
+  it("finds the attribute that holds a plate, whatever the tenant calls it", () => {
+    expect(plateAttributeKey(bike)).toBe("plate_number");
+    const renamed: TenantAssetType = {
+      ...(bike as TenantAssetType),
+      attributes: [{ key: "registration", label: "Registration", type: "string", required: true }],
+    };
+    expect(plateAttributeKey(renamed)).toBe("registration");
+    expect(plateAttributeKey(undefined)).toBeUndefined();
+  });
+
+  it("builds the body from four answers, with no password and no account", () => {
+    const body = driverBody({
+      displayName: "  Musa Driver  ",
+      phone: " 08012345678 ",
+      plate: " XYZ123 ",
+      email: "  ",
+      assetTypeKey: "bike",
+      assetType: bike,
+      zoneId: "",
+    });
+    expect(body).toEqual({
+      assetTypeKey: "bike",
+      attributes: { plate_number: "XYZ123" },
+      owner: { displayName: "Musa Driver", phone: "08012345678" },
+    });
+    expect(JSON.stringify(body)).not.toContain("password");
+  });
+
+  it("includes the email and zone only when they are given", () => {
+    const body = driverBody({
+      displayName: "Musa Driver",
+      phone: "08012345678",
+      plate: "XYZ123",
+      email: "musa@example.com",
+      assetTypeKey: "bike",
+      assetType: bike,
+      zoneId: "zone-a",
+    });
+    expect(body).toMatchObject({
+      owner: { email: "musa@example.com" },
+      zoneId: "zone-a",
+    });
+  });
+});
+
+describe("fetchSticker", () => {
+  it("sends the bearer and returns the image body", async () => {
+    const seen: { url: string; authorization: string | undefined }[] = [];
+    const fetchImpl = (async (url: string, init?: RequestInit) => {
+      const headers = new Headers(init?.headers);
+      seen.push({ url, authorization: headers.get("authorization") ?? undefined });
+      return new Response("<svg/>", {
+        status: 200,
+        headers: { "content-type": "image/svg+xml" },
+      });
+    }) as unknown as typeof fetch;
+
+    const blob = await fetchSticker({ assetId: "as_1", token: "tok" }, { fetchImpl });
+    expect(blob.size).toBeGreaterThan(0);
+    expect(seen[0]?.url).toBe("/v1/assets/as_1/sticker");
+    expect(seen[0]?.authorization).toBe("Bearer tok");
+  });
+
+  it("fails loudly rather than printing an error page", async () => {
+    const fetchImpl = (async () =>
+      new Response("nope", { status: 401 })) as unknown as typeof fetch;
+    await expect(fetchSticker({ assetId: "as_1", token: "tok" }, { fetchImpl })).rejects.toThrow(
+      /status 401/,
+    );
+  });
+});
