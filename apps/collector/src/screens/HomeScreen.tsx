@@ -15,7 +15,6 @@ export function HomeScreen(
   props: Readonly<{
     onCollect: () => void;
     onDeposit: () => void;
-    onRegister: () => void;
     onProfile: () => void;
   }>,
 ): ReactElement {
@@ -98,8 +97,6 @@ export function HomeScreen(
           <p className="text-lg font-semibold text-slate-900">{todayIntakes.length}</p>
         </Card>
       </div>
-
-      <SecondaryButton onClick={props.onRegister}>Register vehicle</SecondaryButton>
 
       <SecondaryButton onClick={props.onDeposit}>
         Deposit cash

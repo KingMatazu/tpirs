@@ -5,8 +5,8 @@ import type { TenantConfig } from "@tpirs/config";
  * A minimal but *validated* tenant config for the collector app's tests.
  *
  * It goes through the real loader on purpose: a hand-built literal would drift
- * from the schema, and the registration form is driven entirely by the asset-type
- * attributes declared here.
+ * from the schema, and the fee the confirm screen shows is resolved from the
+ * fee rule declared here.
  */
 const YAML = `
 identity:

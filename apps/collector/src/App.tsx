@@ -7,7 +7,6 @@ import { FindScreen, type FoundAsset } from "./screens/FindScreen.js";
 import { ConfirmScreen } from "./screens/ConfirmScreen.js";
 import { DoneScreen } from "./screens/DoneScreen.js";
 import { DepositScreen } from "./screens/DepositScreen.js";
-import { RegisterScreen } from "./screens/RegisterScreen.js";
 import { ProfileScreen } from "./screens/ProfileScreen.js";
 
 type Screen =
@@ -16,13 +15,16 @@ type Screen =
   | { readonly name: "confirm"; readonly asset: FoundAsset }
   | { readonly name: "done"; readonly receiptNumber: string; readonly replayed: boolean }
   | { readonly name: "deposit" }
-  | { readonly name: "register" }
   | { readonly name: "profile" };
 
 /**
  * The collector flow: home → find → confirm → done, with deposit reachable from
  * home and from a blocked confirm. One screen at a time, no navigation stack: a
  * collector mid-queue should never end up two levels deep in a menu.
+ *
+ * Registering a vehicle is deliberately not here. A collector takes cash; adding
+ * a driver to the register is a supervisory act (a zone supervisor or a system
+ * admin), and the API refuses `POST /v1/assets` without `asset:create`.
  */
 export function App(): ReactElement {
   const status = useSession((state) => state.status);
@@ -56,9 +58,6 @@ export function App(): ReactElement {
         <HomeScreen
           onCollect={() => {
             setScreen({ name: "find" });
-          }}
-          onRegister={() => {
-            setScreen({ name: "register" });
           }}
           onDeposit={() => {
             setScreen({ name: "deposit" });
@@ -108,8 +107,6 @@ export function App(): ReactElement {
       );
     case "deposit":
       return <DepositScreen onBack={goHome} />;
-    case "register":
-      return <RegisterScreen onBack={goHome} />;
     case "profile":
       return <ProfileScreen onBack={goHome} />;
   }
