@@ -6,22 +6,17 @@ import {
   isOverdue,
   matchCandidates,
   newClientReference,
-  prefillAmountMinor,
   walletStatusLabel,
   type CashDepositView,
   type CashIntakeView,
   type CashWalletView,
 } from "./collectorsView.js";
-import { loadFixtureConfig } from "../test-support/tenant.js";
 
 /**
- * The pure rules behind the collector screen. The fee pre-fill is the one that
- * can quietly take the wrong amount, so it is pinned here: the newest rule that
- * is already effective wins, a future rule is ignored, and an unknown asset
- * type pre-fills nothing (the API then rejects the intake rather than guessing).
+ * The pure rules behind the collector screen. The fee itself is no longer
+ * derived here: the screen asks the tenant's fee engine (`tenantFee.ts`), so
+ * there is one answer rather than two.
  */
-
-const config = loadFixtureConfig();
 
 const baseWallet: CashWalletView = {
   collectorUserId: "c1",
@@ -35,28 +30,6 @@ const baseWallet: CashWalletView = {
   oldestOpenIntakeAt: null,
   lastDepositAt: null,
 };
-
-describe("prefillAmountMinor", () => {
-  it("uses the newest rule that is already effective", () => {
-    const withRule = {
-      ...config,
-      obligations: {
-        ...config.obligations,
-        feeRules: [
-          { key: "old", assetTypeKey: "bike", amountMinor: 10000, effectiveFrom: "2026-01-01" },
-          { key: "new", assetTypeKey: "bike", amountMinor: 20000, effectiveFrom: "2026-06-01" },
-          { key: "future", assetTypeKey: "bike", amountMinor: 30000, effectiveFrom: "2027-01-01" },
-        ],
-      },
-    };
-    expect(prefillAmountMinor(withRule, "bike", "2026-10-28")).toBe("20000");
-    expect(prefillAmountMinor(withRule, "bike", "2026-03-01")).toBe("10000");
-  });
-
-  it("returns undefined for an asset type the tenant has no rule for", () => {
-    expect(prefillAmountMinor(config, "market-stall", "2026-10-28")).toBeUndefined();
-  });
-});
 
 describe("isOverdue", () => {
   const now = new Date("2026-10-28T12:00:00.000Z");

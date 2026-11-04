@@ -66,14 +66,26 @@ describe("decideCollect", () => {
     expect(decision).toMatchObject({ allowed: false, reason: "offline" });
   });
 
-  it("does not block on a zero fee", () => {
+  it("blocks a day the tenant has not priced", () => {
+    // A zero fee is "no rule for this vehicle today", not a free day: the phone
+    // must not offer to collect nothing. The state prices a vehicle by rule.
     const decision = decideCollect({
       wallet: wallet({ balanceMinor: "0" }),
       paymentStatus: "no_payment_recorded",
       feeMinor: 0n,
       online: true,
     });
-    expect(decision.allowed).toBe(true);
+    expect(decision).toMatchObject({ allowed: false, reason: "no_fee" });
+  });
+
+  it("keeps already-paid ahead of no fee, so a settled day reads as settled", () => {
+    const decision = decideCollect({
+      wallet: wallet(),
+      paymentStatus: "paid",
+      feeMinor: 0n,
+      online: true,
+    });
+    expect(decision.reason).toBe("already_paid");
   });
 });
 

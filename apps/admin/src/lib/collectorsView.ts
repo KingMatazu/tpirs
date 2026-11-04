@@ -1,11 +1,9 @@
-import type { TenantConfig } from "@tpirs/config";
-
 /**
  * Pure helpers behind the collector cash screen.
  *
- * Kept out of the page component so the interesting rules — which fee rule
- * pre-fills the amount, what counts as overdue, how a client reference is
- * minted — are unit-testable without rendering, and so the page itself stays a
+ * Kept out of the page component so the interesting rules — what counts as
+ * overdue, how a client reference is minted, which deposits can match which
+ * intakes — are unit-testable without rendering, and so the page itself stays a
  * thin arrangement of queries and forms.
  */
 
@@ -55,24 +53,6 @@ export interface AssetLookupRow {
   readonly assetTypeKey: string;
   readonly shortCode: string;
   readonly attributes: Readonly<Record<string, unknown>>;
-}
-
-/**
- * The amount the form pre-fills: the newest effective rule for the asset type.
- *
- * This is a convenience only. The fee engine decides what the day costs and the
- * API refuses an intake that does not match exactly (`amount_mismatch`), so a
- * stale pre-fill surfaces as a clear error instead of taking the wrong cash.
- */
-export function prefillAmountMinor(
-  config: TenantConfig,
-  assetTypeKey: string,
-  today: string,
-): string | undefined {
-  const rules = config.obligations.feeRules
-    .filter((rule) => rule.assetTypeKey === assetTypeKey && rule.effectiveFrom <= today)
-    .sort((left, right) => (left.effectiveFrom < right.effectiveFrom ? 1 : -1));
-  return rules[0] === undefined ? undefined : String(rules[0].amountMinor);
 }
 
 /** The driver-facing name of an asset, from its own attributes (D7). */

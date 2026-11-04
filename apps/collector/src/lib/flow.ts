@@ -20,7 +20,8 @@ export interface WalletView {
   } | null;
 }
 
-export type BlockedReason = "frozen" | "already_paid" | "float_low" | "offline" | "unknown_asset";
+export type BlockedReason =
+  "frozen" | "already_paid" | "no_fee" | "float_low" | "offline" | "unknown_asset";
 
 export interface CollectDecision {
   readonly allowed: boolean;
@@ -45,8 +46,13 @@ export function floatLeftMinor(wallet: WalletView | undefined): bigint {
 
 /**
  * The order matters: a frozen wallet blocks before anything else, then an
- * already-paid asset, then a wallet that cannot cover another fee, then the
- * network. The first true reason is the one the phone explains.
+ * already-paid asset, then a day the tenant has not priced, then a wallet that
+ * cannot cover another fee, then the network. The first true reason is the one
+ * the phone explains.
+ *
+ * The fee is the tenant's, never the collector's: a zero fee means the fee
+ * engine found no rule for this vehicle today, and collecting nothing is not a
+ * payment. The amount is not an input the phone can change.
  */
 export function decideCollect(input: {
   readonly wallet: WalletView | undefined;
@@ -62,7 +68,10 @@ export function decideCollect(input: {
   if (input.paymentStatus === "paid") {
     return { allowed: false, reason: "already_paid", floatLeftMinor: left };
   }
-  if (input.feeMinor > 0n && left < input.feeMinor) {
+  if (input.feeMinor <= 0n) {
+    return { allowed: false, reason: "no_fee", floatLeftMinor: left };
+  }
+  if (left < input.feeMinor) {
     return { allowed: false, reason: "float_low", floatLeftMinor: left };
   }
   if (!input.online) {

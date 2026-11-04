@@ -1,11 +1,6 @@
 import { useMemo, useState, type FormEvent, type ReactElement } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  formatMajorAmountInput,
-  formatMoneyMinor,
-  formatTimestamp,
-  parseMajorToMinor,
-} from "@tpirs/ui-tokens";
+import { formatMoneyMinor, formatTimestamp } from "@tpirs/ui-tokens";
 import { api } from "../api/client.js";
 import { unwrap } from "../api/unwrap.js";
 import { Badge, Button, Card, EmptyState, Field, TextInput } from "../components/ui.js";
@@ -16,13 +11,13 @@ import {
   isOverdue,
   matchCandidates,
   newClientReference,
-  prefillAmountMinor,
   walletStatusLabel,
   type AssetLookupRow,
   type CashDepositView,
   type CashIntakeView,
   type CashWalletView,
 } from "../lib/collectorsView.js";
+import { resolveTenantFeeMinor } from "../lib/tenantFee.js";
 import { useTenantConfig } from "../lib/tenantConfig.js";
 import { describeError, pushToast } from "../toast.js";
 import { useSession } from "../session.js";
@@ -539,10 +534,10 @@ function TakeCashForm(props: {
 }): ReactElement {
   const { config } = useTenantConfig();
   const [assetId, setAssetId] = useState("");
-  // The amount is entered and shown in major units (₦200.00), never as minor
-  // units: a collector reading "20000" for ₦200 is a mis-charge waiting to
-  // happen. It is converted to minor units only on submit.
-  const [amount, setAmount] = useState("");
+  // The fee is the tenant's, resolved by the same fee engine the API checks
+  // against. There is no amount input: the API refuses anything but the exact
+  // fee (`amount_mismatch`), so an editable box could only produce a refusal.
+  const [feeMinor, setFeeMinor] = useState<bigint | undefined>(undefined);
   const [searchText, setSearchText] = useState("");
   const [appliedSearch, setAppliedSearch] = useState("");
   // The client reference is the intake's idempotency key, generated per intake
@@ -569,15 +564,12 @@ function TakeCashForm(props: {
 
   const chooseAsset = (id: string): void => {
     setAssetId(id);
+    setFeeMinor(undefined);
     const asset = assetOptions.find((row) => row.id === id);
-    if (asset !== undefined && tenantConfig !== undefined) {
-      const minor = prefillAmountMinor(tenantConfig, asset.assetTypeKey, today);
-      setAmount(
-        minor === undefined
-          ? ""
-          : formatMajorAmountInput(minor, props.currency, tenantConfig.locale.numberFormat),
-      );
-    }
+    if (asset === undefined || tenantConfig === undefined) return;
+    void resolveTenantFeeMinor(tenantConfig, asset.assetTypeKey, today).then((minor) => {
+      setFeeMinor(minor);
+    });
   };
 
   const submit = async (event: FormEvent): Promise<void> => {
@@ -586,9 +578,11 @@ function TakeCashForm(props: {
       pushToast({ kind: "error", message: "Search for an asset and pick it first." });
       return;
     }
-    const amountMinor = parseMajorToMinor(amount, props.currency, numberFormat);
-    if (amountMinor === undefined || amountMinor <= 0n) {
-      pushToast({ kind: "error", message: `Enter the amount as ${props.currency}, e.g. 200.00.` });
+    if (feeMinor === undefined || feeMinor <= 0n) {
+      pushToast({
+        kind: "error",
+        message: "This vehicle has no fee for today, so there is nothing to record.",
+      });
       return;
     }
     setBusy(true);
@@ -598,7 +592,7 @@ function TakeCashForm(props: {
           body: {
             collectorUserId: props.collectorUserId,
             clientReference,
-            amountMinor: amountMinor.toString(),
+            amountMinor: feeMinor.toString(),
             currency: props.currency,
             assetId,
           },
@@ -614,7 +608,7 @@ function TakeCashForm(props: {
       // A new reference for the next driver: the old one is now a spent key.
       setClientReference(newClientReference(props.collectorUserId));
       setAssetId("");
-      setAmount("");
+      setFeeMinor(undefined);
       setSearchText("");
       setAppliedSearch("");
     } catch (error) {
@@ -627,7 +621,7 @@ function TakeCashForm(props: {
   return (
     <Card
       title="Take cash"
-      description="Search by short code or plate, pick the vehicle, and the fee fills the amount."
+      description="Search by short code or plate, pick the vehicle, and the tenant's fee is shown."
     >
       <form className="space-y-3" onSubmit={(event) => void submit(event)}>
         <div className="grid gap-3 sm:grid-cols-3">
@@ -675,10 +669,20 @@ function TakeCashForm(props: {
             </select>
           </Field>
           <Field
-            label={`Amount (${props.currency})`}
-            hint="Pre-filled from the effective fee rule. Edit only if the fee is different."
+            label={`Fee today (${props.currency})`}
+            hint={
+              assetId === ""
+                ? "Pick an asset to see the tenant's fee."
+                : feeMinor === undefined
+                  ? "No fee rule matches this vehicle today."
+                  : "Set by the tenant's fee rule. It cannot be changed here."
+            }
           >
-            <TextInput name="amount" inputMode="text" value={amount} onValueChange={setAmount} />
+            <p className="text-lg font-semibold tracking-wide text-slate-900">
+              {feeMinor === undefined
+                ? "—"
+                : formatMoneyMinor(feeMinor, props.currency, numberFormat)}
+            </p>
           </Field>
         </div>
         <Button type="submit" disabled={busy}>

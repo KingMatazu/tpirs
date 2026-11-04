@@ -251,7 +251,7 @@ describe("CollectorsPage", () => {
     expect(requests.some((row) => row.path === "/v1/cash/wallets")).toBe(false);
   });
 
-  it("searches by plate, pre-fills the fee in major units, and mints the reference", async () => {
+  it("searches by plate, shows the tenant's fee, and mints the reference", async () => {
     await openWallet();
 
     // The form searches the server instead of listing every asset, so the
@@ -263,10 +263,12 @@ describe("CollectorsPage", () => {
 
     fireEvent.change(screen.getByLabelText("Asset"), { target: { value: "as_1" } });
 
-    // Major units on screen: ₦200 is "200.00", never "20000".
-    await waitFor(() => {
-      expect(input("amount")?.value).toBe("200.00");
-    });
+    // The fee is stated, never typed: the API refuses anything but the exact
+    // fee, so the screen has no amount field to get it wrong with.
+    expect(await screen.findByText(/cannot be changed here/i)).toBeTruthy();
+    expect(screen.getAllByText(money).length).toBeGreaterThan(0);
+    expect(input("amount")).toBeNull();
+    expect(screen.queryByRole("textbox", { name: /amount/i })).toBeNull();
 
     fireEvent.click(screen.getByText("Record cash intake"));
 

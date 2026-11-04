@@ -17,6 +17,7 @@
     "@tpirs/api-client": "workspace:*",
     "@tpirs/config": "workspace:*",
     "@tpirs/domain": "workspace:*",
+    "@tpirs/fee-engine-config": "workspace:*",
     "@tpirs/i18n": "workspace:*",
     "@tpirs/ui-tokens": "workspace:*",
     "lucide-react": "^0.469.0",

@@ -1,23 +1,21 @@
 import { useEffect, useState, type ReactElement } from "react";
-import { formatMajorAmountInput, formatMoneyMinor, parseMajorToMinor } from "@tpirs/ui-tokens";
+import { formatMoneyMinor } from "@tpirs/ui-tokens";
 import { api } from "../api/client.js";
-import {
-  Banner,
-  Card,
-  Field,
-  PrimaryButton,
-  Screen,
-  SecondaryButton,
-  inputClass,
-} from "../components/ui.js";
+import { Banner, Card, Field, PrimaryButton, Screen, SecondaryButton } from "../components/ui.js";
 import { decideCollect } from "../lib/flow.js";
 import { businessDateFor, resolveFeeMinor, useTenantConfig, useWallet } from "../lib/data.js";
 import { plateOf, type FoundAsset } from "./FindScreen.js";
 
 /**
- * Confirm: the amount, today's status, and whether cash may be taken. The
+ * Confirm: today's fee, today's status, and whether cash may be taken. The
  * decision comes from `decideCollect` so the same rules drive the tests; the
  * server enforces them again on the intake.
+ *
+ * The amount is **not** a field. The fee is the tenant's, resolved with the same
+ * engine the API checks against, and the API refuses any other amount
+ * (`amount_mismatch`). An editable box could therefore only produce a rejection
+ * with the driver standing at the bike; the state changes a fee by changing its
+ * fee rule, not by a collector retyping it.
  */
 /**
  * Cash refusals the collector can act on. The API's message is written for an
@@ -53,7 +51,6 @@ export function ConfirmScreen(
   const config = useTenantConfig();
   const wallet = useWallet();
   const [feeMinor, setFeeMinor] = useState<bigint | undefined>(undefined);
-  const [amount, setAmount] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
   const [online, setOnline] = useState(() => globalThis.navigator.onLine);
@@ -81,11 +78,8 @@ export function ConfirmScreen(
     if (config === undefined) return;
     void resolveFeeMinor(config, props.asset.assetTypeKey, today).then((fee) => {
       setFeeMinor(fee);
-      if (fee !== undefined) {
-        setAmount(formatMajorAmountInput(fee, currency, numberFormat));
-      }
     });
-  }, [config, props.asset.assetTypeKey, today, currency, numberFormat]);
+  }, [config, props.asset.assetTypeKey, today]);
 
   const decision = decideCollect({
     wallet: wallet.data?.wallet,
@@ -94,14 +88,13 @@ export function ConfirmScreen(
     online,
   });
 
-  // What the button will send: the edited amount when it parses, else the rule.
-  const typedMinor = parseMajorToMinor(amount, currency, numberFormat);
-  const displayMinor = typedMinor ?? feeMinor ?? 0n;
+  const displayMinor = feeMinor ?? 0n;
 
   const submit = async (): Promise<void> => {
-    const minor = parseMajorToMinor(amount, currency, numberFormat);
-    if (minor === undefined || minor <= 0n) {
-      setError(`Enter the amount as ${currency}, e.g. 200.00.`);
+    // The decision already refuses a day the tenant has not priced, so this
+    // guard only covers a fee that arrived after the render.
+    if (feeMinor === undefined || feeMinor <= 0n) {
+      setError("No fee is set for this vehicle today, so there is nothing to collect.");
       return;
     }
     setBusy(true);
@@ -112,7 +105,7 @@ export function ConfirmScreen(
         body: {
           collectorUserId,
           assetId: props.asset.assetId,
-          amountMinor: minor.toString(),
+          amountMinor: feeMinor.toString(),
           currency,
           // Minted per intake: the server treats it as the idempotency key, so a
           // retry returns the same receipt instead of taking cash twice.
@@ -182,23 +175,18 @@ export function ConfirmScreen(
       <Card>
         <Field
           label={`Fee today (${currency})`}
-          hint="Pre-filled from the tenant's fee rule. Edit only if the fee is different."
+          hint="Set by the state for this vehicle type. It cannot be changed here."
           {...(error === undefined ? {} : { error })}
         >
-          <input
-            className={inputClass}
-            inputMode="text"
-            value={amount}
-            onChange={(event) => {
-              setAmount(event.currentTarget.value);
-            }}
-          />
+          <p className="text-2xl font-semibold tracking-wide text-slate-900">
+            {feeMinor === undefined ? "—" : formatMoneyMinor(feeMinor, currency, numberFormat)}
+          </p>
         </Field>
         {feeMinor === undefined ? (
           <p className="mt-2 text-xs text-amber-900">No fee rule matches this vehicle today.</p>
         ) : (
           <p className="mt-2 text-xs text-slate-500">
-            Rule amount: {formatMoneyMinor(feeMinor, currency, numberFormat)}
+            The same amount is checked again by the server when the cash is recorded.
           </p>
         )}
       </Card>
@@ -231,6 +219,13 @@ function BlockedBanner(
 ): ReactElement {
   if (props.reason === "already_paid") {
     return <Banner tone="success">Already paid today. No cash needed.</Banner>;
+  }
+  if (props.reason === "no_fee") {
+    return (
+      <Banner tone="warning">
+        No fee is set for this vehicle today, so there is nothing to collect.
+      </Banner>
+    );
   }
   if (props.reason === "frozen") {
     return <Banner tone="danger">Wallet frozen. Finance must unfreeze it.</Banner>;
