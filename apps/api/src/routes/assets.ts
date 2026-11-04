@@ -59,6 +59,31 @@ function serializeOwner(owner: OwnerRecord) {
   };
 }
 
+/** The role whose holder registers only inside the zone they are responsible for. */
+const SUPERVISOR_ROLE = "zone_supervisor";
+
+/**
+ * The zone a registration may land in.
+ *
+ * A zone supervisor holds `asset:create` and is responsible for one zone: they
+ * register there and nowhere else. A system admin has no such limit. A
+ * supervisor whose zone was never recorded is refused rather than treated as
+ * "everywhere" — failing closed is the only safe reading of a missing answer.
+ */
+export function registrationZone(
+  principal: { readonly roles: readonly string[]; readonly zoneId: string | null },
+  requested: string | undefined,
+):
+  | { readonly ok: true; readonly zoneId: string | undefined }
+  | { readonly ok: false; readonly reason: string } {
+  if (!principal.roles.includes(SUPERVISOR_ROLE)) return { ok: true, zoneId: requested };
+  if (principal.zoneId === null) return { ok: false, reason: "zone_required" };
+  if (requested !== undefined && requested !== principal.zoneId) {
+    return { ok: false, reason: "cross_zone" };
+  }
+  return { ok: true, zoneId: principal.zoneId };
+}
+
 function badRequest(request: FastifyRequest, reply: FastifyReply, message: string) {
   return reply.code(400).send({ error: { code: "bad_request", message, requestId: request.id } });
 }
@@ -109,12 +134,25 @@ export function registerAssetRoutes(app: FastifyInstance, context: AssetRoutesCo
             phone: asString(ownerRecord.phone) ?? "",
             ...(ownerEmail === undefined ? {} : { email: ownerEmail }),
           };
+    const zone = registrationZone(principal, zoneId);
+    if (!zone.ok) {
+      return reply.code(403).send({
+        error: {
+          code: zone.reason,
+          message:
+            zone.reason === "zone_required"
+              ? "Your account has no zone, so it cannot register a driver. Ask an administrator to assign one."
+              : "You can only register a driver in your own zone.",
+          requestId: request.id,
+        },
+      });
+    }
     try {
       const asset = await services.asset.register({
         tenantId: principal.tenantId,
         assetTypeKey,
         attributes,
-        ...(zoneId === undefined ? {} : { zoneId }),
+        ...(zone.zoneId === undefined ? {} : { zoneId: zone.zoneId }),
         ...(ownerId === undefined ? {} : { ownerId }),
         ...(ownerInput === undefined ? {} : { owner: ownerInput }),
         createdByUserId: principal.userId,

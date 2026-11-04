@@ -175,6 +175,42 @@ describeIntegration("api asset registry e2e (integration)", () => {
         roleId: readerRole.id,
       });
 
+      // Two supervisors: one with a zone, one whose zone was never recorded.
+      const supervisorRole = await repos.roles.create({
+        tenantId: tenantA.id,
+        key: "zone_supervisor",
+        name: "Zone Supervisor",
+        permissions: ["asset:read", "asset:manage", "asset:create"],
+      });
+      const central = await repos.zones.create({
+        tenantId: tenantA.id,
+        parentZoneId: null,
+        name: "Central",
+      });
+      supervisorZoneId = central.id;
+      const supervisor = await repos.users.create({
+        tenantId: tenantA.id,
+        username: "ae.supervisor",
+        displayName: "AE Supervisor",
+        passwordHash,
+        totpSecret: null,
+        zoneId: central.id,
+      });
+      const unzoned = await repos.users.create({
+        tenantId: tenantA.id,
+        username: "ae.unzoned",
+        displayName: "AE Unzoned",
+        passwordHash,
+        totpSecret: null,
+      });
+      for (const userId of [supervisor.id, unzoned.id]) {
+        await repos.roles.assignToUser({
+          tenantId: tenantA.id,
+          userId,
+          roleId: supervisorRole.id,
+        });
+      }
+
       const tenantB = await repos.tenants.create({
         slug: slugB,
         name: "Asset E2E B",
@@ -243,6 +279,7 @@ describeIntegration("api asset registry e2e (integration)", () => {
   let readerToken = "";
   let otherTenantToken = "";
   let assetId = "";
+  let supervisorZoneId = "";
   let qrToken = "";
   let shortCode = "";
 
@@ -299,6 +336,51 @@ describeIntegration("api asset registry e2e (integration)", () => {
       payload: { assetTypeKey: "bike", attributes: { plate_number: "XYZ987" } },
     });
     expect(response.statusCode).toBe(403);
+  });
+
+  it("confines a supervisor's registration to their own zone", async () => {
+    const token = await login(slugA, "ae.supervisor");
+    const register = async (
+      plate: string,
+      zoneId?: string,
+    ): Promise<{
+      statusCode: number;
+      body: { asset?: { zoneId: string | null }; error?: { code: string } };
+    }> => {
+      const response = await app.inject({
+        method: "POST",
+        url: "/v1/assets",
+        headers: { authorization: `Bearer ${token}` },
+        payload: {
+          assetTypeKey: "bike",
+          attributes: { plate_number: plate },
+          ...(zoneId === undefined ? {} : { zoneId }),
+        },
+      });
+      return { statusCode: response.statusCode, body: response.json() };
+    };
+
+    // No zone in the body: the supervisor's own zone is filled in.
+    const own = await register("SUP001");
+    expect(own.statusCode).toBe(201);
+    expect(own.body.asset?.zoneId).toBe(supervisorZoneId);
+
+    // Another zone is refused, not silently replaced.
+    const foreign = await register("SUP002", "00000000-0000-4000-8000-000000000000");
+    expect(foreign.statusCode).toBe(403);
+    expect(foreign.body.error?.code).toBe("cross_zone");
+  });
+
+  it("refuses a supervisor whose account has no zone", async () => {
+    const token = await login(slugA, "ae.unzoned");
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/assets",
+      headers: { authorization: `Bearer ${token}` },
+      payload: { assetTypeKey: "bike", attributes: { plate_number: "SUP003" } },
+    });
+    expect(response.statusCode).toBe(403);
+    expect((response.json() as { error: { code: string } }).error.code).toBe("zone_required");
   });
 
   it("fails closed when another tenant asks for the asset", async () => {
