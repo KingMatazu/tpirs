@@ -226,6 +226,49 @@ Accounts created **before** this change are still flagged and were previously
 unusable on the officer and collector apps. They now reach the password screen on
 their next sign-in; nothing needs to be reset.
 
+### Recovering the administrator who created the tenant
+
+There is no email sender yet, so a forgotten administrator password has two
+temporary ways back (ADR 0060). Both are removed when password reset by email
+ships.
+
+**Still signed in somewhere.** Accounts → **My password** → type or **Generate for
+me** a temporary password → **Set temporary password**. Every other session ends,
+and the app immediately asks you to choose a real one.
+
+**Signed out everywhere.** Call the setup route with the deployment's
+`SETUP_TOKEN` (the same secret the first-run wizard uses):
+
+```sh
+curl -sS -X POST https://tpirs.vercel.app/v1/setup/admin-password \
+  -H 'content-type: application/json' \
+  -H "x-setup-token: $SETUP_TOKEN" \
+  -d '{"tenantSlug":"katsina-state"}'
+```
+
+It answers with the username and a new temporary password for the tenant's first
+system administrator, ends that account's sessions, and returns `503` if the
+deployment has no `SETUP_TOKEN` — so set one before you need it. The password is
+shown once; sign in, choose a real one, and treat the response as a secret.
+
+### Adding drivers and printing stickers
+
+Registration belongs to the dashboard, not the collector app (ADR 0058).
+
+1. Registry → **Add a driver**: full name, phone, plate, optional email, and the
+   vehicle type when the state has more than one. There is no password: a driver
+   is an owner plus a vehicle and pays with the short code.
+2. The sticker appears straight after **Register driver**, with **Print sticker**
+   (prints the QR and the short code alone), **Show sticker** and **Download
+   sticker**. The same panel is on every asset's detail, so a sticker can be
+   reprinted later.
+3. A zone supervisor only sees the form for their own zone, and the server refuses
+   a vehicle in another zone. A system admin may leave a vehicle unzoned.
+
+The fee shown when taking cash is the state's, not the collector's: neither the
+collector app nor the dashboard has an amount field (ADR 0059). Changing a fee is
+a tenant config change by a system admin.
+
 ### Installing the collector app
 
 The collector app is an installable PWA. On the handset:

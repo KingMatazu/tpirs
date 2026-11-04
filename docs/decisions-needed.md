@@ -1161,3 +1161,69 @@ an afterthought.
   or a test can carry no primary (`primaryRoleKey: null`). The editor then treats
   the first returned role as the primary, which is a default rather than a stored
   fact — acceptable for staff accounts, which are created through the API.
+
+---
+
+## D58: Who may add a driver to the register
+
+**Status:** resolved (ADR 0058). A zone supervisor or a system admin, never a
+collector.
+
+Collectors registered vehicles in the field, which put the register in the hands of
+the people taking cash and left `POST /v1/assets` open to any collector token even
+after the screen was hidden. The pilot decided registration is a supervisory act.
+
+- Decision: `asset:create` guards `POST /v1/assets` and `POST /v1/owners`; a
+  collector keeps `asset:manage` for corrections only.
+- Decision: a zone supervisor registers only inside their own zone; a missing or
+  different zone is refused (`zone_required`, `cross_zone`).
+- Rejected: creating a login per driver so they appear under Accounts. Drivers pay
+  by USSD or SMS; an account would be a credential nobody uses.
+
+## D59: Who may change the fee a collector charges
+
+**Status:** resolved (ADR 0059). Only a system admin, and only by changing the
+tenant's fee rule.
+
+Both intake screens had an editable amount, but the API refuses anything but the
+exact fee (`amount_mismatch`), so the field could only produce a rejection.
+
+- Decision: no intake screen has an amount field; both resolve the fee with the
+  tenant's fee engine.
+- Decision: a fee is config behind `tenant:configure`, which only `system_admin`
+  holds. There is no per-payment override.
+- Open follow-up, not scheduled: a fee-rule editor in the dashboard. Today a fee
+  change is a config update (`PUT /v1/tenants/current/config`), audited, and the
+  config screen is read-only.
+
+## D60: How a locked-out administrator gets back in before email exists
+
+**Status:** resolved, temporarily (ADR 0060). Two routes, both removed when
+password reset by email ships.
+
+- Decision: `POST /v1/auth/temporary-password` for a signed-in administrator with
+  `user:manage`; it flags the account and ends its other sessions.
+- Decision: `POST /v1/setup/admin-password`, gated by `SETUP_TOKEN` in every
+  environment, re-issues the tenant's first `system_admin` password when nobody can
+  sign in.
+- Rejected: relaxing `assertNotSelf` on the general reset route, a printed recovery
+  code, and "ask an operator to run SQL".
+
+## D61: Does a zone supervisor see the whole tenant, or only their zone?
+
+**Status:** open. Recommendation: scope reads as well, in a separate change.
+
+Creation is now confined to the supervisor's zone (D58), but `GET /v1/assets`,
+officer search and the dashboard registry still return the whole tenant. A
+supervisor who can register only in Central can still browse and correct a vehicle
+in North.
+
+- Recommendation: scope `GET /v1/assets` and the registry view to the caller's
+  zone, and leave reports, reconciliation and the field app tenant-wide (they are
+  about the state's money, not a person's patch).
+- Why it is not done now: the same asset list feeds the cash screen, reports and
+  the field app's cache; scoping it without deciding those would hide data an
+  officer needs on the street.
+- Options if reads stay open: (a) accept it for the pilot and document that a
+  supervisor's zone is a registration boundary, not a visibility boundary; (b)
+  scope reads and add a "whole state" permission for the roles that need it.
