@@ -85,7 +85,10 @@ export function registerAssetRoutes(app: FastifyInstance, context: AssetRoutesCo
   const { services, loadConfig } = context;
 
   app.post("/v1/assets", { schema: createAssetSchema }, async (request, reply) => {
-    const principal = requirePermission(request, "asset:manage");
+    // Registering is a supervisory act: a collector takes cash, a zone
+    // supervisor or a system admin adds the vehicle. Correcting an existing
+    // asset stays on `asset:manage`, which a collector still holds.
+    const principal = requirePermission(request, "asset:create");
     const body = asRecord(request.body);
     if (body === undefined) return badRequest(request, reply, "A JSON body is required");
     const assetTypeKey = asString(body.assetTypeKey);
@@ -284,7 +287,9 @@ export function registerAssetRoutes(app: FastifyInstance, context: AssetRoutesCo
   });
 
   app.post("/v1/owners", { schema: createOwnerSchema }, async (request, reply) => {
-    const principal = requirePermission(request, "asset:manage");
+    // Creating an owner is the other half of registering a driver, so it travels
+    // with `asset:create` rather than with corrections.
+    const principal = requirePermission(request, "asset:create");
     const body = asRecord(request.body);
     const displayName = body === undefined ? undefined : asString(body.displayName);
     const phone = body === undefined ? undefined : asString(body.phone);

@@ -58,7 +58,7 @@ const AUTHENTICATED: Readonly<Record<string, string>> = {
 
 /** The permission each protected route must demand, keyed by `METHOD path`. */
 const REQUIRED: Readonly<Record<string, readonly Permission[]>> = {
-  "POST /v1/assets": ["asset:manage"],
+  "POST /v1/assets": ["asset:create"],
   "GET /v1/assets": ["asset:read"],
   "GET /v1/assets/:id": ["asset:read"],
   "PATCH /v1/assets/:id": ["asset:manage"],
@@ -66,7 +66,7 @@ const REQUIRED: Readonly<Record<string, readonly Permission[]>> = {
   "GET /v1/assets/:id/photos/:photoId": ["asset:read"],
   "GET /v1/assets/:id/sticker": ["asset:read"],
   "POST /v1/assets/:id/suspend": ["asset:manage"],
-  "POST /v1/owners": ["asset:manage"],
+  "POST /v1/owners": ["asset:create"],
   "GET /v1/owners/:id": ["asset:read"],
   "POST /v1/owners/verify/request": ["asset:manage"],
   "POST /v1/owners/verify/confirm": ["asset:manage"],
@@ -263,6 +263,14 @@ describe("role defaults", () => {
       (permission) => !permission.endsWith(":read") && !permission.endsWith(":export"),
     );
     expect(writes).toEqual([]);
+  });
+
+  it("lets a supervisor and a system admin register a driver, but not a collector", () => {
+    expect(role("zone_supervisor").has("asset:create")).toBe(true);
+    expect(role("system_admin").has("asset:create")).toBe(true);
+    // A collector corrects a plate; adding a vehicle is a supervisory act.
+    expect(role("collector").has("asset:create")).toBe(false);
+    expect(role("collector").has("asset:manage")).toBe(true);
   });
 
   it("gives the officer no money-moving permission", () => {

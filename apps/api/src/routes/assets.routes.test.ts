@@ -142,7 +142,7 @@ describeIntegration("api asset registry e2e (integration)", () => {
         tenantId: tenantA.id,
         key: "manager",
         name: "Manager",
-        permissions: ["asset:read", "asset:manage"],
+        permissions: ["asset:read", "asset:manage", "asset:create"],
       });
       const readerRole = await repos.roles.create({
         tenantId: tenantA.id,
@@ -185,7 +185,7 @@ describeIntegration("api asset registry e2e (integration)", () => {
         tenantId: tenantB.id,
         key: "manager",
         name: "Manager",
-        permissions: ["asset:read", "asset:manage"],
+        permissions: ["asset:read", "asset:manage", "asset:create"],
       });
       const bManager = await repos.users.create({
         tenantId: tenantB.id,
@@ -290,7 +290,7 @@ describeIntegration("api asset registry e2e (integration)", () => {
     expect(body.error.issues.some((issue) => issue.path === "plate_number")).toBe(true);
   });
 
-  it("denies registration to a role without asset:manage", async () => {
+  it("denies registration to a role without asset:create", async () => {
     readerToken = await login(slugA, "ae.reader");
     const response = await app.inject({
       method: "POST",

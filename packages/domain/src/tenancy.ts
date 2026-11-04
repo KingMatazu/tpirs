@@ -33,6 +33,7 @@ export type Permission =
   | "role:manage"
   | "asset:read"
   | "asset:manage"
+  | "asset:create"
   | "payment:read"
   | "payment:manage"
   | "ledger:read"
@@ -66,6 +67,7 @@ export const ALL_PERMISSIONS: readonly Permission[] = [
   "role:manage",
   "asset:read",
   "asset:manage",
+  "asset:create",
   "payment:read",
   "payment:manage",
   "ledger:read",
@@ -148,6 +150,7 @@ export const SYSTEM_ROLES: readonly SystemRoleDefinition[] = [
     permissions: [
       "asset:read",
       "asset:manage",
+      "asset:create",
       "zone:read",
       "zone:manage",
       "report:read",
@@ -200,6 +203,11 @@ export const SYSTEM_ROLES: readonly SystemRoleDefinition[] = [
       // are not allowed to see. Reading is not touching: every money-moving and
       // ledger permission stays out, which is the separation the brief requires.
       "asset:read",
+      // Registering and correcting a vehicle is not money-moving, and the
+      // dashboard's first job for a new deployment is putting drivers in the
+      // register. The ledger stays closed.
+      "asset:manage",
+      "asset:create",
       "scan:read",
       "payment:read",
       "cash:read",
