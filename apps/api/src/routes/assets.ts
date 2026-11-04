@@ -62,6 +62,9 @@ function serializeOwner(owner: OwnerRecord) {
 /** The role whose holder registers only inside the zone they are responsible for. */
 const SUPERVISOR_ROLE = "zone_supervisor";
 
+/** Why a registration was refused; empty when it was allowed. */
+export type ZoneRefusal = "" | "zone_required" | "cross_zone";
+
 /**
  * The zone a registration may land in.
  *
@@ -69,19 +72,23 @@ const SUPERVISOR_ROLE = "zone_supervisor";
  * register there and nowhere else. A system admin has no such limit. A
  * supervisor whose zone was never recorded is refused rather than treated as
  * "everywhere" — failing closed is the only safe reading of a missing answer.
+ *
+ * The result is a plain record rather than a discriminated union on purpose:
+ * `@vercel/node` type-checks the entrypoint with `strict` off, and narrowing a
+ * `{ ok: true } | { ok: false }` union depends on `strictNullChecks`. A string
+ * refusal narrows under both settings, so the build does not depend on which
+ * checker looks at it.
  */
 export function registrationZone(
   principal: { readonly roles: readonly string[]; readonly zoneId: string | null },
   requested: string | undefined,
-):
-  | { readonly ok: true; readonly zoneId: string | undefined }
-  | { readonly ok: false; readonly reason: string } {
-  if (!principal.roles.includes(SUPERVISOR_ROLE)) return { ok: true, zoneId: requested };
-  if (principal.zoneId === null) return { ok: false, reason: "zone_required" };
+): { readonly zoneId: string | undefined; readonly refusal: ZoneRefusal } {
+  if (!principal.roles.includes(SUPERVISOR_ROLE)) return { zoneId: requested, refusal: "" };
+  if (principal.zoneId === null) return { zoneId: undefined, refusal: "zone_required" };
   if (requested !== undefined && requested !== principal.zoneId) {
-    return { ok: false, reason: "cross_zone" };
+    return { zoneId: undefined, refusal: "cross_zone" };
   }
-  return { ok: true, zoneId: principal.zoneId };
+  return { zoneId: principal.zoneId, refusal: "" };
 }
 
 function badRequest(request: FastifyRequest, reply: FastifyReply, message: string) {
@@ -135,12 +142,12 @@ export function registerAssetRoutes(app: FastifyInstance, context: AssetRoutesCo
             ...(ownerEmail === undefined ? {} : { email: ownerEmail }),
           };
     const zone = registrationZone(principal, zoneId);
-    if (!zone.ok) {
+    if (zone.refusal !== "") {
       return reply.code(403).send({
         error: {
-          code: zone.reason,
+          code: zone.refusal,
           message:
-            zone.reason === "zone_required"
+            zone.refusal === "zone_required"
               ? "Your account has no zone, so it cannot register a driver. Ask an administrator to assign one."
               : "You can only register a driver in your own zone.",
           requestId: request.id,

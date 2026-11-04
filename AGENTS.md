@@ -28,6 +28,11 @@
 - `apps/admin`'s vitest config has no `globals: true`, so Testing Library's auto-cleanup never registers: call `cleanup()` in `afterEach` or renders pile up and duplicate row text. `apps/field` and `apps/collector` do set `globals: true`.
 - The admin suite boots a singleton API client at import time and calls same-origin `/v1/...` paths. Tests call `stubRelativeRequests()` (undici rejects relative URLs) and install the stub through `setRuntimeFetch(...)` — openapi-fetch snapshots `fetch` when the client is constructed, so assigning `globalThis.fetch` is too late.
 
+**Deploy gotchas:**
+
+- `@vercel/node` type-checks `apps/api` with **`strict` off**, so API source must compile under both settings. A discriminated union narrowed by `if (!result.ok)` works with `strictNullChecks` on and fails on Vercel with `TS2339: Property 'reason' does not exist`. `apps/api/tsconfig.deploy.json` reproduces the deployer's settings and runs as part of `pnpm --filter @tpirs/api typecheck`.
+- A migration that **grants a permission** (like `0024`'s `asset:create`) must land **after** the code that knows the key: the running build builds a principal from the role rows, and an unknown key fails closed with `403` on every authenticated request — including `/v1/auth/me`, which reads as "the tenant cannot sign in". Additive column migrations are safe before the deploy; permission grants are not. Order: columns → deploy → grants.
+
 **Lint gotchas (type-aware ESLint, `eslint.config.mjs`):**
 
 - The project service resolves each file through its package `tsconfig.json`. A `.ts` file that no tsconfig includes (root-level `vitest.setup.ts`, a new tooling file) fails with `was not found by the project service`. Fix it in the config, not with a disable comment: add the glob to the untyped `files` override near the bottom of `eslint.config.mjs`, or to `allowDefaultProject`.

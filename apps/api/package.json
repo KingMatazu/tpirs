@@ -18,7 +18,7 @@
     "build": "tsc -b",
     "dev": "tsx watch --env-file-if-exists=../../.env src/index.ts",
     "start": "node dist/index.js",
-    "typecheck": "tsc -b && tsc -p tsconfig.test.json",
+    "typecheck": "tsc -b && tsc -p tsconfig.test.json && tsc -p tsconfig.deploy.json",
     "lint": "eslint src",
     "test": "vitest run"
   },
