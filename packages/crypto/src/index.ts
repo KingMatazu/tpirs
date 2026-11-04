@@ -208,3 +208,27 @@ export function randomNumericCode(digits = 6): string {
     if (value < limit) return String(value % max).padStart(digits, "0");
   }
 }
+
+/** Characters a temporary password is built from: no look-alikes (0/O, 1/l). */
+const TEMPORARY_PASSWORD_ALPHABET = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+/**
+ * A random temporary password for an administrator who cannot be emailed one.
+ *
+ * Used by the setup-token recovery path, where the password has to be displayed
+ * on the spot and typed by hand: no look-alike characters, and long enough that
+ * the length rule is the only thing a person has to remember. Rejection sampling
+ * keeps the distribution uniform over the alphabet.
+ */
+export function generateTemporaryPassword(length = 14): string {
+  if (length < 8) throw new Error("length must be at least 8");
+  const max = TEMPORARY_PASSWORD_ALPHABET.length;
+  const limit = Math.floor(0xffffffff / max) * max;
+  let password = "";
+  while (password.length < length) {
+    const value = randomBytes(4).readUInt32BE(0);
+    if (value >= limit) continue;
+    password += TEMPORARY_PASSWORD_ALPHABET.charAt(value % max);
+  }
+  return password;
+}

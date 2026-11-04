@@ -361,6 +361,15 @@ describeIntegration("first-run setup token gate (fresh database)", () => {
       });
       expect(response.statusCode).toBe(503);
       expect(response.json()).toMatchObject({ error: { code: "setup_disabled" } });
+      // Password recovery is stricter than setup: with no token it is closed in
+      // every environment, not only production.
+      const recovery = await app.inject({
+        method: "POST",
+        url: "/v1/setup/admin-password",
+        payload: { tenantSlug: "anything" },
+      });
+      expect(recovery.statusCode).toBe(503);
+      expect(recovery.json()).toMatchObject({ error: { code: "setup_disabled" } });
       const status = await app.inject({ method: "GET", url: "/v1/setup/status" });
       expect(status.json()).toEqual({ needsSetup: true });
     } finally {
@@ -427,6 +436,54 @@ describeIntegration("first-run setup token gate (fresh database)", () => {
         payload: gatedAnswers,
       });
       expect(replay.statusCode).toBe(404);
+
+      // The token also recovers the administrator who created the tenant: the
+      // account is the tenant's first system admin, and the old password and
+      // every session it opened stop working.
+      const before = String(login.json().token);
+      const wrongToken = await app.inject({
+        method: "POST",
+        url: "/v1/setup/admin-password",
+        headers: { "x-setup-token": `${token}-wrong` },
+        payload: { tenantSlug: slug },
+      });
+      expect(wrongToken.statusCode).toBe(401);
+
+      const reissued = await app.inject({
+        method: "POST",
+        url: "/v1/setup/admin-password",
+        headers: { "x-setup-token": token },
+        payload: { tenantSlug: slug },
+      });
+      expect(reissued.statusCode).toBe(200);
+      const reissuedBody = reissued.json() as { username: string; password: string };
+      expect(reissuedBody.username).toBe("admin");
+      expect(reissuedBody.password.length).toBeGreaterThanOrEqual(8);
+
+      const stale = await app.inject({
+        method: "GET",
+        url: "/v1/auth/me",
+        headers: { authorization: `Bearer ${before}` },
+      });
+      expect(stale.statusCode).toBe(401);
+
+      const oldPassword = await app.inject({
+        method: "POST",
+        url: "/v1/auth/login",
+        payload: { tenantSlug: slug, username: "admin", password: "password" },
+      });
+      expect(oldPassword.statusCode).toBe(401);
+
+      const fresh = await app.inject({
+        method: "POST",
+        url: "/v1/auth/login",
+        payload: { tenantSlug: slug, username: "admin", password: reissuedBody.password },
+      });
+      expect(fresh.statusCode).toBe(200);
+      // Temporary by construction: the next sign-in may only replace it.
+      expect((fresh.json() as { user: { mustChangeCredentials: boolean } }).user).toMatchObject({
+        mustChangeCredentials: true,
+      });
     } finally {
       await app.close();
     }

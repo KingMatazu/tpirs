@@ -52,6 +52,39 @@ const fakeFetch = vi.fn(async (input: unknown) => {
   if (request.method === "GET" && url.pathname === "/v1/zones") {
     return json(200, { zones });
   }
+  if (request.method === "GET" && url.pathname === "/v1/auth/me") {
+    return json(200, {
+      userId: CURRENT_USER,
+      tenantId: "t1",
+      displayName: "Ada",
+      username: "ada.admin",
+      phone: null,
+      nationalId: null,
+      homeAddress: null,
+      roles: ["system_admin"],
+      permissions: [...MANAGER],
+      // The reset flags the account, so the app sends the caller to the
+      // credential step.
+      mustChangeCredentials: true,
+      zoneId: null,
+    });
+  }
+  if (request.method === "POST" && url.pathname === "/v1/auth/temporary-password") {
+    return json(200, {
+      token: "tok-self",
+      expiresAt: "2026-11-04T12:00:00.000Z",
+      user: {
+        userId: CURRENT_USER,
+        tenantId: "t1",
+        displayName: "Ada",
+        roles: ["system_admin"],
+        mustChangeCredentials: true,
+        zoneId: null,
+      },
+      refreshToken: "refresh-self",
+      refreshExpiresAt: "2026-11-11T12:00:00.000Z",
+    });
+  }
   if (request.method === "GET" && url.pathname === "/v1/tenants/current/config") {
     // Only the slug and the collector rule are read by this screen; the rest of
     // the config is the config viewer's business.
@@ -825,6 +858,27 @@ describe("UsersPage", () => {
     });
     // The row says which zone, by name rather than by uuid.
     expect((await screen.findAllByText(/North/)).length).toBeGreaterThan(0);
+  });
+
+  it("re-issues the administrator's own temporary password", async () => {
+    renderPage();
+    await screen.findByText("No accounts yet.");
+
+    fireEvent.input(screen.getByLabelText(/^Your new temporary password/), {
+      target: { value: "temp-self-1" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Set temporary password" }));
+
+    await waitFor(() => {
+      expect(bodyOf("POST", "/v1/auth/temporary-password")).toEqual({
+        password: "temp-self-1",
+      });
+    });
+    // The replacement session is adopted, and the account is flagged: the app
+    // will ask for a real password next.
+    await waitFor(() => {
+      expect(useSession.getState().user?.mustChangeCredentials).toBe(true);
+    });
   });
 
   it("clears the zone when a supervisor stops being one", async () => {

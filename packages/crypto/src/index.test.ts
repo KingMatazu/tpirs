@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   createQrTokenSigner,
+  generateTemporaryPassword,
   generateTotpSecret,
   hashPassword,
   randomOpaqueId,
@@ -74,5 +75,18 @@ describe("randomOpaqueId", () => {
     const id = randomOpaqueId();
     expect(id).toMatch(/^[0-9a-f]{32}$/);
     expect(randomOpaqueId()).not.toBe(id);
+  });
+});
+
+describe("generateTemporaryPassword", () => {
+  it("is long enough, unique, and avoids look-alike characters", () => {
+    const password = generateTemporaryPassword();
+    expect(password).toHaveLength(14);
+    expect(password).not.toMatch(/[0O1lI]/);
+    expect(generateTemporaryPassword()).not.toBe(password);
+  });
+
+  it("refuses a length a person cannot retype", () => {
+    expect(() => generateTemporaryPassword(6)).toThrow(/at least 8/);
   });
 });

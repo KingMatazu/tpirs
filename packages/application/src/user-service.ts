@@ -1,6 +1,6 @@
-import { hashPassword } from "@tpirs/crypto";
+import { generateTemporaryPassword, hashPassword } from "@tpirs/crypto";
 import { DEFAULT_NATIONAL_ID_PATTERN } from "@tpirs/config";
-import { repositories, withTenant } from "@tpirs/db";
+import { repositories, withSystem, withTenant } from "@tpirs/db";
 import type { AnyDb, UserRecord, UserRoleGrant } from "@tpirs/db";
 
 /**
@@ -715,4 +715,110 @@ function assertNotSelf(actorUserId: string, userId: string): void {
       "You cannot change your own account here; ask another administrator to do it",
     );
   }
+}
+
+export interface ResetOwnPasswordInput {
+  readonly tenantId: string;
+  readonly userId: string;
+  readonly password: string;
+}
+
+/**
+ * An administrator re-issues their own password as a temporary one.
+ *
+ * This exists for one reason: there is no email sender yet, so an administrator
+ * who forgets their password has no recovery path, and the account that created
+ * the tenant is the account nobody else can reset. It is a **temporary measure**
+ * and is removed when forgot-password arrives (ADR 0060).
+ *
+ * It is not the self-service escape hatch the general reset refuses: the caller
+ * can only touch their own account, the new password is flagged temporary so the
+ * next sign-in must replace it, and every other session ends — a reset that
+ * leaves an old token working is not a reset.
+ */
+export async function resetOwnPasswordToTemporary(
+  db: AnyDb,
+  input: ResetOwnPasswordInput,
+): Promise<UserSummary> {
+  return withTenant(db, input.tenantId, async (tx) => {
+    const repos = repositories(tx);
+    const existing = await repos.users.findById(input.userId);
+    if (existing === undefined) throw new UserNotFoundError();
+
+    const issues = userPasswordIssues({ username: existing.username, password: input.password });
+    if (issues.length > 0) throw new UserValidationError(issues);
+
+    const updated = await repos.users.setTemporaryPassword(
+      input.userId,
+      await hashPassword(input.password),
+    );
+    if (updated === undefined) throw new UserNotFoundError();
+    await repos.sessions.revokeAllForUser(input.userId);
+    await repos.audit.record({
+      tenantId: input.tenantId,
+      actorUserId: input.userId,
+      action: "user.password.self_reissued",
+      entityType: "user",
+      entityId: input.userId,
+      before: { username: existing.username },
+      // No password, no hash: the trail says what happened, not what it was.
+      after: { username: updated.username, mustChangeCredentials: true, temporary: true },
+    });
+    return await summarize(repos, updated);
+  });
+}
+
+export interface ReissuedAdminPassword {
+  readonly username: string;
+  readonly password: string;
+}
+
+/**
+ * Re-issues the tenant creator's temporary password for a deployment operator.
+ *
+ * The account that created the tenant is the first account the tenant had, and
+ * it is the one nobody can reset: every other reset needs a signed-in
+ * administrator. With no email sender, a lost password would otherwise mean a SQL
+ * editor. The route that calls this is gated by `SETUP_TOKEN`, so possession of
+ * the deployment secret is the authorisation — which is why the account is
+ * identified by its role and creation order rather than by a username an
+ * attacker would have to guess.
+ *
+ * Temporary by construction: the flag is set, every session ends, and the audit
+ * row names the setup token as the source without ever recording the token or the
+ * password.
+ */
+export async function reissueAdminTemporaryPassword(
+  db: AnyDb,
+  input: { readonly tenantSlug: string },
+): Promise<ReissuedAdminPassword | undefined> {
+  const slug = input.tenantSlug.trim().toLowerCase();
+  if (slug === "") return undefined;
+  const tenant = await withSystem(db, (tx) => repositories(tx).tenants.findBySlug(slug));
+  if (tenant === undefined) return undefined;
+
+  return withTenant(db, tenant.id, async (tx) => {
+    const repos = repositories(tx);
+    const admin = await repos.users.findEarliestWithRole("system_admin");
+    if (admin === undefined) return undefined;
+
+    const password = generateTemporaryPassword();
+    await repos.users.setTemporaryPassword(admin.id, await hashPassword(password));
+    await repos.sessions.revokeAllForUser(admin.id);
+    await repos.audit.record({
+      tenantId: tenant.id,
+      actorUserId: null,
+      action: "user.password.setup_reissued",
+      entityType: "user",
+      entityId: admin.id,
+      before: { username: admin.username },
+      after: {
+        username: admin.username,
+        mustChangeCredentials: true,
+        temporary: true,
+        via: "setup_token",
+      },
+    });
+    return { username: admin.username, password };
+  });
 }

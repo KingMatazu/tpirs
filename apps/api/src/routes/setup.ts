@@ -4,13 +4,14 @@ import {
   OnboardingValidationError,
   TenantAlreadyProvisionedError,
   isSetupRequired,
+  reissueAdminTemporaryPassword,
   startOnboarding,
 } from "@tpirs/application";
 import type { OnboardingIssue } from "@tpirs/application";
 import type { RateLimiter } from "@tpirs/application";
 import type { TenantConfigDefaultsInput } from "@tpirs/config";
 import type { AnyDb } from "@tpirs/db";
-import { setupStatusSchema, setupTenantSchema } from "../schemas.js";
+import { setupAdminPasswordSchema, setupStatusSchema, setupTenantSchema } from "../schemas.js";
 
 /**
  * First-run setup: the endpoints that turn an empty deployment into one with a
@@ -51,6 +52,8 @@ export interface SetupContext {
  */
 const STATUS_IP_LIMIT = { limit: 60, windowSeconds: 60 } as const;
 const CREATE_IP_LIMIT = { limit: 10, windowSeconds: 60 } as const;
+/** Password recovery is a brute-force target even with a token in front of it. */
+const ADMIN_PASSWORD_IP_LIMIT = { limit: 5, windowSeconds: 60 } as const;
 
 /** The wizard's answers, as they arrive. Fastify's schema has validated them. */
 interface SetupTenantBody {
@@ -235,4 +238,80 @@ export function registerSetupRoutes(app: FastifyInstance, context: SetupContext)
       }
     },
   );
+
+  /**
+   * Re-issues the tenant creator's temporary password for a locked-out operator.
+   *
+   * **Temporary measure** until forgot-password exists (ADR 0060). The account is
+   * the tenant's first `system_admin` — the one that was provisioned — and the
+   * authorisation is the deployment secret, not a session, because the caller by
+   * definition cannot sign in. Every session ends and the next sign-in must
+   * replace the password; the password is returned once, never stored.
+   */
+  app.post(
+    "/v1/setup/admin-password",
+    { schema: setupAdminPasswordSchema },
+    async (request, reply) => {
+      const denied = adminPasswordDenied(request, reply, context);
+      if (denied !== undefined) return denied;
+      if (limiter !== undefined) {
+        const byIp = await limiter.consume(
+          `setup.admin_password:ip:${request.ip}`,
+          ADMIN_PASSWORD_IP_LIMIT,
+        );
+        if (!byIp.allowed) {
+          void reply.header("Retry-After", String(byIp.retryAfterSeconds));
+          return reply.code(429).send({
+            error: { code: "rate_limited", message: "Too many requests", requestId: request.id },
+          });
+        }
+      }
+
+      const body = request.body as { tenantSlug?: unknown };
+      const tenantSlug = typeof body.tenantSlug === "string" ? body.tenantSlug : "";
+      const reissued = await reissueAdminTemporaryPassword(context.db, { tenantSlug });
+      // An unknown tenant and a tenant with no administrator are the same answer:
+      // the caller holds the secret, but the route still says nothing about which
+      // tenants exist beyond the one they named.
+      if (reissued === undefined) return notFound(reply, request);
+      return reply.send({ username: reissued.username, password: reissued.password });
+    },
+  );
+}
+
+/**
+ * Whether a request may re-issue an administrator's password.
+ *
+ * Stricter than `setupDenied`: that one lets a deployment without a token run
+ * first-time setup, which is harmless because it closes itself. This route is
+ * open for as long as the deployment exists, so it requires the token in every
+ * environment — a password-reset endpoint with no secret is a backdoor, not a
+ * convenience.
+ */
+function adminPasswordDenied(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  context: SetupContext,
+): FastifyReply | undefined {
+  if (context.setupToken === undefined) {
+    return reply.code(503).send({
+      error: {
+        code: "setup_disabled",
+        message: "Password recovery is disabled because SETUP_TOKEN is not set on this deployment",
+        requestId: request.id,
+      },
+    });
+  }
+  const header = request.headers["x-setup-token"];
+  const provided = typeof header === "string" ? header : "";
+  if (!tokenMatches(provided, context.setupToken)) {
+    return reply.code(401).send({
+      error: {
+        code: "setup_token_required",
+        message: "A valid setup token is required to re-issue an administrator password",
+        requestId: request.id,
+      },
+    });
+  }
+  return undefined;
 }

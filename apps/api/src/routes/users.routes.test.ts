@@ -225,6 +225,7 @@ describeIntegration("api users e2e (integration)", () => {
   const temporaryPassword = "temporary-pass-1";
   const resetPassword = "reset-pass-2";
   const rotatedPassword = "rotated-pass-3";
+  const selfReissuePassword = "self-reissue-pass-4";
 
   it("lists accounts with their roles and the role catalogue", async () => {
     const manager = await login(slugA, "um.manager", seedPassword);
@@ -774,6 +775,62 @@ describeIntegration("api users e2e (integration)", () => {
     expect(foreign.statusCode).toBe(404);
   });
 
+  it("lets an administrator re-issue their own temporary password", async () => {
+    // Without `user:manage` there is nothing to re-issue: this is the
+    // administrator recovery path, not a self-service password change.
+    const staff = await login(slugA, "um.staff", seedPassword);
+    const denied = await app.inject({
+      method: "POST",
+      url: "/v1/auth/temporary-password",
+      headers: { authorization: `Bearer ${staff.token ?? ""}` },
+      payload: { password: selfReissuePassword },
+    });
+    expect(denied.statusCode).toBe(403);
+
+    // A second session, to prove the reset ends the others rather than only the
+    // one that made the call.
+    const second = await login(slugA, "um.manager", seedPassword);
+    const reissued = await app.inject({
+      method: "POST",
+      url: "/v1/auth/temporary-password",
+      headers: { authorization: `Bearer ${managerToken}` },
+      payload: { password: selfReissuePassword },
+    });
+    expect(reissued.statusCode).toBe(200);
+    const body = reissued.json() as {
+      token: string;
+      user: { mustChangeCredentials: boolean; roles: string[] };
+    };
+    // Temporary by construction: the next sign-in may only replace it.
+    expect(body.user.mustChangeCredentials).toBe(true);
+    expect(body.user.roles).toContain("account_manager");
+
+    for (const token of [managerToken, second.token ?? ""]) {
+      const stale = await app.inject({
+        method: "GET",
+        url: "/v1/auth/me",
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(stale.statusCode).toBe(401);
+    }
+
+    // The replacement session works, and the password it was minted from is the
+    // only one that signs in now.
+    const me = await app.inject({
+      method: "GET",
+      url: "/v1/auth/me",
+      headers: { authorization: `Bearer ${body.token}` },
+    });
+    expect(me.statusCode).toBe(200);
+    expect((me.json() as { mustChangeCredentials: boolean }).mustChangeCredentials).toBe(true);
+
+    const oldPassword = await login(slugA, "um.manager", seedPassword);
+    expect(oldPassword.status).toBe(401);
+    const newPassword = await login(slugA, "um.manager", selfReissuePassword);
+    expect(newPassword.status).toBe(200);
+    expect(newPassword.mustChangeCredentials).toBe(true);
+  });
+
   it("records the actions without recording a password", async () => {
     const entries = await withSystem(db, async (tx) => repositories(tx).audit.list({ limit: 200 }));
     const actions = entries.map((entry) => entry.action);
@@ -781,11 +838,13 @@ describeIntegration("api users e2e (integration)", () => {
     expect(actions).toContain("user.update");
     expect(actions).toContain("user.password.reset");
     expect(actions).toContain("auth.credentials_changed");
+    expect(actions).toContain("user.password.self_reissued");
 
     const trail = JSON.stringify(entries);
     expect(trail).not.toContain(temporaryPassword);
     expect(trail).not.toContain(resetPassword);
     expect(trail).not.toContain(rotatedPassword);
+    expect(trail).not.toContain(selfReissuePassword);
     expect(trail).not.toContain(seedPassword);
     // Personal data stays out of the append-only trail for the same reason.
     expect(trail).not.toContain("12345678901");

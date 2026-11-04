@@ -303,6 +303,13 @@ export function UsersPage(): ReactElement {
   const [passwordForId, setPasswordForId] = useState<string | undefined>(undefined);
   const [newPassword, setNewPassword] = useState("");
   /**
+   * The administrator's own recovery password. Kept separate from the per-row
+   * reset state: it is the one action on this screen that targets the caller.
+   */
+  const [selfPassword, setSelfPassword] = useState("");
+  const [showSelfPassword, setShowSelfPassword] = useState(false);
+  const [selfBusy, setSelfBusy] = useState(false);
+  /**
    * The handover card, which exists only while the password is still known: the
    * server hashes it and cannot give it back, so create and reset are the only
    * two moments that can produce one. `accountId` is present when the card was
@@ -588,6 +595,41 @@ export function UsersPage(): ReactElement {
     }
   };
 
+  /**
+   * Re-issue the caller's own password as a temporary one (ADR 0060).
+   *
+   * Temporary until forgot-password exists: without a mail sender, an
+   * administrator who forgets their password has no way back in, and the account
+   * that created the tenant cannot be reset by anyone else. The response is a
+   * session for a flagged account, so the app sends the caller straight to the
+   * credential step to choose a real password.
+   */
+  const reissueOwnPassword = async (): Promise<void> => {
+    setSelfBusy(true);
+    try {
+      const result = await unwrap(
+        api.POST("/v1/auth/temporary-password", { body: { password: selfPassword } }),
+      );
+      const token = result.token;
+      if (typeof token !== "string" || token === "") {
+        pushToast({ kind: "error", message: "The server did not return a session." });
+        return;
+      }
+      pushToast({
+        kind: "success",
+        message: "Temporary password set. Choose a new password to continue.",
+      });
+      setSelfPassword("");
+      setShowSelfPassword(false);
+      // Replaces the in-memory token and reloads /me, which is now flagged.
+      await useSession.getState().acceptSession(token);
+    } catch (error) {
+      pushToast({ kind: "error", ...describeError(error) });
+    } finally {
+      setSelfBusy(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <h1 className="text-xl font-semibold text-slate-900">Accounts</h1>
@@ -614,6 +656,59 @@ export function UsersPage(): ReactElement {
           }}
         />
       )}
+
+      {canManage ? (
+        <Card
+          title="My password"
+          description="Re-issue your own temporary password if you have forgotten it. Temporary measure until password reset by email exists."
+        >
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="w-64">
+              <Field label="Your new temporary password" hint="At least 6 characters">
+                <TextInput
+                  name="own-temporary-password"
+                  value={selfPassword}
+                  onValueChange={setSelfPassword}
+                  type={showSelfPassword ? "text" : "password"}
+                  autoComplete="new-password"
+                />
+              </Field>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="ghost"
+                ariaLabel={
+                  showSelfPassword ? "Hide my temporary password" : "Show my temporary password"
+                }
+                onClick={() => {
+                  setShowSelfPassword(!showSelfPassword);
+                }}
+              >
+                {showSelfPassword ? "Hide" : "Show"}
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setSelfPassword(temporaryPassword());
+                }}
+              >
+                Generate for me
+              </Button>
+            </div>
+            <Button
+              disabled={selfBusy || selfPassword === ""}
+              onClick={() => {
+                void reissueOwnPassword();
+              }}
+            >
+              {selfBusy ? "Setting…" : "Set temporary password"}
+            </Button>
+          </div>
+          <p className="mt-2 text-xs text-slate-500">
+            Every other session ends, and you will be asked to choose a new password straight away.
+          </p>
+        </Card>
+      ) : null}
 
       <Card title="Accounts" description={`${users.length} in this tenant`}>
         {usersQuery.isLoading ? <p className="text-sm text-slate-500">Loading accounts…</p> : null}

@@ -7,9 +7,10 @@ import {
   UserValidationError,
   changeOwnPassword,
   completeOnboarding,
+  resetOwnPasswordToTemporary,
 } from "@tpirs/application";
 import { repositories, withTenant } from "@tpirs/db";
-import { bearerToken, requirePrincipal, UnauthorizedError } from "../auth.js";
+import { bearerToken, requirePermission, requirePrincipal, UnauthorizedError } from "../auth.js";
 import { resolveTenantIdBySlug } from "../tenants.js";
 import type { AuthContext } from "../auth.js";
 import {
@@ -19,6 +20,7 @@ import {
   authLogoutSchema,
   authMeSchema,
   authRefreshSchema,
+  authTemporaryPasswordSchema,
 } from "../schemas.js";
 
 interface LoginBody {
@@ -512,6 +514,68 @@ export function registerAuthRoutes(app: FastifyInstance, context: AuthContext): 
       const session = await context.identity.authenticate({
         tenantId: principal.tenantId,
         username: changed.username,
+        password,
+      });
+      return await sessionReply(
+        reply,
+        session,
+        secureCookies,
+        sameSiteCookies,
+        await sessionAccount(context, session.user.tenantId, session.user.userId),
+      );
+    },
+  );
+
+  /**
+   * The administrator re-issues their own password as a temporary one.
+   *
+   * **Temporary measure** until forgot-password exists (ADR 0060): there is no
+   * mail sender, so a forgotten administrator password has no recovery path, and
+   * the account that created the tenant cannot be reset by anyone else. Only the
+   * caller's own account can be touched, `user:manage` is required, every other
+   * session ends, and the next sign-in must replace the password — which is why
+   * the response is a session for a flagged account, exactly like a reset.
+   */
+  app.post(
+    "/v1/auth/temporary-password",
+    { schema: authTemporaryPasswordSchema },
+    async (request, reply) => {
+      const principal = requirePermission(request, "user:manage");
+      const password = asString((request.body as { password?: unknown }).password);
+      if (password === undefined) {
+        return reply.code(400).send({
+          error: { code: "bad_request", message: "A password is required", requestId: request.id },
+        });
+      }
+
+      let reissued;
+      try {
+        reissued = await resetOwnPasswordToTemporary(context.db, {
+          tenantId: principal.tenantId,
+          userId: principal.userId,
+          password,
+        });
+      } catch (error) {
+        if (error instanceof UserValidationError) {
+          return reply.code(422).send({
+            error: {
+              code: "unprocessable_entity",
+              message: "The new password was not accepted",
+              requestId: request.id,
+              issues: error.issues,
+            },
+          });
+        }
+        throw error;
+      }
+
+      // The session that made the call was authorised by the password that just
+      // stopped working; it ends with it.
+      const previous = bearerToken(request);
+      if (previous !== undefined) await context.identity.revokeSession(previous);
+      const session = await context.identity.authenticate({
+        tenantId: principal.tenantId,
+        username: reissued.username,
         password,
       });
       return await sessionReply(

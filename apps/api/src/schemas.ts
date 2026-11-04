@@ -710,6 +710,20 @@ export const authChangePasswordSchema: FastifySchema = {
   response: { 200: session },
 };
 
+/**
+ * The administrator re-issues their own temporary password. Same body and same
+ * response as the staff handshake: a flagged account's session, because the next
+ * sign-in must replace the password.
+ */
+export const authTemporaryPasswordSchema: FastifySchema = {
+  body: {
+    type: "object",
+    required: ["password"],
+    properties: { password: { type: "string", minLength: 6, maxLength: 200 } },
+  },
+  response: { 200: session },
+};
+
 export const authMeSchema: FastifySchema = {
   // /me returns the session user augmented with resolved permissions and the
   // caller's own contact fields, which the collector app's profile screen reads.
@@ -757,6 +771,26 @@ export const setupStatusSchema: FastifySchema = {
       type: "object",
       required: ["needsSetup"],
       properties: { needsSetup: { type: "boolean" } },
+    },
+  },
+};
+
+/**
+ * Recovery for a locked-out administrator (ADR 0060). The tenant is named by its
+ * slug; the account is the tenant's first system admin, so no username is asked
+ * for — an operator who cannot sign in is not the person to guess one.
+ */
+export const setupAdminPasswordSchema: FastifySchema = {
+  body: {
+    type: "object",
+    required: ["tenantSlug"],
+    properties: { tenantSlug: { type: "string", minLength: 1, maxLength: 80 } },
+  },
+  response: {
+    200: {
+      type: "object",
+      required: ["username", "password"],
+      properties: { username: { type: "string" }, password: { type: "string" } },
     },
   },
 };

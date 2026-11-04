@@ -111,6 +111,27 @@ export class UserRepository {
   }
 
   /**
+   * The oldest account holding a role, used to identify the administrator who
+   * created the tenant when nobody can sign in to say so.
+   *
+   * Ordering by `created_at` rather than by name is the whole point: the
+   * provisioning account is the first row the tenant ever had, whatever it was
+   * later renamed to.
+   */
+  async findEarliestWithRole(roleKey: string): Promise<UserRecord | undefined> {
+    const found = await this.db
+      .selectFrom("userRoles")
+      .innerJoin("roles", "roles.id", "userRoles.roleId")
+      .innerJoin("users", "users.id", "userRoles.userId")
+      .select("users.id")
+      .where("roles.key", "=", roleKey)
+      .orderBy("users.createdAt")
+      .limit(1)
+      .executeTakeFirst();
+    return found === undefined ? undefined : await this.findById(found.id);
+  }
+
+  /**
    * Replaces the credentials of an account that is still holding provisioning
    * ones, and clears the flag in the same statement so the account can never be
    * left with a new password but a locked session (or the reverse).

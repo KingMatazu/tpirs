@@ -34,6 +34,9 @@ const PUBLIC: Readonly<Record<string, string>> = {
   // answer 404, indistinguishable from a route that was never registered.
   "GET /v1/setup/status": "first-run detection, before any account exists",
   "POST /v1/setup/tenant": "provisions the first tenant, only while none exists",
+  // Recovery for a locked-out administrator, gated by the deployment's
+  // SETUP_TOKEN rather than a session — there is nobody to sign in as.
+  "POST /v1/setup/admin-password": "re-issues the tenant creator's password (ADR 0060)",
   "GET /v1/verify/:token": "public sticker verification (ADR 0007), rate limited",
   "POST /webhooks/:provider/:endpointToken": "provider callback, endpoint token (ADR 0017)",
   "POST /webhooks/ussd/:provider/:endpointToken": "USSD callback, endpoint token",
@@ -86,6 +89,7 @@ const REQUIRED: Readonly<Record<string, readonly Permission[]>> = {
   "POST /v1/users": ["user:manage"],
   "PATCH /v1/users/:id": ["user:manage"],
   "POST /v1/users/:id/password": ["user:manage"],
+  "POST /v1/auth/temporary-password": ["user:manage"],
   "GET /v1/roles": ["role:read"],
   "GET /v1/verifications/search": ["asset:read"],
   "GET /v1/sync/paid": ["asset:read"],
