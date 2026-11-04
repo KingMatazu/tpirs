@@ -370,32 +370,34 @@ function IntakeTable(props: {
   readonly timezone: string;
 }): ReactElement {
   return (
-    <table className="w-full text-left text-sm">
-      <thead>
-        <tr className="border-b border-slate-200 text-slate-500">
-          <th className="py-2 pr-4 font-medium">Business day</th>
-          <th className="py-2 pr-4 font-medium">Amount</th>
-          <th className="py-2 pr-4 font-medium">Receipt</th>
-          <th className="py-2 pr-4 font-medium">Status</th>
-          <th className="py-2 font-medium">Recorded</th>
-        </tr>
-      </thead>
-      <tbody>
-        {props.intakes.map((intake) => (
-          <tr key={intake.id} className="border-b border-slate-100">
-            <td className="py-2 pr-4 text-slate-700">{intake.businessDate}</td>
-            <td className="py-2 pr-4 text-slate-900">
-              {formatMoneyMinor(intake.amountMinor, intake.currency, props.numberFormat)}
-            </td>
-            <td className="py-2 pr-4 font-mono text-xs text-slate-600">{intake.receiptNumber}</td>
-            <td className="py-2 pr-4 text-slate-700">{intake.status}</td>
-            <td className="py-2 text-slate-600">
-              {formatTimestamp(intake.recordedAt, props.numberFormat, props.timezone)}
-            </td>
+    <div className="overflow-x-auto">
+      <table className="w-full text-left text-sm">
+        <thead>
+          <tr className="border-b border-slate-200 text-slate-500">
+            <th className="py-2 pr-4 font-medium">Business day</th>
+            <th className="py-2 pr-4 font-medium">Amount</th>
+            <th className="py-2 pr-4 font-medium">Receipt</th>
+            <th className="py-2 pr-4 font-medium">Status</th>
+            <th className="py-2 font-medium">Recorded</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {props.intakes.map((intake) => (
+            <tr key={intake.id} className="border-b border-slate-100">
+              <td className="py-2 pr-4 text-slate-700">{intake.businessDate}</td>
+              <td className="py-2 pr-4 text-slate-900">
+                {formatMoneyMinor(intake.amountMinor, intake.currency, props.numberFormat)}
+              </td>
+              <td className="py-2 pr-4 font-mono text-xs text-slate-600">{intake.receiptNumber}</td>
+              <td className="py-2 pr-4 text-slate-700">{intake.status}</td>
+              <td className="py-2 text-slate-600">
+                {formatTimestamp(intake.recordedAt, props.numberFormat, props.timezone)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -405,32 +407,34 @@ function DepositTable(props: {
   readonly timezone: string;
 }): ReactElement {
   return (
-    <table className="w-full text-left text-sm">
-      <thead>
-        <tr className="border-b border-slate-200 text-slate-500">
-          <th className="py-2 pr-4 font-medium">Provider reference</th>
-          <th className="py-2 pr-4 font-medium">Amount</th>
-          <th className="py-2 pr-4 font-medium">Status</th>
-          <th className="py-2 font-medium">Arrived</th>
-        </tr>
-      </thead>
-      <tbody>
-        {props.deposits.map((deposit) => (
-          <tr key={deposit.id} className="border-b border-slate-100">
-            <td className="py-2 pr-4 font-mono text-xs text-slate-700">
-              {deposit.providerReference}
-            </td>
-            <td className="py-2 pr-4 text-slate-900">
-              {formatMoneyMinor(deposit.amountMinor, deposit.currency, props.numberFormat)}
-            </td>
-            <td className="py-2 pr-4 text-slate-700">{depositStatusLabel(deposit.status)}</td>
-            <td className="py-2 text-slate-600">
-              {formatTimestamp(deposit.createdAt, props.numberFormat, props.timezone)}
-            </td>
+    <div className="overflow-x-auto">
+      <table className="w-full text-left text-sm">
+        <thead>
+          <tr className="border-b border-slate-200 text-slate-500">
+            <th className="py-2 pr-4 font-medium">Provider reference</th>
+            <th className="py-2 pr-4 font-medium">Amount</th>
+            <th className="py-2 pr-4 font-medium">Status</th>
+            <th className="py-2 font-medium">Arrived</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {props.deposits.map((deposit) => (
+            <tr key={deposit.id} className="border-b border-slate-100">
+              <td className="py-2 pr-4 font-mono text-xs text-slate-700">
+                {deposit.providerReference}
+              </td>
+              <td className="py-2 pr-4 text-slate-900">
+                {formatMoneyMinor(deposit.amountMinor, deposit.currency, props.numberFormat)}
+              </td>
+              <td className="py-2 pr-4 text-slate-700">{depositStatusLabel(deposit.status)}</td>
+              <td className="py-2 text-slate-600">
+                {formatTimestamp(deposit.createdAt, props.numberFormat, props.timezone)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 

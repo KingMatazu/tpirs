@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import type { TenantConfig } from "@tpirs/config";
 import { useSession } from "../session.js";
 import { stubRelativeRequests } from "../test-support/browserStubs.js";
@@ -140,5 +140,134 @@ describe("route permissions", () => {
 
   it("returns nothing for an account with no permissions at all", () => {
     expect(firstPermittedRoute([])).toBeUndefined();
+  });
+});
+
+type MediaListener = (event: { readonly matches: boolean }) => void;
+
+/**
+ * A controllable `matchMedia`, because jsdom has none and the drawer's
+ * auto-collapse is driven by one query changing.
+ */
+function stubMatchMedia(initial: boolean): { readonly setMatches: (matches: boolean) => void } {
+  const state = { matches: initial };
+  const listeners = new Set<MediaListener>();
+  const list = {
+    get matches() {
+      return state.matches;
+    },
+    media: "(min-width: 1024px)",
+    addEventListener: (_event: string, listener: MediaListener) => {
+      listeners.add(listener);
+    },
+    removeEventListener: (_event: string, listener: MediaListener) => {
+      listeners.delete(listener);
+    },
+  };
+  vi.stubGlobal("matchMedia", () => list);
+  return {
+    setMatches: (matches: boolean) => {
+      state.matches = matches;
+      for (const listener of listeners) listener({ matches });
+    },
+  };
+}
+
+describe("responsive navigation", () => {
+  afterEach(() => {
+    // Only the media stub is ours; `fetch` is installed for the whole file.
+    vi.unstubAllGlobals();
+    vi.stubGlobal("fetch", fakeFetch);
+  });
+
+  it("keeps the sidebar in the page and the drawer closed until asked", async () => {
+    current = alpha;
+    renderShell();
+    await screen.findByText("Example Levy");
+
+    expect(screen.getByTestId("sidebar")).toBeTruthy();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Open navigation" }).getAttribute("aria-expanded"),
+    ).toBe("false");
+  });
+
+  it("opens the drawer from the header, moves focus into it, and Escape returns focus", async () => {
+    current = alpha;
+    renderShell();
+    await screen.findByText("Example Levy");
+
+    const toggle = screen.getByRole("button", { name: "Open navigation" });
+    fireEvent.click(toggle);
+
+    const dialog = screen.getByRole("dialog", { name: "Navigation" });
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(document.activeElement).toBe(
+      within(dialog).getByRole("button", { name: "Close navigation" }),
+    );
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.activeElement).toBe(toggle);
+  });
+
+  it("closes on the backdrop, and after choosing a page", async () => {
+    current = alpha;
+    renderShell();
+    await screen.findByText("Example Levy");
+
+    fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+    fireEvent.click(screen.getByTestId("nav-backdrop"));
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+    const dialog = screen.getByRole("dialog", { name: "Navigation" });
+    fireEvent.click(within(dialog).getByRole("button", { name: /Registry/ }));
+
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(window.location.hash).toBe("#/registry");
+  });
+
+  it("keeps Tab inside the open drawer", async () => {
+    current = alpha;
+    renderShell();
+    await screen.findByText("Example Levy");
+
+    fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+    const dialog = screen.getByRole("dialog", { name: "Navigation" });
+    const close = within(dialog).getByRole("button", { name: "Close navigation" });
+    expect(document.activeElement).toBe(close);
+
+    // Shift+Tab from the first control wraps to the last page in the list.
+    fireEvent.keyDown(document, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(within(dialog).getByRole("button", { name: /Audit/ }));
+
+    fireEvent.keyDown(document, { key: "Tab" });
+    expect(document.activeElement).toBe(close);
+  });
+
+  it("auto-collapses when the window grows past the breakpoint", async () => {
+    const media = stubMatchMedia(false);
+    current = alpha;
+    renderShell();
+    await screen.findByText("Example Levy");
+
+    fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+    expect(screen.getByRole("dialog", { name: "Navigation" })).toBeTruthy();
+
+    // A phone rotated to landscape, or a desktop window: the drawer must not
+    // survive into a layout that has a permanent sidebar.
+    act(() => {
+      media.setMatches(true);
+    });
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("labels the menu from the tenant's language", async () => {
+    current = beta;
+    renderShell();
+    await screen.findByText("Beta Levy");
+
+    expect(screen.getByRole("button", { name: "Ouvrir la navigation" })).toBeTruthy();
   });
 });

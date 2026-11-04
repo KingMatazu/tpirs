@@ -96,33 +96,35 @@ export function ChannelsPage(): ReactElement {
         {catalog.languages.length === 0 ? (
           <EmptyState message="No catalogues configured." />
         ) : (
-          <table className="w-full text-left text-sm">
-            <thead>
-              <tr className="border-b border-slate-200 text-slate-500">
-                <th className="py-1 pr-4 font-medium">Key</th>
-                {catalog.languages.map((language) => (
-                  <th key={language} className="py-1 pr-4 font-medium">
-                    {language}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {catalog.rows.map((row) => (
-                <tr key={row.key} className="border-b border-slate-100 align-top">
-                  <td className="py-1 pr-4 font-mono text-xs text-slate-500">{row.key}</td>
-                  {row.cells.map((cell) => (
-                    <td
-                      key={cell.language}
-                      className={`py-1 pr-4 ${cell.value === null ? "text-red-500" : "text-slate-800"}`}
-                    >
-                      {cell.value ?? "missing"}
-                    </td>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 text-slate-500">
+                  <th className="py-1 pr-4 font-medium">Key</th>
+                  {catalog.languages.map((language) => (
+                    <th key={language} className="py-1 pr-4 font-medium">
+                      {language}
+                    </th>
                   ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {catalog.rows.map((row) => (
+                  <tr key={row.key} className="border-b border-slate-100 align-top">
+                    <td className="py-1 pr-4 font-mono text-xs text-slate-500">{row.key}</td>
+                    {row.cells.map((cell) => (
+                      <td
+                        key={cell.language}
+                        className={`py-1 pr-4 ${cell.value === null ? "text-red-500" : "text-slate-800"}`}
+                      >
+                        {cell.value ?? "missing"}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </Card>
     </div>

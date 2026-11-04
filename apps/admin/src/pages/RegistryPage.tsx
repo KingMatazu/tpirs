@@ -733,31 +733,33 @@ function AssetDetail(props: {
         title="Attributes"
         description="Laid out from the tenant's asset-type schema; extra keys are shown, never dropped."
       >
-        <table className="w-full text-left text-sm">
-          <thead>
-            <tr className="border-b border-slate-200 text-slate-500">
-              <th className="py-2 pr-4 font-medium">Attribute</th>
-              <th className="py-2 pr-4 font-medium">Value</th>
-              <th className="py-2 font-medium">Rules</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <tr key={row.key} className="border-b border-slate-100">
-                <td className="py-2 pr-4 text-slate-700">
-                  {row.label}
-                  {row.key === row.label ? null : (
-                    <span className="ml-2 font-mono text-xs text-slate-400">{row.key}</span>
-                  )}
-                </td>
-                <td className="py-2 pr-4 text-slate-900">{row.value}</td>
-                <td className="py-2 text-xs text-slate-500">
-                  {row.extra ? "not in schema" : `${row.type}${row.required ? ", required" : ""}`}
-                </td>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr className="border-b border-slate-200 text-slate-500">
+                <th className="py-2 pr-4 font-medium">Attribute</th>
+                <th className="py-2 pr-4 font-medium">Value</th>
+                <th className="py-2 font-medium">Rules</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.key} className="border-b border-slate-100">
+                  <td className="py-2 pr-4 text-slate-700">
+                    {row.label}
+                    {row.key === row.label ? null : (
+                      <span className="ml-2 font-mono text-xs text-slate-400">{row.key}</span>
+                    )}
+                  </td>
+                  <td className="py-2 pr-4 text-slate-900">{row.value}</td>
+                  <td className="py-2 text-xs text-slate-500">
+                    {row.extra ? "not in schema" : `${row.type}${row.required ? ", required" : ""}`}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </Card>
 
       <Card title="Photos" description="Evidence attached at registration; the newest is last.">
