@@ -73,6 +73,7 @@ async function resolvePrincipal(
     displayName: staff.displayName,
     roles: staff.roles,
     permissions: account.permissionKeys,
+    zoneId: account.user.zoneId,
     mustChangeCredentials: account.user.mustChangeCredentials,
   });
 }

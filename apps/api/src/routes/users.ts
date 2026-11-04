@@ -112,6 +112,7 @@ export function registerUserRoutes(app: FastifyInstance, context: UserRoutesCont
       phone?: unknown;
       nationalId?: unknown;
       homeAddress?: unknown;
+      zoneId?: unknown;
     };
     const username = asString(body.username);
     const displayName = asString(body.displayName);
@@ -120,6 +121,7 @@ export function registerUserRoutes(app: FastifyInstance, context: UserRoutesCont
     const phone = asString(body.phone);
     const nationalId = asString(body.nationalId);
     const homeAddress = asString(body.homeAddress);
+    const zoneId = asString(body.zoneId);
     const primaryRoleKey = asString(body.primaryRoleKey);
     const roleKeys = Array.isArray(body.roleKeys)
       ? body.roleKeys.filter((key): key is string => typeof key === "string")
@@ -146,6 +148,7 @@ export function registerUserRoutes(app: FastifyInstance, context: UserRoutesCont
         ...(phone === undefined ? {} : { phone }),
         ...(nationalId === undefined ? {} : { nationalId }),
         ...(homeAddress === undefined ? {} : { homeAddress }),
+        ...(zoneId === undefined ? {} : { zoneId }),
         nationalIdPattern:
           config === undefined ? DEFAULT_NATIONAL_ID_PATTERN : nationalIdPattern(config),
       });
@@ -161,6 +164,9 @@ export function registerUserRoutes(app: FastifyInstance, context: UserRoutesCont
           status: user.status,
           roles: user.roles,
           primaryRoleKey: user.primaryRoleKey,
+          // The zone is an operational fact, not personal data, and an auditor
+          // needs it to explain who registered what.
+          zoneId: user.zoneId,
         },
       };
       return await reply.code(201).send({ user });
@@ -179,10 +185,15 @@ export function registerUserRoutes(app: FastifyInstance, context: UserRoutesCont
       status?: unknown;
       roleKeys?: unknown;
       primaryRoleKey?: unknown;
+      zoneId?: unknown;
     };
     const displayName = body.displayName === undefined ? undefined : asString(body.displayName);
     const status = body.status === "active" || body.status === "disabled" ? body.status : undefined;
     const primaryRoleKey = asString(body.primaryRoleKey);
+    // `null` is a real value here — it clears a zone the account no longer needs —
+    // so it is distinguished from "not sent".
+    const zoneId =
+      body.zoneId === null ? null : body.zoneId === undefined ? undefined : asString(body.zoneId);
     const roleKeys = Array.isArray(body.roleKeys)
       ? body.roleKeys.filter((key): key is string => typeof key === "string")
       : undefined;
@@ -190,14 +201,15 @@ export function registerUserRoutes(app: FastifyInstance, context: UserRoutesCont
       displayName === undefined &&
       status === undefined &&
       roleKeys === undefined &&
-      primaryRoleKey === undefined
+      primaryRoleKey === undefined &&
+      zoneId === undefined
     ) {
       // An empty patch is far more likely a client bug than an intent; saying so
       // is friendlier than a silent no-op the operator cannot see in the trail.
       return badRequest(
         request,
         reply,
-        "Nothing to update: send displayName, status, roleKeys or primaryRoleKey",
+        "Nothing to update: send displayName, status, roleKeys, primaryRoleKey or zoneId",
       );
     }
 
@@ -212,6 +224,7 @@ export function registerUserRoutes(app: FastifyInstance, context: UserRoutesCont
         ...(status === undefined ? {} : { status }),
         ...(roleKeys === undefined ? {} : { roleKeys }),
         ...(primaryRoleKey === undefined ? {} : { primaryRoleKey }),
+        ...(zoneId === undefined ? {} : { zoneId }),
       });
       request.audit = {
         action: "user.update",
@@ -222,12 +235,14 @@ export function registerUserRoutes(app: FastifyInstance, context: UserRoutesCont
           roles: previous.roles,
           primaryRoleKey: previous.primaryRoleKey,
           displayName: previous.displayName,
+          zoneId: previous.zoneId,
         },
         after: {
           status: user.status,
           roles: user.roles,
           primaryRoleKey: user.primaryRoleKey,
           displayName: user.displayName,
+          zoneId: user.zoneId,
         },
       };
       return await reply.send({ user });

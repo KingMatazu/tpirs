@@ -9,6 +9,15 @@ export interface Principal {
   readonly roles: readonly string[];
   readonly permissions: readonly Permission[];
   /**
+   * The zone this person is responsible for, when their role has one.
+   *
+   * A zone supervisor registers vehicles in their own zone and nowhere else, and
+   * a route has to judge that without a second query per request. Null for every
+   * other role, and null for a supervisor whose zone was never recorded — the
+   * latter is refused rather than treated as "every zone".
+   */
+  readonly zoneId: string | null;
+  /**
    * True while the account still holds the credentials it was provisioned with.
    *
    * Onboarding has to create an account before anyone has chosen a username and
@@ -37,6 +46,8 @@ export function principal(input: {
   displayName: string;
   roles: readonly string[];
   permissions: readonly string[];
+  /** The zone a supervisor is responsible for; omitted for every other role. */
+  zoneId?: string | null;
   /** Defaults to false: only a provisioning flow sets it, and it clears itself. */
   mustChangeCredentials?: boolean;
 }): Principal {
@@ -53,6 +64,7 @@ export function principal(input: {
     displayName: input.displayName,
     roles: [...input.roles],
     permissions,
+    zoneId: input.zoneId ?? null,
     mustChangeCredentials: input.mustChangeCredentials ?? false,
   };
 }

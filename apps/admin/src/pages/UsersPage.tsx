@@ -45,6 +45,10 @@ export interface StaffAccount {
   /** The role the person was hired for; null when no grant carries the mark. */
   readonly primaryRoleKey: string | null;
   readonly mustChangeCredentials: boolean;
+  /** The zone a supervisor is responsible for; null for every other role. */
+  readonly zoneId: string | null;
+  /** The zone's name, so the row reads "Katsina Central" rather than a uuid. */
+  readonly zoneName: string | null;
 }
 
 export interface RoleOption {
@@ -55,6 +59,14 @@ export interface RoleOption {
 
 const USERS_KEY = ["users"] as const;
 const ROLES_KEY = ["roles"] as const;
+const ZONES_KEY = ["zones"] as const;
+
+/** A zone as `GET /v1/zones` returns it. */
+export interface ZoneOption {
+  readonly id: string;
+  readonly parentZoneId: string | null;
+  readonly name: string;
+}
 
 export function statusTone(status: StaffAccount["status"]): BadgeTone {
   return status === "active" ? "positive" : "neutral";
@@ -181,6 +193,58 @@ export function RolePicker({
   );
 }
 
+/**
+ * The zone a supervisor is responsible for.
+ *
+ * A native select, because a state has tens of zones rather than thousands and a
+ * select is what a phone and a screen reader both handle without help. When the
+ * tenant has no zones yet the hint says so — creating one is the Zones screen's
+ * job, and an empty select that silently refuses the form is worse than a
+ * sentence explaining why.
+ */
+function ZoneSelect(
+  props: Readonly<{
+    readonly name: string;
+    readonly zones: readonly ZoneOption[];
+    readonly value: string;
+    readonly disabled: boolean;
+    readonly onValueChange: (value: string) => void;
+    readonly error?: string;
+  }>,
+): ReactElement {
+  return (
+    <div className="w-64">
+      <Field
+        label="Zone"
+        hint={
+          props.zones.length === 0
+            ? "No zones yet. Create one on the Zones screen first."
+            : "The supervisor registers drivers in this zone only."
+        }
+        {...(props.error === undefined ? {} : { error: props.error })}
+      >
+        <select
+          aria-label="Zone"
+          name={props.name}
+          className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
+          value={props.value}
+          disabled={props.disabled}
+          onChange={(event) => {
+            props.onValueChange(event.currentTarget.value);
+          }}
+        >
+          <option value="">Select a zone…</option>
+          {props.zones.map((zone) => (
+            <option key={zone.id} value={zone.id}>
+              {zone.name}
+            </option>
+          ))}
+        </select>
+      </Field>
+    </div>
+  );
+}
+
 function issueMap(issues: unknown): Record<string, string> {
   const mapped: Record<string, string> = {};
   if (!Array.isArray(issues)) return mapped;
@@ -215,6 +279,7 @@ export function UsersPage(): ReactElement {
     phone: "",
     nationalId: "",
     homeAddress: "",
+    zoneId: "",
   });
   const [formPrimaryRole, setFormPrimaryRole] = useState("");
   const [formExtraRoles, setFormExtraRoles] = useState<readonly string[]>([]);
@@ -233,6 +298,8 @@ export function UsersPage(): ReactElement {
   const [rolesForId, setRolesForId] = useState<string | undefined>(undefined);
   const [editPrimaryRole, setEditPrimaryRole] = useState("");
   const [editExtraRoles, setEditExtraRoles] = useState<readonly string[]>([]);
+  /** The zone chosen while editing roles; required once the set is supervisory. */
+  const [editZoneId, setEditZoneId] = useState("");
   const [passwordForId, setPasswordForId] = useState<string | undefined>(undefined);
   const [newPassword, setNewPassword] = useState("");
   /**
@@ -263,6 +330,9 @@ export function UsersPage(): ReactElement {
       ? []
       : [formPrimaryRole, ...formExtraRoles.filter((key) => key !== formPrimaryRole)];
   const isCollector = formRoleKeys.includes("collector");
+  // A supervisor registers vehicles in one zone, so the account needs one. The
+  // zone list is fetched only while that role is being assigned.
+  const isSupervisor = formRoleKeys.includes("zone_supervisor");
 
   const usersQuery = useQuery({
     queryKey: USERS_KEY,
@@ -274,6 +344,11 @@ export function UsersPage(): ReactElement {
     enabled: canRead,
     queryFn: async () => (await unwrap(await api.GET("/v1/roles"))).roles,
   });
+  const zonesQuery = useQuery({
+    queryKey: ZONES_KEY,
+    enabled: canRead && (isSupervisor || rolesForId !== undefined),
+    queryFn: async () => (await unwrap(await api.GET("/v1/zones"))).zones as readonly ZoneOption[],
+  });
 
   if (!canRead) {
     return <p className="text-sm text-slate-600">You do not have permission to view accounts.</p>;
@@ -281,6 +356,7 @@ export function UsersPage(): ReactElement {
 
   const users = usersQuery.data ?? [];
   const roles = rolesQuery.data ?? [];
+  const zones = zonesQuery.data ?? [];
 
   const refresh = async (): Promise<void> => {
     await queryClient.invalidateQueries({ queryKey: USERS_KEY });
@@ -307,6 +383,9 @@ export function UsersPage(): ReactElement {
       }
       if (form.homeAddress.trim() === "") local["homeAddress"] = "Enter a home address";
     }
+    if (isSupervisor && form.zoneId === "") {
+      local["zoneId"] = "Choose the zone this supervisor is responsible for";
+    }
     if (Object.keys(local).length > 0) {
       setFormErrors(local);
       setBusy(false);
@@ -329,6 +408,7 @@ export function UsersPage(): ReactElement {
                 homeAddress: form.homeAddress.trim(),
               }
             : {}),
+          ...(isSupervisor ? { zoneId: form.zoneId } : {}),
         },
       })) as ApiResult<{ user: StaffAccount }>;
       if (result.error !== undefined && result.error !== null) {
@@ -360,6 +440,7 @@ export function UsersPage(): ReactElement {
         phone: "",
         nationalId: "",
         homeAddress: "",
+        zoneId: "",
       });
       setFormPrimaryRole("");
       setFormExtraRoles([]);
@@ -395,6 +476,16 @@ export function UsersPage(): ReactElement {
   };
 
   const saveRoles = async (account: StaffAccount): Promise<void> => {
+    const nextRoles = [editPrimaryRole, ...editExtraRoles.filter((key) => key !== editPrimaryRole)];
+    // A supervisor without a zone could not register anything, so the edit is
+    // refused here rather than saved into a state the server would reject.
+    if (nextRoles.includes("zone_supervisor") && editZoneId === "") {
+      pushToast({
+        kind: "error",
+        message: "Choose the zone this supervisor is responsible for.",
+      });
+      return;
+    }
     setBusy(true);
     try {
       // The whole set is replaced, so unticking an extra role takes it away. The
@@ -404,8 +495,11 @@ export function UsersPage(): ReactElement {
         api.PATCH("/v1/users/{id}", {
           params: { path: { id: account.id } },
           body: {
-            roleKeys: [editPrimaryRole, ...editExtraRoles.filter((key) => key !== editPrimaryRole)],
+            roleKeys: nextRoles,
             primaryRoleKey: editPrimaryRole,
+            // `null` clears a zone the account no longer needs; sending it with
+            // the role set keeps the two answers from drifting apart.
+            zoneId: nextRoles.includes("zone_supervisor") ? editZoneId : null,
           },
         }),
       );
@@ -542,6 +636,7 @@ export function UsersPage(): ReactElement {
                   ) : null}
                   <span className="ml-auto text-xs text-slate-500">
                     {roleNames(roles, account.roles)}
+                    {account.zoneName === null ? "" : ` · ${account.zoneName}`}
                   </span>
                 </div>
                 {account.email !== null ? (
@@ -578,6 +673,7 @@ export function UsersPage(): ReactElement {
                         const primary = account.primaryRoleKey ?? account.roles[0] ?? "";
                         setEditPrimaryRole(primary);
                         setEditExtraRoles(account.roles.filter((key) => key !== primary));
+                        setEditZoneId(account.zoneId ?? "");
                       }}
                     >
                       Edit roles
@@ -634,6 +730,15 @@ export function UsersPage(): ReactElement {
                       onPrimaryChange={setEditPrimaryRole}
                       onExtrasChange={setEditExtraRoles}
                     />
+                    {[editPrimaryRole, ...editExtraRoles].includes("zone_supervisor") ? (
+                      <ZoneSelect
+                        name={`edit-zone-${account.id}`}
+                        zones={zones}
+                        value={editZoneId}
+                        disabled={busy}
+                        onValueChange={setEditZoneId}
+                      />
+                    ) : null}
                     <p className="mt-1 text-xs text-slate-500">
                       Clearing an additional role takes that access away when you save.
                     </p>
@@ -820,6 +925,19 @@ export function UsersPage(): ReactElement {
               onExtrasChange={setFormExtraRoles}
               {...(formErrors["roleKeys"] === undefined ? {} : { error: formErrors["roleKeys"] })}
             />
+
+            {isSupervisor ? (
+              <ZoneSelect
+                name="new-zone"
+                zones={zones}
+                value={form.zoneId}
+                disabled={busy}
+                onValueChange={(value) => {
+                  setForm({ ...form, zoneId: value });
+                }}
+                {...(formErrors["zoneId"] === undefined ? {} : { error: formErrors["zoneId"] })}
+              />
+            ) : null}
 
             {isCollector ? (
               <fieldset className="space-y-3 rounded-md border border-slate-200 p-3">

@@ -525,6 +525,8 @@ const userSummary = {
     "roles",
     "primaryRoleKey",
     "mustChangeCredentials",
+    "zoneId",
+    "zoneName",
   ],
   properties: {
     id: { type: "string" },
@@ -547,6 +549,13 @@ const userSummary = {
     primaryRoleKey: { type: "string", nullable: true },
     /** True while the account holds a temporary password and must replace it. */
     mustChangeCredentials: { type: "boolean" },
+    /**
+     * The zone a supervisor is responsible for (migration 0025). Null for every
+     * other role, and for a supervisor whose zone has not been recorded.
+     */
+    zoneId: { type: "string", nullable: true },
+    /** The zone's name, so the account list prints it without a second call. */
+    zoneName: { type: "string", nullable: true },
   },
 };
 
@@ -898,6 +907,10 @@ export const createUserSchema: FastifySchema = {
       phone: { type: "string", maxLength: 32 },
       nationalId: { type: "string", maxLength: 32 },
       homeAddress: { type: "string", maxLength: 200 },
+      // Required when the role list contains `zone_supervisor`; the service
+      // reports that as a field issue rather than a schema failure, so the form
+      // can point at the select.
+      zoneId: { type: "string", maxLength: 64 },
     },
   },
   response: {
@@ -919,6 +932,8 @@ export const updateUserSchema: FastifySchema = {
       roleKeys: { type: "array", items: { type: "string" }, minItems: 1 },
       /** Moves the primary mark; with no `roleKeys` it only re-labels a held role. */
       primaryRoleKey: { type: "string", minLength: 1 },
+      /** `null` clears the zone; omitted leaves it alone. */
+      zoneId: { type: "string", nullable: true, minLength: 1 },
     },
   },
   response: {

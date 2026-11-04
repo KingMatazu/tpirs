@@ -9,6 +9,8 @@ export interface UserRecord {
   readonly phone: string | null;
   readonly nationalId: string | null;
   readonly homeAddress: string | null;
+  /** The zone a supervisor is responsible for; null for everyone else. */
+  readonly zoneId: string | null;
   readonly status: string;
   readonly totpSecret: string | null;
   readonly passwordHash: string;
@@ -26,6 +28,8 @@ export interface CreateUserInput {
   readonly phone?: string | null;
   readonly nationalId?: string | null;
   readonly homeAddress?: string | null;
+  /** Set for a zone supervisor; the service decides when it is required. */
+  readonly zoneId?: string | null;
   /**
    * Set for an account created with a known temporary password: the session it
    * obtains may reach only the route that replaces that password.
@@ -47,6 +51,7 @@ const USER_COLUMNS = [
   "phone",
   "nationalId",
   "homeAddress",
+  "zoneId",
   "status",
   "totpSecret",
   "passwordHash",
@@ -69,6 +74,7 @@ export class UserRepository {
         phone: input.phone ?? null,
         nationalId: input.nationalId ?? null,
         homeAddress: input.homeAddress ?? null,
+        zoneId: input.zoneId ?? null,
         mustChangeCredentials: input.mustChangeCredentials ?? false,
       })
       .returning(USER_COLUMNS)
@@ -135,13 +141,24 @@ export class UserRepository {
    */
   async updateProfile(
     id: string,
-    input: { displayName?: string; status?: "active" | "disabled" },
+    input: {
+      displayName?: string;
+      status?: "active" | "disabled";
+      /** `null` clears the zone, for an account that is no longer a supervisor. */
+      zoneId?: string | null;
+    },
   ): Promise<UserRecord | undefined> {
-    const changes: { displayName?: string; status?: string; updatedAt: Date } = {
+    const changes: {
+      displayName?: string;
+      status?: string;
+      zoneId?: string | null;
+      updatedAt: Date;
+    } = {
       updatedAt: new Date(),
     };
     if (input.displayName !== undefined) changes.displayName = input.displayName;
     if (input.status !== undefined) changes.status = input.status;
+    if (input.zoneId !== undefined) changes.zoneId = input.zoneId;
     return this.db
       .updateTable("users")
       .set(changes)

@@ -583,6 +583,7 @@ export interface paths {
                         phone?: string;
                         nationalId?: string;
                         homeAddress?: string;
+                        zoneId?: string;
                     };
                 };
             };
@@ -673,6 +674,7 @@ export interface paths {
                         status?: "active" | "disabled";
                         roleKeys?: string[];
                         primaryRoleKey?: string;
+                        zoneId?: string | null;
                     };
                 };
             };
@@ -3519,6 +3521,8 @@ export interface components {
             roles: string[];
             primaryRoleKey: string | null;
             mustChangeCredentials: boolean;
+            zoneId: string | null;
+            zoneName: string | null;
         };
         /** RoleSummary */
         "def-3": {

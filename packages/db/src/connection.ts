@@ -71,6 +71,8 @@ export interface UserTable {
   nationalId: string | null;
   /** Home address on file; required by the API for a collector. */
   homeAddress: string | null;
+  /** The zone a supervisor is responsible for (migration 0025); null otherwise. */
+  zoneId: string | null;
   passwordHash: string;
   totpSecret: string | null;
   /**

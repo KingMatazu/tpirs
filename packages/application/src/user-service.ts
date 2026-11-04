@@ -82,6 +82,13 @@ export interface UserSummary {
   readonly primaryRoleKey: string | null;
   /** True while the account still holds a temporary password. */
   readonly mustChangeCredentials: boolean;
+  /**
+   * The zone a supervisor is responsible for. Null for every other role, and for
+   * a supervisor whose zone has not been recorded yet.
+   */
+  readonly zoneId: string | null;
+  /** The zone's name, so a list can print it without a second request. */
+  readonly zoneName: string | null;
 }
 
 export interface RoleSummary {
@@ -178,6 +185,7 @@ function primaryRoleIssues(
 
 /** The role whose holder takes cash from drivers and must be on file. */
 const COLLECTOR_ROLE = "collector";
+const SUPERVISOR_ROLE = "zone_supervisor";
 /** Digits, with an optional leading +, spaces and dashes as people write them. */
 const PHONE_PATTERN = /^\+?[0-9][0-9\s-]{6,19}$/;
 const ADDRESS_MIN = 5;
@@ -239,13 +247,37 @@ export function collectorProfileIssues(
   return issues;
 }
 
+/**
+ * A zone supervisor is responsible for one zone, so the account needs one.
+ *
+ * Required only when the role set contains `zone_supervisor`, the same shape as
+ * the collector profile: a role that carries a duty carries the data the duty
+ * needs. Any other account may hold a zone (it is harmless), but a supervisor
+ * without one could not register a vehicle anywhere, so creation refuses it.
+ *
+ * The zone's existence is checked inside the transaction, where row-level
+ * security means another tenant's zone simply is not found.
+ */
+export function zoneIssues(
+  roleKeys: readonly string[],
+  zoneId: string | undefined,
+): readonly UserIssue[] {
+  if (!roleKeys.includes(SUPERVISOR_ROLE)) return [];
+  if (zoneId !== undefined && zoneId.trim() !== "") return [];
+  return [{ path: "zoneId", message: "Choose the zone this supervisor is responsible for" }];
+}
+
 function isUniqueViolation(error: unknown): boolean {
   return (
     typeof error === "object" && error !== null && (error as { code?: unknown }).code === "23505"
   );
 }
 
-function toSummary(user: UserRecord, grants: readonly UserRoleGrant[]): UserSummary {
+function toSummary(
+  user: UserRecord,
+  grants: readonly UserRoleGrant[],
+  zoneName: string | null,
+): UserSummary {
   const primary = grants.find((grant) => grant.isPrimary);
   return {
     id: user.id,
@@ -259,6 +291,8 @@ function toSummary(user: UserRecord, grants: readonly UserRoleGrant[]): UserSumm
     roles: grants.map((grant) => grant.key),
     primaryRoleKey: primary === undefined ? null : primary.key,
     mustChangeCredentials: user.mustChangeCredentials,
+    zoneId: user.zoneId,
+    zoneName,
   };
 }
 
@@ -267,12 +301,17 @@ function toSummary(user: UserRecord, grants: readonly UserRoleGrant[]): UserSumm
  * per-user query is intentional — a tenant has tens of staff, not thousands, and
  * a hand-written join would obscure that the role list is the same call the
  * session uses to build permissions.
+ *
+ * The zone is resolved here rather than joined, for the same reason: the account
+ * list prints a name, and a supervisor's zone is one row.
  */
 async function summarize(
   repos: ReturnType<typeof repositories>,
   user: UserRecord,
 ): Promise<UserSummary> {
-  return toSummary(user, await repos.roles.rolesForUser(user.id));
+  const grants = await repos.roles.rolesForUser(user.id);
+  const zone = user.zoneId === null ? undefined : await repos.zones.findById(user.zoneId);
+  return toSummary(user, grants, zone?.name ?? null);
 }
 
 export async function listUsers(db: AnyDb, tenantId: string): Promise<readonly UserSummary[]> {
@@ -371,6 +410,8 @@ export interface CreateUserInput {
   readonly phone?: string;
   readonly nationalId?: string;
   readonly homeAddress?: string;
+  /** The zone a supervisor is responsible for; required for that role only. */
+  readonly zoneId?: string;
   /**
    * The tenant's national ID rule. Defaults to the platform pattern so a caller
    * that does not load config still applies one.
@@ -393,6 +434,7 @@ export async function createUser(db: AnyDb, input: CreateUserInput): Promise<Use
       input.roleKeys,
       input.nationalIdPattern ?? DEFAULT_NATIONAL_ID_PATTERN,
     ),
+    ...zoneIssues(input.roleKeys, input.zoneId),
     ...userPasswordIssues({ username: input.username.trim(), password: input.password }),
   ];
   if (issues.length > 0) throw new UserValidationError(issues);
@@ -406,6 +448,20 @@ export async function createUser(db: AnyDb, input: CreateUserInput): Promise<Use
       const { roles: resolved, issues: roleProblems } = await resolveRoles(repos, input.roleKeys);
       if (roleProblems.length > 0) throw new UserValidationError(roleProblems);
 
+      // A zone named for an account that is not a supervisor is stored anyway:
+      // it is harmless, it is what the form sent, and clearing it on a role
+      // change is the edit path's job.
+      let zoneId: string | null = null;
+      if (input.zoneId !== undefined && input.zoneId.trim() !== "") {
+        const zone = await repos.zones.findById(input.zoneId.trim());
+        if (zone === undefined) {
+          throw new UserValidationError([
+            { path: "zoneId", message: "That zone does not exist in this tenant" },
+          ]);
+        }
+        zoneId = zone.id;
+      }
+
       const user = await repos.users.create({
         tenantId: input.tenantId,
         username,
@@ -414,6 +470,7 @@ export async function createUser(db: AnyDb, input: CreateUserInput): Promise<Use
         phone: profile.phone.trim() === "" ? null : profile.phone.trim(),
         nationalId: profile.nationalId.trim() === "" ? null : profile.nationalId.trim(),
         homeAddress: profile.homeAddress.trim() === "" ? null : profile.homeAddress.trim(),
+        zoneId,
         passwordHash: await hashPassword(input.password),
         totpSecret: null,
         // The administrator knows this password, so it is temporary by
@@ -452,6 +509,11 @@ export interface UpdateUserInput {
    * holds; it never grants the role, so a typo cannot widen access.
    */
   readonly primaryRoleKey?: string;
+  /**
+   * The zone a supervisor is responsible for. `null` clears it. Omitted leaves
+   * the recorded zone alone, so renaming an account does not wipe its zone.
+   */
+  readonly zoneId?: string | null;
 }
 
 export async function updateUser(db: AnyDb, input: UpdateUserInput): Promise<UserSummary> {
@@ -474,6 +536,9 @@ export async function updateUser(db: AnyDb, input: UpdateUserInput): Promise<Use
   // they can actually be read.
   if (input.roleKeys !== undefined) {
     issues.push(...primaryRoleIssues(input.roleKeys, input.primaryRoleKey));
+    // The zone's existence is checked inside the transaction; only the
+    // "required for a supervisor" rule is decidable here.
+    issues.push(...zoneIssues(input.roleKeys, input.zoneId ?? undefined));
   }
   if (issues.length > 0) throw new UserValidationError(issues);
 
@@ -490,9 +555,36 @@ export async function updateUser(db: AnyDb, input: UpdateUserInput): Promise<Use
       resolved = outcome.roles;
     }
 
+    // The effective role set decides whether a zone is required: a role edit can
+    // make an account a supervisor, and then the zone must come with it.
+    const effectiveRoles =
+      roleKeys ?? (await repos.roles.rolesForUser(input.userId)).map((grant) => grant.key);
+    const wantsZone = effectiveRoles.includes(SUPERVISOR_ROLE);
+    const requestedZone = input.zoneId === undefined ? existing.zoneId : input.zoneId;
+    let zoneId: string | null = existing.zoneId;
+    if (wantsZone) {
+      if (requestedZone === null || requestedZone.trim() === "") {
+        throw new UserValidationError([
+          { path: "zoneId", message: "Choose the zone this supervisor is responsible for" },
+        ]);
+      }
+      const zone = await repos.zones.findById(requestedZone);
+      if (zone === undefined) {
+        throw new UserValidationError([
+          { path: "zoneId", message: "That zone does not exist in this tenant" },
+        ]);
+      }
+      zoneId = zone.id;
+    } else if (input.zoneId !== undefined || roleKeys !== undefined) {
+      // No longer a supervisor: the zone has no meaning, so it is cleared rather
+      // than left behind to confuse the next edit.
+      zoneId = null;
+    }
+
     const updated = await repos.users.updateProfile(input.userId, {
       ...(input.displayName === undefined ? {} : { displayName: input.displayName.trim() }),
       ...(input.status === undefined ? {} : { status: input.status }),
+      zoneId,
     });
     if (updated === undefined) throw new UserNotFoundError();
 

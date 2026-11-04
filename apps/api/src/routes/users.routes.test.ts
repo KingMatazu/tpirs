@@ -55,6 +55,8 @@ interface UserJson {
   roles: string[];
   primaryRoleKey: string | null;
   mustChangeCredentials: boolean;
+  zoneId: string | null;
+  zoneName: string | null;
 }
 
 /** The field paths a 422 reported, in the order the service listed them. */
@@ -109,6 +111,18 @@ describeIntegration("api users e2e (integration)", () => {
         name: "Collector",
         permissions: ["cash:intake"],
       });
+      await repos.roles.create({
+        tenantId: tenantA.id,
+        key: "zone_supervisor",
+        name: "Zone Supervisor",
+        permissions: ["asset:create"],
+      });
+      const central = await repos.zones.create({
+        tenantId: tenantA.id,
+        parentZoneId: null,
+        name: "Central",
+      });
+      zoneAId = central.id;
       for (const [username, roleId] of [
         ["um.manager", managerRole.id],
         ["um.staff", staffRole.id],
@@ -142,6 +156,18 @@ describeIntegration("api users e2e (integration)", () => {
         name: "Collector",
         permissions: ["cash:intake"],
       });
+      await repos.roles.create({
+        tenantId: tenantB.id,
+        key: "zone_supervisor",
+        name: "Zone Supervisor",
+        permissions: ["asset:create"],
+      });
+      const northB = await repos.zones.create({
+        tenantId: tenantB.id,
+        parentZoneId: null,
+        name: "North B",
+      });
+      zoneBId = northB.id;
       const bUser = await repos.users.create({
         tenantId: tenantB.id,
         username: "ub.manager",
@@ -194,6 +220,8 @@ describeIntegration("api users e2e (integration)", () => {
   let otherTenantToken = "";
   let createdId = "";
   let dualId = "";
+  let zoneAId = "";
+  let zoneBId = "";
   const temporaryPassword = "temporary-pass-1";
   const resetPassword = "reset-pass-2";
   const rotatedPassword = "rotated-pass-3";
@@ -224,6 +252,7 @@ describeIntegration("api users e2e (integration)", () => {
       "account_manager",
       "collector",
       "staff",
+      "zone_supervisor",
     ]);
     expect(catalogue.find((role) => role.key === "staff")?.permissions).toEqual(["asset:read"]);
   });
@@ -399,6 +428,67 @@ describeIntegration("api users e2e (integration)", () => {
       homeAddress: "12 Market Road",
       roles: ["collector"],
     });
+  });
+
+  it("requires a zone for a supervisor and records it by name", async () => {
+    const base = {
+      displayName: "Zone Supervisor",
+      email: "supervisor@example.com",
+      password: temporaryPassword,
+      roleKeys: ["zone_supervisor"],
+    };
+
+    const missing = await app.inject({
+      method: "POST",
+      url: "/v1/users",
+      headers: { authorization: `Bearer ${managerToken}` },
+      payload: { ...base, username: "um.supervisor" },
+    });
+    expect(missing.statusCode).toBe(422);
+    expect(issuePaths(missing)).toEqual(["zoneId"]);
+
+    // A zone from another tenant is not found inside this tenant's row-level
+    // security, so it is refused rather than silently stored.
+    const foreign = await app.inject({
+      method: "POST",
+      url: "/v1/users",
+      headers: { authorization: `Bearer ${managerToken}` },
+      payload: { ...base, username: "um.supervisor", zoneId: zoneBId },
+    });
+    expect(foreign.statusCode).toBe(422);
+    expect(issuePaths(foreign)).toEqual(["zoneId"]);
+
+    const created = await app.inject({
+      method: "POST",
+      url: "/v1/users",
+      headers: { authorization: `Bearer ${managerToken}` },
+      payload: { ...base, username: "um.supervisor", zoneId: zoneAId },
+    });
+    expect(created.statusCode).toBe(201);
+    const user = (created.json() as { user: UserJson }).user;
+    expect(user.zoneId).toBe(zoneAId);
+    expect(user.zoneName).toBe("Central");
+
+    // An account that stops being a supervisor loses the zone with the role.
+    const demoted = await app.inject({
+      method: "PATCH",
+      url: `/v1/users/${user.id}`,
+      headers: { authorization: `Bearer ${managerToken}` },
+      payload: { roleKeys: ["staff"], primaryRoleKey: "staff" },
+    });
+    expect(demoted.statusCode).toBe(200);
+    expect((demoted.json() as { user: UserJson }).user.zoneId).toBeNull();
+  });
+
+  it("refuses to make an account a supervisor without a zone", async () => {
+    const response = await app.inject({
+      method: "PATCH",
+      url: `/v1/users/${createdId}`,
+      headers: { authorization: `Bearer ${managerToken}` },
+      payload: { roleKeys: ["zone_supervisor"], primaryRoleKey: "zone_supervisor" },
+    });
+    expect(response.statusCode).toBe(422);
+    expect(issuePaths(response)).toEqual(["zoneId"]);
   });
 
   it("applies each tenant's own national ID pattern", async () => {

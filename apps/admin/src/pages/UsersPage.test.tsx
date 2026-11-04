@@ -26,6 +26,12 @@ const roles: RoleOption[] = [
   { key: "finance_admin", name: "Finance Admin", permissions: ["payment:read"] },
   { key: "officer", name: "Field Officer", permissions: ["scan:record"] },
   { key: "collector", name: "Collector", permissions: ["cash:intake"] },
+  { key: "zone_supervisor", name: "Zone Supervisor", permissions: ["asset:create"] },
+];
+
+const zones = [
+  { id: "z-central", parentZoneId: null, name: "Central" },
+  { id: "z-north", parentZoneId: null, name: "North" },
 ];
 
 const fakeFetch = vi.fn(async (input: unknown) => {
@@ -42,6 +48,9 @@ const fakeFetch = vi.fn(async (input: unknown) => {
   }
   if (request.method === "GET" && url.pathname === "/v1/roles") {
     return json(200, { roles });
+  }
+  if (request.method === "GET" && url.pathname === "/v1/zones") {
+    return json(200, { zones });
   }
   if (request.method === "GET" && url.pathname === "/v1/tenants/current/config") {
     // Only the slug and the collector rule are read by this screen; the rest of
@@ -74,6 +83,7 @@ const fakeFetch = vi.fn(async (input: unknown) => {
       phone?: string;
       nationalId?: string;
       homeAddress?: string;
+      zoneId?: string;
     };
     const primaryRoleKey = body.primaryRoleKey ?? body.roleKeys[0] ?? null;
     const created: StaffAccount = {
@@ -92,6 +102,8 @@ const fakeFetch = vi.fn(async (input: unknown) => {
       ],
       primaryRoleKey,
       mustChangeCredentials: true,
+      zoneId: body.zoneId ?? null,
+      zoneName: zones.find((zone) => zone.id === body.zoneId)?.name ?? null,
     };
     accounts = [...accounts, created];
     return json(201, { user: created });
@@ -233,6 +245,8 @@ describe("UsersPage", () => {
         status: "active",
         roles: ["finance_admin"],
         primaryRoleKey: "finance_admin",
+        zoneId: null,
+        zoneName: null,
         mustChangeCredentials: false,
       },
       {
@@ -246,6 +260,8 @@ describe("UsersPage", () => {
         status: "disabled",
         roles: ["officer"],
         primaryRoleKey: "officer",
+        zoneId: null,
+        zoneName: null,
         mustChangeCredentials: true,
       },
     ];
@@ -316,6 +332,8 @@ describe("UsersPage", () => {
         status: "active",
         roles: ["officer"],
         primaryRoleKey: "officer",
+        zoneId: null,
+        zoneName: null,
         mustChangeCredentials: false,
       },
     ];
@@ -342,6 +360,8 @@ describe("UsersPage", () => {
         status: "active",
         roles: ["officer"],
         primaryRoleKey: "officer",
+        zoneId: null,
+        zoneName: null,
         mustChangeCredentials: false,
       },
     ];
@@ -376,6 +396,8 @@ describe("UsersPage", () => {
         status: "active",
         roles: ["officer"],
         primaryRoleKey: "officer",
+        zoneId: null,
+        zoneName: null,
         mustChangeCredentials: false,
       },
     ];
@@ -400,6 +422,8 @@ describe("UsersPage", () => {
         status: "active",
         roles: ["finance_admin"],
         primaryRoleKey: "finance_admin",
+        zoneId: null,
+        zoneName: null,
         mustChangeCredentials: false,
       },
     ];
@@ -471,6 +495,8 @@ describe("UsersPage", () => {
         status: "active",
         roles: ["officer"],
         primaryRoleKey: "officer",
+        zoneId: null,
+        zoneName: null,
         mustChangeCredentials: true,
       },
     ];
@@ -506,6 +532,8 @@ describe("UsersPage", () => {
         status: "active",
         roles: ["officer"],
         primaryRoleKey: "officer",
+        zoneId: null,
+        zoneName: null,
         mustChangeCredentials: true,
       },
     ];
@@ -593,6 +621,8 @@ describe("UsersPage", () => {
         status: "active",
         roles: ["officer"],
         primaryRoleKey: "officer",
+        zoneId: null,
+        zoneName: null,
         mustChangeCredentials: false,
       },
     ];
@@ -705,6 +735,8 @@ describe("UsersPage", () => {
         status: "active",
         roles: ["officer", "collector"],
         primaryRoleKey: "officer",
+        zoneId: null,
+        zoneName: null,
         mustChangeCredentials: false,
       },
     ];
@@ -747,6 +779,86 @@ describe("UsersPage", () => {
     expect(screen.getByLabelText(/^Home address/)).toBeTruthy();
     // The state's rule, in words, from the config the dashboard holds.
     expect(screen.getByText("11 digits")).toBeTruthy();
+  });
+
+  it("asks a zone supervisor for their zone and refuses the form without one", async () => {
+    renderPage();
+    await screen.findByText("No accounts yet.");
+
+    expect(screen.queryByRole("combobox", { name: /Zone/ })).toBeNull();
+    fireEvent.click(screen.getByLabelText("Zone Supervisor"));
+
+    // The select appears with the tenant's zones, and the account cannot be
+    // saved until one is chosen: a supervisor without a zone could register
+    // nothing.
+    expect(await screen.findByRole("combobox", { name: /Zone/ })).toBeTruthy();
+    createAccount({ username: "new.supervisor", password: "temp-pass-1", role: "Zone Supervisor" });
+
+    expect(await screen.findByText(/Choose the zone this supervisor/i)).toBeTruthy();
+    expect(bodyOf("POST", "/v1/users")).toBeUndefined();
+  });
+
+  it("sends the chosen zone with a supervisor account", async () => {
+    renderPage();
+    await screen.findByText("No accounts yet.");
+
+    fireEvent.input(screen.getByLabelText(/^Username/), { target: { value: "new.supervisor" } });
+    fireEvent.input(screen.getByLabelText(/^Full name/), { target: { value: "New Officer" } });
+    fireEvent.input(screen.getByLabelText(/^Email/), { target: { value: "new@example.com" } });
+    fireEvent.input(screen.getByLabelText(/^Temporary password/), {
+      target: { value: "temp-pass-1" },
+    });
+    fireEvent.click(screen.getByLabelText("Zone Supervisor"));
+    // The options arrive with the zone list; choosing one before it loads would
+    // leave the select on its placeholder.
+    await screen.findByRole("option", { name: "North" });
+    fireEvent.change(screen.getByRole("combobox", { name: /Zone/ }), {
+      target: { value: "z-north" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+
+    await waitFor(() => {
+      expect(bodyOf("POST", "/v1/users")).toMatchObject({
+        roleKeys: ["zone_supervisor"],
+        zoneId: "z-north",
+      });
+    });
+    // The row says which zone, by name rather than by uuid.
+    expect((await screen.findAllByText(/North/)).length).toBeGreaterThan(0);
+  });
+
+  it("clears the zone when a supervisor stops being one", async () => {
+    accounts = [
+      {
+        id: "u-sup",
+        username: "zone.sup",
+        displayName: "Zone Supervisor",
+        email: "sup@example.com",
+        phone: null,
+        nationalId: null,
+        homeAddress: null,
+        status: "active",
+        roles: ["zone_supervisor"],
+        primaryRoleKey: "zone_supervisor",
+        mustChangeCredentials: false,
+        zoneId: "z-central",
+        zoneName: "Central",
+      },
+    ];
+    renderPage();
+    await screen.findByText("zone.sup");
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit roles" }));
+    const panel = screen.getByRole("group", { name: /Edit roles for zone.sup/ });
+    fireEvent.click(within(panel).getByLabelText("Field Officer"));
+    fireEvent.click(within(panel).getByRole("button", { name: "Save roles" }));
+
+    await waitFor(() => {
+      expect(bodyOf("PATCH", "/v1/users/u-sup")).toMatchObject({
+        roleKeys: ["officer"],
+        zoneId: null,
+      });
+    });
   });
 
   it("sends the collector profile with the account", async () => {
@@ -844,6 +956,8 @@ describe("UsersPage", () => {
         status: "active",
         roles: ["collector"],
         primaryRoleKey: "collector",
+        zoneId: null,
+        zoneName: null,
         mustChangeCredentials: false,
       },
     ];
