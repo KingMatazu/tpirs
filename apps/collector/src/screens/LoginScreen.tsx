@@ -1,7 +1,9 @@
 import { useEffect, useState, type ReactElement } from "react";
 import { useSession } from "../session.js";
 import { Eye, EyeOff } from "lucide-react";
+import { FIRM_LOGO, FIRM_NAME } from "@tpirs/ui-tokens";
 import { Field, PrimaryButton, inputClass } from "../components/ui.js";
+import { PoweredBy } from "../components/PoweredBy.js";
 
 /** Sign-in. The collector signs in once per shift; the session is not persisted. */
 export function LoginScreen(): ReactElement {
@@ -37,6 +39,8 @@ export function LoginScreen(): ReactElement {
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-sm flex-col justify-center gap-4 p-6">
       <div>
+        {/* Before sign-in there is no tenant to brand with: the firm's mark. */}
+        <img src={FIRM_LOGO} alt={FIRM_NAME} className="mb-4 h-12 w-auto" />
         <h1 className="text-xl font-semibold text-slate-900">Collector sign-in</h1>
         <p className="mt-1 text-sm text-slate-500">Take the daily levy in cash.</p>
       </div>
@@ -103,6 +107,7 @@ export function LoginScreen(): ReactElement {
           {busy ? "Signing in…" : "Sign in"}
         </PrimaryButton>
       </form>
+      <PoweredBy />
     </main>
   );
 }

@@ -3,7 +3,9 @@ import { ApiError } from "@tpirs/api-client";
 import { useSession } from "../session.js";
 import { Eye, EyeOff } from "lucide-react";
 import { copy } from "../copy.js";
+import { FIRM_LOGO, FIRM_NAME } from "@tpirs/ui-tokens";
 import { Banner, Field, PrimaryButton, inputClass } from "../components/ui.js";
+import { PoweredBy } from "../components/PoweredBy.js";
 
 const TENANT_KEY = "tpirs.field.tenant";
 
@@ -62,6 +64,8 @@ export function LoginScreen(): ReactElement {
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-sm flex-col justify-center gap-4 bg-slate-100 p-6">
       <div>
+        {/* Before sign-in there is no tenant to brand with: the firm's mark. */}
+        <img src={FIRM_LOGO} alt={FIRM_NAME} className="mb-4 h-12 w-auto" />
         <h1 className="text-2xl font-semibold text-slate-900">{copy.login.heading}</h1>
         <p className="mt-1 text-base text-slate-600">{copy.login.subheading}</p>
       </div>
@@ -133,6 +137,7 @@ export function LoginScreen(): ReactElement {
           {busy ? copy.login.submitting : copy.login.submit}
         </PrimaryButton>
       </form>
+      <PoweredBy />
     </main>
   );
 }

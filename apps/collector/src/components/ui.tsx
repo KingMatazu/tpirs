@@ -1,4 +1,7 @@
 import type { ReactElement, ReactNode } from "react";
+import { initialsFor, logoSource } from "@tpirs/ui-tokens";
+import { useTenantConfig } from "../lib/data.js";
+import { PoweredBy } from "./PoweredBy.js";
 
 /**
  * The collector app's small component set. Deliberately local: the dashboard's
@@ -80,11 +83,17 @@ export function Screen(
             Back
           </button>
         )}
-        <h1 className="flex-1 text-center text-base font-semibold text-slate-900">{props.title}</h1>
+        <h1 className="flex flex-1 items-center justify-center gap-2 text-base font-semibold text-slate-900">
+          <HeaderLogo fallbackName={props.title} />
+          <span className="truncate">{props.title}</span>
+        </h1>
         <div className="flex w-16 justify-end">{props.action}</div>
       </header>
       <main className="mx-auto flex w-full max-w-md flex-1 flex-col gap-3 p-3">
         {props.children}
+        <div className="mt-auto pt-2">
+          <PoweredBy />
+        </div>
       </main>
       {props.footer === undefined ? null : (
         <footer className="sticky bottom-0 border-t border-slate-200 bg-white p-3">
@@ -133,5 +142,39 @@ export function Banner(
     <div className={`rounded-xl p-3 text-sm ${tones[props.tone]}`} role="status">
       {props.children}
     </div>
+  );
+}
+
+/**
+ * The state's logo in the screen header, read from the tenant config the app
+ * already fetches for the fee and the wallet. Before sign-in there is no config
+ * and the header shows the screen title alone.
+ */
+export function HeaderLogo(
+  props: Readonly<{ readonly fallbackName: string }>,
+): ReactElement | null {
+  const config = useTenantConfig();
+  if (config === undefined) return null;
+  const source = logoSource(config.branding.logoUrl);
+  const name = config.identity.name === "" ? props.fallbackName : config.identity.name;
+  if (source === undefined) {
+    return (
+      <span
+        aria-hidden={true}
+        className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded bg-[var(--tpirs-color-primary)] text-[10px] font-bold text-white"
+      >
+        {initialsFor(name)}
+      </span>
+    );
+  }
+  // Decorative beside the screen title: the state is already named on the
+  // screen, and an alt here would be read out before every heading.
+  return (
+    <img
+      src={source}
+      alt=""
+      aria-hidden={true}
+      className="h-6 w-6 shrink-0 rounded object-contain"
+    />
   );
 }

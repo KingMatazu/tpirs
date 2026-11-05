@@ -155,3 +155,9 @@ export {
   firmAttributionHref,
   type FirmAttribution,
 } from "./firm.js";
+
+/**
+ * Reading a tenant's logo, shared so the dashboard and both field apps agree on
+ * what counts as "no logo" (ADR 0065).
+ */
+export { initialsFor, logoSource } from "./branding.js";
