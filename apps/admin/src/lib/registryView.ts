@@ -210,46 +210,148 @@ export function attributeRows(
   return rows;
 }
 
-/** The pretty-printed JSON the correction textarea opens with. */
-export function attributesJsonText(attributes: Readonly<Record<string, unknown>>): string {
-  return JSON.stringify(attributes, null, 2);
+/**
+ * One input on the correction form, derived from the tenant's schema.
+ *
+ * The registry screen never shows an operator raw JSON: a state's staff are not
+ * developers, and a typo in a brace is an outage, not a correction. Each
+ * configured attribute becomes the control its type implies — text, number,
+ * date or a picker — and the value travels as text until it is converted back
+ * for the request.
+ */
+export interface AttributeField {
+  readonly key: string;
+  readonly label: string;
+  readonly type: TenantAssetAttribute["type"];
+  readonly required: boolean;
+  /** For `enum`: the configured choices, in order. */
+  readonly options: readonly string[];
+  /** For patterned `string` fields: the tenant's own format rule, shown as a hint. */
+  readonly pattern: string | undefined;
+  /** The current value, as the input shows it. */
+  readonly value: string;
 }
 
-export type AttributesParse =
+export type AttributeFormResult =
   | { readonly ok: true; readonly attributes: Readonly<Record<string, unknown>> }
-  | { readonly ok: false; readonly error: string };
+  | { readonly ok: false; readonly errors: Readonly<Record<string, string>> };
+
+function textValue(value: unknown): string {
+  if (value === undefined || value === null) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return JSON.stringify(value);
+}
+
+/** The form's starting values, one per attribute the tenant's schema declares. */
+export function attributeFields(
+  assetType: TenantAssetType | undefined,
+  attributes: Readonly<Record<string, unknown>>,
+): readonly AttributeField[] {
+  return (assetType?.attributes ?? []).map((attribute) => ({
+    key: attribute.key,
+    label: attribute.label,
+    type: attribute.type,
+    required: attribute.required,
+    options: attribute.options ?? [],
+    pattern: attribute.pattern,
+    value: textValue(attributes[attribute.key]),
+  }));
+}
 
 /**
- * Parses the correction textarea and checks it against the schema.
+ * Values the asset carries that the schema does not declare.
  *
- * The server re-validates every attribute (patterns included) and answers 422
- * with the issues; this only catches the two mistakes an operator makes in the
- * browser — malformed JSON and a dropped required field — before a round trip.
+ * They cannot be edited here — nothing says what they mean — but a correction
+ * replaces the whole set, so they are sent back unchanged rather than dropped by
+ * a screen that does not know about them.
  */
-export function attributesJson(text: string, assetType?: TenantAssetType): AttributesParse {
-  if (text.trim() === "") {
-    return { ok: false, error: "Attributes JSON is required." };
+export function attributeExtras(
+  assetType: TenantAssetType | undefined,
+  attributes: Readonly<Record<string, unknown>>,
+): Readonly<Record<string, unknown>> {
+  const declared = new Set((assetType?.attributes ?? []).map((attribute) => attribute.key));
+  const extras: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(attributes)) {
+    if (!declared.has(key)) extras[key] = value;
   }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    return { ok: false, error: "Attributes must be valid JSON." };
+  return extras;
+}
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Turns the form's text into the attribute object the API replaces.
+ *
+ * The server re-validates everything (patterns included) and answers 422 with
+ * its own issues; this catches what an operator gets wrong in the browser — a
+ * blank required field, a number that is not a number, a plate in the wrong
+ * shape — before a round trip, and says which field it was in the tenant's own
+ * wording. Errors are keyed by attribute key so the form can put each message
+ * under its own input.
+ */
+export function attributesFromForm(
+  assetType: TenantAssetType | undefined,
+  values: Readonly<Record<string, string>>,
+  extras: Readonly<Record<string, unknown>> = {},
+): AttributeFormResult {
+  const attributes: Record<string, unknown> = { ...extras };
+  const errors: Record<string, string> = {};
+
+  for (const attribute of assetType?.attributes ?? []) {
+    const raw = (values[attribute.key] ?? "").trim();
+    if (raw === "") {
+      if (attribute.required) errors[attribute.key] = `${attribute.label} is required.`;
+      continue;
+    }
+    switch (attribute.type) {
+      case "number": {
+        const parsed = Number(raw);
+        if (!Number.isFinite(parsed)) {
+          errors[attribute.key] = `${attribute.label} must be a number.`;
+          break;
+        }
+        attributes[attribute.key] = parsed;
+        break;
+      }
+      case "date": {
+        if (!ISO_DATE.test(raw) || Number.isNaN(Date.parse(`${raw}T00:00:00Z`))) {
+          errors[attribute.key] = `${attribute.label} must be a date.`;
+          break;
+        }
+        attributes[attribute.key] = raw;
+        break;
+      }
+      case "enum": {
+        const options = attribute.options ?? [];
+        if (options.length > 0 && !options.includes(raw)) {
+          errors[attribute.key] = `${attribute.label} must be one of: ${options.join(", ")}.`;
+          break;
+        }
+        attributes[attribute.key] = raw;
+        break;
+      }
+      default: {
+        if (attribute.pattern !== undefined) {
+          let matches = true;
+          try {
+            matches = new RegExp(attribute.pattern, "u").test(raw);
+          } catch {
+            // A tenant's pattern that does not compile is the server's problem to
+            // report; the form must not block a correction over it.
+            matches = true;
+          }
+          if (!matches) {
+            errors[attribute.key] = `${attribute.label} does not match the expected format.`;
+            break;
+          }
+        }
+        attributes[attribute.key] = raw;
+      }
+    }
   }
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-    return { ok: false, error: "Attributes must be a JSON object." };
-  }
-  const attributes = parsed as Record<string, unknown>;
-  const missing = (assetType?.attributes ?? [])
-    .filter((attribute) => attribute.required)
-    .filter((attribute) => {
-      const value = attributes[attribute.key];
-      return value === undefined || value === null || attributeValue(value) === "—";
-    })
-    .map((attribute) => attribute.label);
-  if (missing.length > 0) {
-    return { ok: false, error: `Missing required attribute: ${missing.join(", ")}.` };
-  }
+
+  if (Object.keys(errors).length > 0) return { ok: false, errors };
   return { ok: true, attributes };
 }
 

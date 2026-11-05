@@ -18,9 +18,10 @@ import {
   assetStatusLabel,
   assetStatusTone,
   assetTypeLabel,
+  attributeExtras,
+  attributeFields,
   attributeRows,
-  attributesJson,
-  attributesJsonText,
+  attributesFromForm,
   correctionBody,
   downloadSticker,
   driverBody,
@@ -859,28 +860,49 @@ function SuspendForm(props: {
   );
 }
 
+/**
+ * Correcting an asset's attributes, one labelled field per configured
+ * attribute.
+ *
+ * The screen deliberately has no JSON box: the people who use it are registry
+ * clerks and supervisors, and the tenant's schema already says what each field
+ * is called and what shape it takes. The form is generated from that schema, so
+ * a state that renames "Plate number" or adds "Vehicle model" gets the change
+ * without a code edit, and a value the schema does not declare is carried
+ * through untouched instead of being silently deleted.
+ */
 function CorrectionForm(props: {
   readonly assetId: string;
   readonly assetType: TenantAssetType | undefined;
   readonly attributes: Readonly<Record<string, unknown>>;
   readonly onDone: () => Promise<void>;
 }): ReactElement {
-  const [text, setText] = useState(() => attributesJsonText(props.attributes));
+  const fields = attributeFields(props.assetType, props.attributes);
+  const extras = attributeExtras(props.assetType, props.attributes);
+  const [values, setValues] = useState<Record<string, string>>(() =>
+    Object.fromEntries(fields.map((field) => [field.key, field.value])),
+  );
+  const [errors, setErrors] = useState<Readonly<Record<string, string>>>({});
   const [busy, setBusy] = useState(false);
+
+  const setValue = (key: string, value: string): void => {
+    setValues((current) => ({ ...current, [key]: value }));
+  };
 
   const submit = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
-    const parsed = attributesJson(text, props.assetType);
-    if (!parsed.ok) {
-      pushToast({ kind: "error", message: parsed.error });
+    const result = attributesFromForm(props.assetType, values, extras);
+    if (!result.ok) {
+      setErrors(result.errors);
       return;
     }
+    setErrors({});
     setBusy(true);
     try {
       await unwrap(
         api.PATCH("/v1/assets/{id}", {
           params: { path: { id: props.assetId } },
-          body: correctionBody(parsed.attributes),
+          body: correctionBody(result.attributes),
         }),
       );
       pushToast({ kind: "success", message: "Asset corrected." });
@@ -892,24 +914,75 @@ function CorrectionForm(props: {
     }
   };
 
+  if (fields.length === 0) {
+    return (
+      <Card title="Correct attributes">
+        <ReadOnlyNote>
+          This asset's type is not in the tenant configuration, so there are no fields to edit here.
+          Ask a system administrator to check the asset type.
+        </ReadOnlyNote>
+      </Card>
+    );
+  }
+
   return (
     <Card
       title="Correct attributes"
-      description="Corrections replace the whole attribute set and are audited with the actor."
+      description="Changes are audited with the person who made them."
     >
       <form className="space-y-3" onSubmit={(event) => void submit(event)}>
-        <Field label="Attributes (JSON)" hint="A JSON object; the server re-validates every rule.">
-          <textarea
-            name="attributes"
-            aria-label="Attributes JSON"
-            className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-xs focus:border-[var(--tpirs-color-primary)] focus:outline-none"
-            rows={8}
-            value={text}
-            onChange={(event) => {
-              setText(event.currentTarget.value);
-            }}
-          />
-        </Field>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {fields.map((field) => (
+            <Field
+              key={field.key}
+              label={field.required ? `${field.label} (required)` : field.label}
+              {...(field.pattern === undefined
+                ? {}
+                : { hint: `Expected format: ${field.pattern}` })}
+              {...(errors[field.key] === undefined ? {} : { error: errors[field.key] })}
+            >
+              {field.type === "enum" ? (
+                <select
+                  aria-label={field.label}
+                  className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-[var(--tpirs-color-primary)] focus:outline-none"
+                  value={values[field.key] ?? ""}
+                  onChange={(event) => {
+                    setValue(field.key, event.currentTarget.value);
+                  }}
+                >
+                  <option value="">{field.required ? "Choose…" : "Not set"}</option>
+                  {field.options.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <TextInput
+                  name={field.key}
+                  ariaLabel={field.label}
+                  type={
+                    field.type === "date" ? "date" : field.type === "number" ? "number" : "text"
+                  }
+                  {...(field.type === "number" ? { inputMode: "decimal" as const } : {})}
+                  value={values[field.key] ?? ""}
+                  onValueChange={(value) => {
+                    setValue(field.key, value);
+                  }}
+                />
+              )}
+            </Field>
+          ))}
+        </div>
+        {Object.keys(extras).length === 0 ? null : (
+          <ReadOnlyNote>
+            Also stored on this asset, not editable here:{" "}
+            {Object.entries(extras)
+              .map(([key, value]) => `${key}: ${String(value)}`)
+              .join(", ")}
+            . They are kept as they are.
+          </ReadOnlyNote>
+        )}
         <Button type="submit" disabled={busy}>
           {busy ? "Saving…" : "Save correction"}
         </Button>

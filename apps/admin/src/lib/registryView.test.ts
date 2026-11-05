@@ -8,8 +8,9 @@ import {
   assetTypeLabel,
   attributeRows,
   attributeValue,
-  attributesJson,
-  attributesJsonText,
+  attributeExtras,
+  attributeFields,
+  attributesFromForm,
   correctionBody,
   downloadSticker,
   driverBody,
@@ -212,40 +213,155 @@ describe("mutation bodies", () => {
   });
 });
 
-describe("attributesJson", () => {
-  it("accepts a JSON object and round-trips the textarea text", () => {
-    const text = attributesJsonText({ plate_number: "AB12345" });
-    expect(text).toContain('"plate_number"');
-    const parsed = attributesJson(text, bikeSchema);
-    expect(parsed).toEqual({ ok: true, attributes: { plate_number: "AB12345" } });
+describe("attributeFields", () => {
+  const schema: TenantAssetType = {
+    key: "bike",
+    label: "Motorbike",
+    qrFormat: "EX-{id}",
+    shortCodeFormat: "B{id}",
+    stickerSpec: "60x60mm",
+    attributes: [
+      {
+        key: "plate_number",
+        label: "Plate number",
+        type: "string",
+        required: true,
+        pattern: "^[A-Z0-9]{5,8}$",
+      },
+      { key: "seats", label: "Seats", type: "number", required: false },
+      { key: "registered_on", label: "Registered on", type: "date", required: false },
+      {
+        key: "colour",
+        label: "Colour",
+        type: "enum",
+        required: false,
+        options: ["red", "blue"],
+      },
+    ],
+  };
+
+  it("builds one labelled field per configured attribute, in schema order", () => {
+    const fields = attributeFields(schema, { plate_number: "AB12345", seats: 2 });
+    expect(fields.map((field) => field.label)).toEqual([
+      "Plate number",
+      "Seats",
+      "Registered on",
+      "Colour",
+    ]);
+    expect(fields[0]?.value).toBe("AB12345");
+    expect(fields[1]?.value).toBe("2");
+    expect(fields[2]?.value).toBe("");
+    expect(fields[3]?.options).toEqual(["red", "blue"]);
   });
 
-  it("rejects empty input", () => {
-    expect(attributesJson("   ")).toEqual({ ok: false, error: "Attributes JSON is required." });
+  it("carries a configured pattern so the form can show the expected format", () => {
+    expect(attributeFields(schema, {})[0]?.pattern).toBe("^[A-Z0-9]{5,8}$");
   });
 
-  it("rejects malformed JSON", () => {
-    expect(attributesJson("{")).toEqual({ ok: false, error: "Attributes must be valid JSON." });
+  it("has nothing to render when the asset type is unknown", () => {
+    expect(attributeFields(undefined, { plate_number: "AB12345" })).toEqual([]);
   });
+});
 
-  it("rejects a JSON array", () => {
-    expect(attributesJson("[]")).toEqual({
-      ok: false,
-      error: "Attributes must be a JSON object.",
+describe("attributeExtras", () => {
+  it("keeps values the schema does not declare so a correction cannot drop them", () => {
+    expect(attributeExtras(bikeSchema, { plate_number: "AB12345", colour: "red" })).toEqual({
+      colour: "red",
     });
   });
+});
 
-  it("rejects a dropped required attribute by its configured label", () => {
-    expect(attributesJson('{"colour":"red"}', bikeSchema)).toEqual({
-      ok: false,
-      error: "Missing required attribute: Plate number.",
-    });
-  });
+describe("attributesFromForm", () => {
+  const schema: TenantAssetType = {
+    key: "bike",
+    label: "Motorbike",
+    qrFormat: "EX-{id}",
+    shortCodeFormat: "B{id}",
+    stickerSpec: "60x60mm",
+    attributes: [
+      {
+        key: "plate_number",
+        label: "Plate number",
+        type: "string",
+        required: true,
+        pattern: "^[A-Z0-9]{5,8}$",
+      },
+      { key: "seats", label: "Seats", type: "number", required: false },
+      { key: "registered_on", label: "Registered on", type: "date", required: false },
+      {
+        key: "colour",
+        label: "Colour",
+        type: "enum",
+        required: false,
+        options: ["red", "blue"],
+      },
+    ],
+  };
 
-  it("keeps extra keys the schema does not declare", () => {
-    expect(attributesJson('{"plate_number":"AB12345","colour":"red"}', bikeSchema)).toEqual({
+  it("converts each field to the type its schema declares", () => {
+    expect(
+      attributesFromForm(schema, {
+        plate_number: " AB12345 ",
+        seats: "2",
+        registered_on: "2026-10-27",
+        colour: "blue",
+      }),
+    ).toEqual({
       ok: true,
-      attributes: { plate_number: "AB12345", colour: "red" },
+      attributes: {
+        plate_number: "AB12345",
+        seats: 2,
+        registered_on: "2026-10-27",
+        colour: "blue",
+      },
+    });
+  });
+
+  it("leaves an empty optional field out instead of storing a blank string", () => {
+    expect(attributesFromForm(schema, { plate_number: "AB12345", seats: "" })).toEqual({
+      ok: true,
+      attributes: { plate_number: "AB12345" },
+    });
+  });
+
+  it("names the missing field in the tenant's own wording", () => {
+    expect(attributesFromForm(schema, { plate_number: "  " })).toEqual({
+      ok: false,
+      errors: { plate_number: "Plate number is required." },
+    });
+  });
+
+  it("refuses a plate that does not match the configured pattern", () => {
+    expect(attributesFromForm(schema, { plate_number: "AB1" })).toEqual({
+      ok: false,
+      errors: { plate_number: "Plate number does not match the expected format." },
+    });
+  });
+
+  it("refuses a number that is not a number, and a date that is not a date", () => {
+    expect(attributesFromForm(schema, { plate_number: "AB12345", seats: "two" })).toEqual({
+      ok: false,
+      errors: { seats: "Seats must be a number." },
+    });
+    expect(
+      attributesFromForm(schema, { plate_number: "AB12345", registered_on: "27/10/2026" }),
+    ).toEqual({
+      ok: false,
+      errors: { registered_on: "Registered on must be a date." },
+    });
+  });
+
+  it("refuses a value that is not one of the configured choices", () => {
+    expect(attributesFromForm(schema, { plate_number: "AB12345", colour: "green" })).toEqual({
+      ok: false,
+      errors: { colour: "Colour must be one of: red, blue." },
+    });
+  });
+
+  it("carries undeclared values through unchanged", () => {
+    expect(attributesFromForm(schema, { plate_number: "AB12345" }, { colour_code: "R" })).toEqual({
+      ok: true,
+      attributes: { colour_code: "R", plate_number: "AB12345" },
     });
   });
 });

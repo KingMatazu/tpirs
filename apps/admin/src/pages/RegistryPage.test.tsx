@@ -250,34 +250,34 @@ describe("RegistryPage", () => {
     });
   });
 
-  it("patches the whole attribute set from the JSON editor", async () => {
+  it("patches the whole attribute set from the labelled fields", async () => {
     await openAsset();
 
-    const editor = screen.getByLabelText("Attributes JSON") as HTMLTextAreaElement;
-    expect(editor.value).toContain('"plate_number"');
+    // One field per attribute the tenant's schema declares — no JSON anywhere.
+    const plate = screen.getByLabelText("Plate number") as HTMLInputElement;
+    expect(plate.value).toBe("AB12345");
 
-    fireEvent.change(editor, {
-      target: { value: JSON.stringify({ plate_number: "ZZ99999" }) },
-    });
+    fireEvent.input(plate, { target: { value: "ZZ99999" } });
     fireEvent.click(screen.getByText("Save correction"));
 
     await waitFor(() => {
       expect(bodyOf("/v1/assets/as_1", "PATCH")).toEqual({
-        attributes: { plate_number: "ZZ99999" },
+        attributes: { plate_number: "ZZ99999", colour: "red" },
       });
     });
   });
 
-  it("refuses malformed JSON without calling the API", async () => {
+  it("refuses a value the tenant's schema rejects without calling the API", async () => {
     await openAsset();
 
-    fireEvent.change(screen.getByLabelText("Attributes JSON"), { target: { value: "{" } });
+    // "AB1" is too short for the configured pattern, so the form stops first.
+    fireEvent.input(screen.getByLabelText("Plate number"), { target: { value: "AB1" } });
     fireEvent.click(screen.getByText("Save correction"));
 
-    // The parse happens before any request; nothing reaches the API.
     await waitFor(() => {
-      expect(requests.some((row) => row.method === "PATCH")).toBe(false);
+      expect(screen.getByText("Plate number does not match the expected format.")).toBeDefined();
     });
+    expect(requests.some((row) => row.method === "PATCH")).toBe(false);
   });
 
   it("downloads the sticker with the bearer and a derived filename", async () => {
