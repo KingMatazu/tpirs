@@ -70,11 +70,9 @@ export function registerConfigRoutes(app: FastifyInstance, context: AuthContext)
 
       const before = await readTenantConfig(context.db, principal.tenantId);
       if (before === undefined) {
-        return reply
-          .code(404)
-          .send({
-            error: { code: "not_found", message: "Tenant not found", requestId: request.id },
-          });
+        return reply.code(404).send({
+          error: { code: "not_found", message: "Tenant not found", requestId: request.id },
+        });
       }
 
       const stored = asRecord(before.config);

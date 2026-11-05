@@ -1275,3 +1275,39 @@ audience.
   deploy), and selective deletes (same wipe with more ways to be wrong, and it
   contradicts the append-only rule for everything except this one whole-database
   reset).
+
+---
+
+## D64: How does a state change its logo, contacts and colours after setup
+
+**Status:** resolved (ADR 0065). A narrow, audited identity endpoint; the logo is
+stored inline in the tenant config.
+
+The first-run wizard sets the state's details once, and a real authority wants to
+change its logo, its support phone and its colours without a redeploy — and
+without being handed the whole-config document.
+
+- Decision: `PATCH /v1/tenants/current/identity` (system admin, `tenant:configure`)
+  takes only `logoUrl`, `supportEmail`, `supportPhone`, `legalEntity`, `appName`
+  and `colors`. The server merges into the stored config and validates the result,
+  so fees, providers and channels are untouched and a stale form cannot clobber
+  them. Each save bumps the config version and is audited with before/after.
+- Decision: the receipt header is derived from the state's name on every save. The
+  slug never changes — it is the sign-in identifier.
+- Decision: the logo is an upload (`data:image/…`, ≤128 KB, downscaled in the
+  browser) or an `https://` URL, stored in `branding.logoUrl`. An empty value
+  means "no logo": screens show the state's initials and the sticker prints its
+  text header. Object storage was rejected because the pilot runs the mock adapter,
+  whose contents do not survive a serverless invocation.
+- Decision: the firm's own mark is separate from the tenant's. Screens that run
+  before a tenant is known (dashboard sign-in, first-run wizard, both phone
+  sign-ins) carry the firm's logo; everything after sign-in carries the state's.
+  The footer line, the firm logo and the (still empty) website href live in
+  `@tpirs/ui-tokens/firm.ts`, so rebranding for another reseller is one edit.
+- Consequence: each logo save duplicates the image into the append-only audit row
+  (~160 KB per edit), which is why the cap is 128 KB. A hosted logo does not reach
+  the printed sticker; only uploads do.
+- Rejected: a public branding endpoint for the sign-in page (the tenant is unknown
+  until the slug is typed, and the firm's logo belongs there anyway), a separate
+  logo table and route (more moving parts for a 100 KB asset), and letting the
+  state rename itself (the slug is the sign-in identifier).

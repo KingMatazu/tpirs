@@ -463,3 +463,59 @@ in one transaction.
 3. If you would rather demo a populated system than an empty one, create the
    tenant first and then register a handful of drivers from **Registry → Add a
    driver** — the sticker, the cash intake and the reports all follow from that.
+
+## 11. Changing the state's details after setup
+
+The first-run wizard sets the state's name, slug, contacts and fee. After that, a
+**system administrator** can change the visible details from the dashboard:
+**Configuration → State identity and branding** (ADR 0065).
+
+| What                  | Where it shows                                                                    |
+| --------------------- | --------------------------------------------------------------------------------- |
+| Logo                  | Dashboard header and mobile drawer, both phone apps' headers, the printed sticker |
+| App name              | Header, browser tab title, sticker header                                         |
+| Support email / phone | Driver-facing copy and the configuration view                                     |
+| Legal entity          | Receipts and reports                                                              |
+| Brand colours         | The whole dashboard re-themes on save                                             |
+
+Notes that save support calls:
+
+- **Upload the file, don't link to it, if you want the sticker to carry the logo.**
+  An upload is stored inside the tenant config, so it reaches every screen and the
+  printed sticker. A pasted `https://` URL works on the screens but is never
+  fetched by the API, so the sticker prints its text header instead.
+- **The browser shrinks the image** (longest edge 512 px, target 96 KB) before it
+  is sent; the server refuses anything over 128 KB. An SVG stays sharp at any size
+  and is the best choice for a state seal.
+- **"Use a URL" only works when the site allows embedding.** If it refuses, the
+  card says so — download the image and upload the file instead.
+- **The receipt header follows the state's name.** It is not a separate field; it
+  is derived on every save so it can never go stale.
+- **The slug never changes.** It is the sign-in identifier and appears on handover
+  cards; renaming the state is a different operation and is not offered here.
+- **No migration and no redeploy** are needed — the details live in the tenant
+  config, and the dashboard picks them up as soon as the save returns.
+
+### The firm's own branding
+
+The sign-in screens and the first-run wizard carry **Star Galaxy Innovation and
+Technology Ltd**, because no tenant exists at that point; everything after sign-in
+carries the state's logo. The footer line on every screen is "Powered by Star
+Galaxy Innovation and Technology Ltd", currently plain text.
+
+Both live in `packages/ui-tokens/src/firm.ts`:
+
+```ts
+export const FIRM_NAME = "Star Galaxy Innovation and Technology Ltd";
+export const FIRM_ATTRIBUTION = { label: `Powered by ${FIRM_NAME}`, href: "" };
+export const FIRM_LOGO = `data:image/svg+xml,${encodeURIComponent(PLACEHOLDER_SVG)}`;
+```
+
+- Set `href` to the firm's website and the footer becomes a link that opens in a
+  new tab; leave it empty and the line stays plain text (an empty `href` would
+  just reload the page).
+- Replace `PLACEHOLDER_SVG` (or point `FIRM_LOGO` at a `data:image/png;base64,…`
+  value) with the real mark. It is the only file to touch, and it reaches all
+  three frontends because they all depend on `@tpirs/ui-tokens`.
+- Changing it is a **rebuild** of `tpirs-admin`, `tpirs-field` and
+  `tpirs-collector` — the logo is inlined at build time, not fetched.
