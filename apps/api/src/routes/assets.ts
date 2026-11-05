@@ -2,7 +2,12 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { TenantConfig } from "@tpirs/config";
 import type { AssetRecord, OwnerRecord } from "@tpirs/db";
 import { isAssetStatus } from "@tpirs/domain";
-import { AssetValidationError, AssetNotFoundError, OtpError } from "@tpirs/application";
+import {
+  AssetValidationError,
+  AssetNotFoundError,
+  AssetOwnerNotFoundError,
+  OtpError,
+} from "@tpirs/application";
 import type { Services } from "../services.js";
 import { requirePermission, requirePrincipal } from "../auth.js";
 import {
@@ -16,6 +21,8 @@ import {
   photoParamsSchema,
   requestOwnerVerifySchema,
   searchAssetsSchema,
+  ownerByPhoneSchema,
+  reassignAssetOwnerSchema,
   stickerSchema,
   suspendAssetSchema,
 } from "../schemas.js";
@@ -362,6 +369,49 @@ export function registerAssetRoutes(app: FastifyInstance, context: AssetRoutesCo
     }
   });
 
+  /**
+   * Hands a vehicle to a different owner. A motorbike changes hands; the sticker,
+   * the short code and the payment history stay with the vehicle, and the person
+   * liable changes.
+   *
+   * `asset:create`, not `asset:manage`: ownership is a legal link, and it is the
+   * same supervisory permission that registers a driver in the first place. A
+   * collector who may correct a plate number may not decide who owes the levy.
+   */
+  app.put("/v1/assets/:id/owner", { schema: reassignAssetOwnerSchema }, async (request, reply) => {
+    const principal = requirePermission(request, "asset:create");
+    const { id } = request.params as { id: string };
+    const body = asRecord(request.body);
+    const ownerId = body === undefined ? undefined : asString(body.ownerId);
+    if (ownerId === undefined) return badRequest(request, reply, "ownerId is required");
+
+    const before = await services.asset.getById(principal.tenantId, id).catch(() => undefined);
+    try {
+      const asset = await services.asset.reassignOwner(principal.tenantId, id, ownerId);
+      const presented = await presentAsset(principal.tenantId, asset);
+      request.audit = {
+        action: "asset.reassign",
+        entityType: "asset",
+        entityId: id,
+        before: { ownerId: before?.ownerId ?? null },
+        after: { ownerId: asset.ownerId, ownerName: presented.ownerName },
+      };
+      return await reply.send({ asset: presented });
+    } catch (error) {
+      if (error instanceof AssetOwnerNotFoundError) {
+        return reply.code(404).send({
+          error: {
+            code: "not_found",
+            message: "The new owner was not found in this tenant",
+            requestId: request.id,
+          },
+        });
+      }
+      if (error instanceof AssetNotFoundError) return notFound(request, reply);
+      throw error;
+    }
+  });
+
   app.post("/v1/owners", { schema: createOwnerSchema }, async (request, reply) => {
     // Creating an owner is the other half of registering a driver, so it travels
     // with `asset:create` rather than with corrections.
@@ -381,6 +431,22 @@ export function registerAssetRoutes(app: FastifyInstance, context: AssetRoutesCo
     });
     request.audit = { action: "owner.create", entityType: "owner", entityId: owner.id };
     return reply.code(201).send({ owner: serializeOwner(owner) });
+  });
+
+  app.get("/v1/owners/by-phone/:phone", { schema: ownerByPhoneSchema }, async (request, reply) => {
+    const principal = requirePermission(request, "asset:read");
+    const { phone } = request.params as { phone: string };
+    const owner = await services.owner.findByPhone(principal.tenantId, decodeURIComponent(phone));
+    if (owner === undefined) {
+      return reply.code(404).send({
+        error: {
+          code: "not_found",
+          message: "No owner has that phone number",
+          requestId: request.id,
+        },
+      });
+    }
+    return reply.send({ owner: serializeOwner(owner) });
   });
 
   app.get("/v1/owners/:id", { schema: getOwnerSchema }, async (request, reply) => {

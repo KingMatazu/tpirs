@@ -1311,3 +1311,28 @@ without being handed the whole-config document.
   until the slug is typed, and the firm's logo belongs there anyway), a separate
   logo table and route (more moving parts for a 100 KB asset), and letting the
   state rename itself (the slug is the sign-in identifier).
+
+---
+
+## D65: How does a vehicle change hands when it is sold
+
+**Status:** resolved (ADR 0066). Reassign the owner; the sticker stays.
+
+A motorbike is sold. The levy is per vehicle and the owner is the liable party, so
+the registry has to follow the sale — otherwise the seller pays for a bike he no
+longer rides, or the buyer's vehicle is registered to someone unreachable.
+
+- Decision: `PUT /v1/assets/:id/owner` (`asset:create`, not `asset:manage`) moves
+  the vehicle to another owner. The short code, QR token, attributes, photos and
+  scans stay with the vehicle; only the liable person changes.
+- Decision: both ends are validated — an unknown owner is a `404`, never a
+  dangling reference — and the audit row keeps the previous and new owner.
+- Decision: the dashboard never asks for an owner id. `GET
+/v1/owners/by-phone/:phone` (`asset:read`) finds the person from the number a
+  clerk has, and the panel offers "find by phone" or "create and hand over".
+- Consequence: history stays with the vehicle (payments and scans were always
+  recorded against the asset), and a mis-sale is corrected by reassigning again
+  rather than editing history.
+- Rejected: re-registering the vehicle (a new sticker invalidates the one on the
+  bike and splits its history), letting `asset:manage` do it (collectors hold it
+  for corrections), and a free-text owner field (cannot be verified or audited).

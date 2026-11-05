@@ -1146,6 +1146,24 @@ export const suspendAssetSchema: FastifySchema = {
   },
 };
 
+/**
+ * Handing a vehicle to a different owner — the sale case.
+ *
+ * `ownerId` is required and the response is the asset as every other asset route
+ * returns it, so the screen can show the new owner's name without a second call.
+ */
+export const reassignAssetOwnerSchema: FastifySchema = {
+  params: idParams,
+  body: {
+    type: "object",
+    required: ["ownerId"],
+    properties: { ownerId: { type: "string", minLength: 1 } },
+  },
+  response: {
+    200: { type: "object", required: ["asset"], properties: { asset: { $ref: "Asset#" } } },
+  },
+};
+
 export const correctAssetSchema: FastifySchema = {
   params: idParams,
   body: {
@@ -1174,6 +1192,25 @@ export const createOwnerSchema: FastifySchema = {
   },
   response: {
     201: { type: "object", required: ["owner"], properties: { owner: { $ref: "Owner#" } } },
+  },
+};
+
+/**
+ * Owner lookup by phone, for the reassignment form.
+ *
+ * A phone number is what a registry clerk actually has when a vehicle changes
+ * hands; an owner id is not something anyone knows. The number is not unique in
+ * the schema, so the most recently created match wins — the same rule the
+ * repository already uses for inbound SMS lookups.
+ */
+export const ownerByPhoneSchema: FastifySchema = {
+  params: {
+    type: "object",
+    required: ["phone"],
+    properties: { phone: { type: "string", minLength: 3 } },
+  },
+  response: {
+    200: { type: "object", required: ["owner"], properties: { owner: { $ref: "Owner#" } } },
   },
 };
 

@@ -57,6 +57,19 @@ export interface AssetSearchQuery {
   readonly offset?: number;
 }
 
+/**
+ * The owner named in a reassignment does not exist in this tenant.
+ *
+ * Ownership is a legal link, not a free-text field: a typo in an owner id must
+ * fail loudly rather than leave a vehicle pointing at nobody.
+ */
+export class AssetOwnerNotFoundError extends Error {
+  constructor(readonly ownerId: string) {
+    super(`Owner "${ownerId}" was not found in this tenant`);
+    this.name = "AssetOwnerNotFoundError";
+  }
+}
+
 export class AssetValidationError extends Error {
   readonly errors: readonly { readonly attribute: string; readonly message: string }[];
 
@@ -317,12 +330,36 @@ export function createAssetService(deps: AssetServiceDeps) {
     );
   }
 
+  /**
+   * Hands a vehicle to a different owner — the sale case.
+   *
+   * The asset keeps its short code, its QR token and its history; only the
+   * person liable changes. Both ends are checked: the asset must exist in this
+   * tenant, and so must the owner, so a mistyped id cannot orphan a vehicle.
+   * The caller audits the change with the previous owner, which is the part a
+   * dispute months later turns on.
+   */
+  async function reassignOwner(
+    tenantId: string,
+    assetId: string,
+    ownerId: string,
+  ): Promise<AssetRecord> {
+    await getById(tenantId, assetId);
+    return withTenant(deps.db, tenantId, async (tx) => {
+      const repos = repositories(tx);
+      const owner = await repos.owners.findById(ownerId);
+      if (owner === undefined) throw new AssetOwnerNotFoundError(ownerId);
+      return repos.assets.update(assetId, { ownerId });
+    });
+  }
+
   return {
     register,
     attachPhoto,
     getById,
     search,
     ownerNames,
+    reassignOwner,
     listPhotos,
     getPhoto,
     getSticker,

@@ -433,8 +433,33 @@ export function correctionBody(attributes: Readonly<Record<string, unknown>>): {
 export function ownerCreateBody(
   displayName: string,
   phone: string,
-): { readonly displayName: string; readonly phone: string } {
-  return { displayName: displayName.trim(), phone: phone.trim() };
+  email?: string,
+): { readonly displayName: string; readonly phone: string; readonly email?: string } {
+  const trimmedEmail = email?.trim() ?? "";
+  return {
+    displayName: displayName.trim(),
+    phone: phone.trim(),
+    ...(trimmedEmail === "" ? {} : { email: trimmedEmail }),
+  };
+}
+
+/**
+ * The reassignment body: the owner the vehicle moves to.
+ *
+ * The asset keeps its short code, QR token and history; only the person liable
+ * changes, which is what a sale is.
+ */
+export function reassignOwnerBody(ownerId: string): { readonly ownerId: string } {
+  return { ownerId: ownerId.trim() };
+}
+
+/**
+ * A phone number as a path segment. Numbers carry `+` and spaces, and the
+ * generated client substitutes path parameters verbatim, so the encoding has to
+ * happen here.
+ */
+export function ownerPhoneParam(phone: string): string {
+  return encodeURIComponent(phone.trim());
 }
 
 /**

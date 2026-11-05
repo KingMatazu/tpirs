@@ -70,7 +70,11 @@ const REQUIRED: Readonly<Record<string, readonly Permission[]>> = {
   "GET /v1/assets/:id/sticker": ["asset:read"],
   "POST /v1/assets/:id/suspend": ["asset:manage"],
   "POST /v1/owners": ["asset:create"],
+  // Handing a vehicle to a new owner is supervisory, like registering it: the
+  // same permission that decides who owes the levy.
+  "PUT /v1/assets/:id/owner": ["asset:create"],
   "GET /v1/owners/:id": ["asset:read"],
+  "GET /v1/owners/by-phone/:phone": ["asset:read"],
   "POST /v1/owners/verify/request": ["asset:manage"],
   "POST /v1/owners/verify/confirm": ["asset:manage"],
   "GET /v1/audit": ["audit:read"],

@@ -71,6 +71,11 @@ const fakeFetch = vi.fn(async (input: unknown, init?: RequestInit): Promise<Resp
     return json(200, { asset: { ...asset, attributes: parsed.attributes } });
   }
 
+  // The browser sends the phone encoded, because numbers carry `+`.
+  if (url.pathname.startsWith("/v1/owners/by-phone/")) {
+    return json(200, { owner });
+  }
+
   switch (url.pathname) {
     case "/v1/tenants/current/config":
       return json(200, { config: JSON.parse(JSON.stringify(config)), version: 3 });
@@ -101,6 +106,12 @@ const fakeFetch = vi.fn(async (input: unknown, init?: RequestInit): Promise<Resp
       });
     case "/v1/owners/ow_1":
       return json(200, { owner });
+    case "/v1/assets/as_1/owner": {
+      const parsed = JSON.parse(body) as { ownerId: string };
+      return json(200, {
+        asset: { ...asset, ownerId: parsed.ownerId, ownerName: "Ada Obi" },
+      });
+    }
     case "/v1/assets/as_1/suspend":
       return json(200, { asset: { ...asset, status: "suspended" } });
     case "/v1/owners": {
@@ -169,16 +180,14 @@ function renderPage(permissions: readonly string[] = ALL_PERMISSIONS): void {
 async function openAsset(permissions: readonly string[] = ALL_PERMISSIONS): Promise<void> {
   renderPage(permissions);
   fireEvent.click(await screen.findByText("Open"));
-  expect(await screen.findByText("Plate number")).toBeTruthy();
+  // Wait for the detail itself. "Plate number" is not a marker: the driver form
+  // on the list page has a field with the same label.
+  expect(await screen.findByText(/Opaque identifiers are shown verbatim/)).toBeTruthy();
 }
 
 function bodyOf(path: string, method: string): Record<string, unknown> | undefined {
   const found = requests.filter((row) => row.path === path && row.method === method).at(-1);
   return found === undefined ? undefined : (JSON.parse(found.body) as Record<string, unknown>);
-}
-
-function input(name: string): HTMLInputElement | null {
-  return document.querySelector<HTMLInputElement>(`input[name="${name}"]`);
 }
 
 beforeAll(() => {
@@ -304,11 +313,12 @@ describe("RegistryPage", () => {
     expect(request?.authorization).toBe("Bearer tok");
   });
 
-  it("looks up an owner and confirms a verification code", async () => {
+  it("opens on the linked owner and confirms a verification code", async () => {
     await openAsset();
 
-    fireEvent.click(screen.getByText("Look up owner"));
+    // The asset already names its owner; the phone arrives from the lookup.
     expect(await screen.findByText("Ada Obi")).toBeTruthy();
+    expect(screen.getByText("+2348012345678")).toBeTruthy();
     expect(screen.getByText(/^Not verified/)).toBeTruthy();
 
     fireEvent.click(screen.getByText("Send verification code"));
@@ -330,14 +340,37 @@ describe("RegistryPage", () => {
     expect(await screen.findByText(/^Verified/)).toBeTruthy();
   });
 
-  it("creates an owner and selects it for verification", async () => {
-    await openAsset();
+  it("hands the vehicle to a person found by phone", async () => {
+    // Handing a vehicle over is supervisory: `asset:create`, like registering it.
+    await openAsset(CREATE_PERMISSIONS);
 
-    fireEvent.input(screen.getByLabelText("Owner name"), { target: { value: "  Ada  " } });
-    fireEvent.input(screen.getByLabelText("Owner phone"), {
+    fireEvent.input(screen.getByLabelText(/Their phone number/), {
+      target: { value: "+2348012345678" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Find" }));
+
+    // The operator sees who they are about to hand it to before doing it.
+    const handOver = await screen.findByRole("button", { name: "Hand over to Ada Obi" });
+    expect(screen.getByText(/Ada Obi — \+2348012345678/)).toBeTruthy();
+    expect(bodyOf("/v1/assets/as_1/owner", "PUT")).toBeUndefined();
+
+    fireEvent.click(handOver);
+    await waitFor(() => {
+      expect(bodyOf("/v1/assets/as_1/owner", "PUT")).toEqual({ ownerId: "ow_1" });
+    });
+  });
+
+  it("creates the buyer and hands the vehicle over in one step", async () => {
+    await openAsset(CREATE_PERMISSIONS);
+
+    fireEvent.click(screen.getByText("The new owner is not registered yet"));
+    fireEvent.input(screen.getByLabelText("The new owner's name"), {
+      target: { value: "  Ada  " },
+    });
+    fireEvent.input(screen.getByLabelText("The new owner's phone"), {
       target: { value: " +2348012345678 " },
     });
-    fireEvent.click(screen.getByText("Create owner"));
+    fireEvent.click(screen.getByRole("button", { name: "Create and hand over" }));
 
     await waitFor(() => {
       expect(bodyOf("/v1/owners", "POST")).toEqual({
@@ -346,7 +379,7 @@ describe("RegistryPage", () => {
       });
     });
     await waitFor(() => {
-      expect(input("ownerId")?.value).toBe("ow_new");
+      expect(bodyOf("/v1/assets/as_1/owner", "PUT")).toEqual({ ownerId: "ow_new" });
     });
   });
 
@@ -357,8 +390,8 @@ describe("RegistryPage", () => {
     expect(screen.getByText(/^Read-only/)).toBeTruthy();
     expect(screen.queryByText("Suspend asset")).toBeNull();
     expect(screen.queryByText("Save correction")).toBeNull();
-    expect(screen.queryByText("Create owner")).toBeNull();
-    expect(screen.queryByLabelText("Attributes JSON")).toBeNull();
+    expect(screen.queryByText("Create and hand over")).toBeNull();
+    expect(screen.queryByText(/Hand this vehicle to someone else/)).toBeNull();
     // The screen only ever reads; a hidden control must not fire either.
     expect(requests.some((row) => row.method !== "GET")).toBe(false);
   });

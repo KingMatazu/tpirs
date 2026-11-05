@@ -337,6 +337,86 @@ describeIntegration("api asset registry e2e (integration)", () => {
     expect(row?.ownerName).toBe("Ada Owner");
   });
 
+  it("hands a vehicle to a new owner, keeping its short code and audit trail", async () => {
+    const created = await app.inject({
+      method: "POST",
+      url: "/v1/owners",
+      headers: { authorization: `Bearer ${managerToken}` },
+      payload: { displayName: "Buyer Bala", phone: "+2348099998888" },
+    });
+    expect(created.statusCode).toBe(201);
+    const buyer = (created.json() as { owner: { id: string } }).owner;
+
+    const first = await app.inject({
+      method: "GET",
+      url: `/v1/assets/${assetId}`,
+      headers: { authorization: `Bearer ${managerToken}` },
+    });
+    const before = (first.json() as { asset: { ownerId: string; shortCode: string } }).asset;
+
+    const reassigned = await app.inject({
+      method: "PUT",
+      url: `/v1/assets/${assetId}/owner`,
+      headers: { authorization: `Bearer ${managerToken}` },
+      payload: { ownerId: buyer.id },
+    });
+    expect(reassigned.statusCode).toBe(200);
+    const asset = (
+      reassigned.json() as { asset: { ownerId: string; ownerName: string; shortCode: string } }
+    ).asset;
+    expect(asset.ownerId).toBe(buyer.id);
+    expect(asset.ownerName).toBe("Buyer Bala");
+    // The sticker and its short code stay with the vehicle, not the person.
+    expect(asset.shortCode).toBe(before.shortCode);
+
+    const audit = await withSystem(db, async (tx) =>
+      repositories(tx).audit.list({ action: "asset.reassign", limit: 5 }),
+    );
+    expect(audit[0]?.entityId).toBe(assetId);
+    expect(audit[0]?.beforeData).toMatchObject({ ownerId: before.ownerId });
+    expect(audit[0]?.afterData).toMatchObject({ ownerId: buyer.id, ownerName: "Buyer Bala" });
+  });
+
+  it("finds an owner by phone, and refuses an unknown one", async () => {
+    const readerToken = await login(slugA, "ae.reader");
+    const found = await app.inject({
+      method: "GET",
+      url: `/v1/owners/by-phone/${encodeURIComponent("+2348099998888")}`,
+      headers: { authorization: `Bearer ${readerToken}` },
+    });
+    expect(found.statusCode).toBe(200);
+    expect((found.json() as { owner: { displayName: string } }).owner.displayName).toBe(
+      "Buyer Bala",
+    );
+
+    const missing = await app.inject({
+      method: "GET",
+      url: `/v1/owners/by-phone/${encodeURIComponent("+2340000000000")}`,
+      headers: { authorization: `Bearer ${readerToken}` },
+    });
+    expect(missing.statusCode).toBe(404);
+  });
+
+  it("refuses a reassignment to an owner who does not exist, and to a reader", async () => {
+    const readerToken = await login(slugA, "ae.reader");
+    const unknown = await app.inject({
+      method: "PUT",
+      url: `/v1/assets/${assetId}/owner`,
+      headers: { authorization: `Bearer ${managerToken}` },
+      payload: { ownerId: "3f1b6f0e-0000-4000-8000-000000000000" },
+    });
+    expect(unknown.statusCode).toBe(404);
+
+    // Ownership is supervisory: a reader cannot move a vehicle to anyone.
+    const reader = await app.inject({
+      method: "PUT",
+      url: `/v1/assets/${assetId}/owner`,
+      headers: { authorization: `Bearer ${readerToken}` },
+      payload: { ownerId: "3f1b6f0e-0000-4000-8000-000000000000" },
+    });
+    expect(reader.statusCode).toBe(403);
+  });
+
   it("rejects attributes that violate the tenant's schema", async () => {
     const response = await app.inject({
       method: "POST",

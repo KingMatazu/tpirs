@@ -200,10 +200,15 @@ export class AssetRepository {
     return rows.map(toRecord);
   }
 
-  /** Updates status and/or attributes; returns the updated asset. */
+  /** Updates status, attributes, zone or owner; returns the updated asset. */
   async update(
     id: string,
-    patch: { status?: string; attributes?: Record<string, unknown>; zoneId?: string | null },
+    patch: {
+      status?: string;
+      attributes?: Record<string, unknown>;
+      zoneId?: string | null;
+      ownerId?: string | null;
+    },
   ): Promise<AssetRecord> {
     const row = await this.db
       .updateTable("assets")
@@ -212,6 +217,7 @@ export class AssetRepository {
         ...(patch.status === undefined ? {} : { status: patch.status }),
         ...(patch.attributes === undefined ? {} : { attributes: patch.attributes }),
         ...(patch.zoneId === undefined ? {} : { zoneId: patch.zoneId }),
+        ...(patch.ownerId === undefined ? {} : { ownerId: patch.ownerId }),
       })
       .where("id", "=", id)
       .returning(ASSET_COLUMNS)

@@ -17,6 +17,8 @@ import {
   fetchSticker,
   findAssetType,
   ownerCreateBody,
+  ownerPhoneParam,
+  reassignOwnerBody,
   ownerVerifiedLabel,
   ownerVerifyConfirmBody,
   ownerVerifyRequestBody,
@@ -177,8 +179,29 @@ describe("mutation bodies", () => {
     expect(body.attributes).not.toBe(attributes);
   });
 
+  it("sends only the owner the vehicle moves to", () => {
+    expect(reassignOwnerBody("  ow_2  ")).toEqual({ ownerId: "ow_2" });
+  });
+
+  it("encodes a phone number for the lookup path", () => {
+    // `+` and spaces would otherwise break the segment.
+    expect(ownerPhoneParam(" +234 801 234 5678 ")).toBe("%2B234%20801%20234%205678");
+  });
+
   it("trims the create-owner fields", () => {
     expect(ownerCreateBody("  Ada  ", " +2348012345678 ")).toEqual({
+      displayName: "Ada",
+      phone: "+2348012345678",
+    });
+  });
+
+  it("carries an optional email for a new owner, and omits a blank one", () => {
+    expect(ownerCreateBody("Ada", "+2348012345678", " ada@example.test ")).toEqual({
+      displayName: "Ada",
+      phone: "+2348012345678",
+      email: "ada@example.test",
+    });
+    expect(ownerCreateBody("Ada", "+2348012345678", "   ")).toEqual({
       displayName: "Ada",
       phone: "+2348012345678",
     });

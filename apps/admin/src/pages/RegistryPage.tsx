@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { TenantAssetType } from "@tpirs/config";
 import { api } from "../api/client.js";
 import { AuthenticatedImage } from "../components/AuthenticatedImage.js";
+import { OwnerPanel } from "../components/OwnerPanel.js";
 import { unwrap, errorFrom, type ApiResult } from "../api/unwrap.js";
 import {
   Badge,
@@ -27,16 +28,11 @@ import {
   driverBody,
   fetchSticker,
   findAssetType,
-  ownerCreateBody,
-  ownerVerifyConfirmBody,
-  ownerVerifyRequestBody,
-  ownerVerifiedLabel,
   registryQueryParams,
   suspendBody,
   type AssetDetailView,
   type AssetStatus,
   type AssetView,
-  type OwnerView,
   type RegistryQueryParams,
 } from "../lib/registryView.js";
 import { useTenantConfig } from "../lib/tenantConfig.js";
@@ -822,6 +818,7 @@ function AssetDetail(props: {
             onDone={props.onChanged}
           />
           <OwnerPanel
+            assetId={asset.id}
             initialOwnerId={asset.ownerId}
             initialOwnerName={asset.ownerName}
             onChanged={props.onChanged}
@@ -1076,208 +1073,4 @@ function readBase64(file: File): Promise<string> {
     };
     reader.readAsDataURL(file);
   });
-}
-
-function OwnerPanel(props: {
-  readonly initialOwnerId: string | null;
-  readonly initialOwnerName: string | null;
-  readonly onChanged: () => Promise<void>;
-}): ReactElement {
-  const [ownerId, setOwnerId] = useState(props.initialOwnerId ?? "");
-  const [owner, setOwner] = useState<OwnerView | undefined>(undefined);
-  const [displayName, setDisplayName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [code, setCode] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  /**
-   * The asset already names its owner, so the panel opens on that person: the
-   * lookup form used to make an operator paste an id before seeing a name they
-   * had already been shown in the table.
-   */
-  useEffect(() => {
-    const id = props.initialOwnerId;
-    if (id === null) return;
-    void (async () => {
-      try {
-        const found = await unwrap(api.GET("/v1/owners/{id}", { params: { path: { id } } }));
-        setOwner(found.owner);
-      } catch {
-        // The name from the asset list still renders; the lookup is a detail.
-      }
-    })();
-  }, [props.initialOwnerId]);
-
-  const lookup = async (event: FormEvent): Promise<void> => {
-    event.preventDefault();
-    if (ownerId.trim() === "") {
-      pushToast({ kind: "error", message: "An owner id is required." });
-      return;
-    }
-    setBusy(true);
-    try {
-      const found = await unwrap(
-        api.GET("/v1/owners/{id}", { params: { path: { id: ownerId.trim() } } }),
-      );
-      setOwner(found.owner);
-    } catch (error) {
-      setOwner(undefined);
-      pushToast({ kind: "error", ...describeError(error) });
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const create = async (event: FormEvent): Promise<void> => {
-    event.preventDefault();
-    if (displayName.trim() === "" || phone.trim() === "") {
-      pushToast({ kind: "error", message: "A name and phone number are required." });
-      return;
-    }
-    setBusy(true);
-    try {
-      const created = await unwrap(
-        api.POST("/v1/owners", { body: ownerCreateBody(displayName, phone) }),
-      );
-      setOwner(created.owner);
-      setOwnerId(created.owner.id);
-      pushToast({ kind: "success", message: `Owner ${created.owner.displayName} created.` });
-      setDisplayName("");
-      setPhone("");
-      await props.onChanged();
-    } catch (error) {
-      pushToast({ kind: "error", ...describeError(error) });
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const requestCode = async (): Promise<void> => {
-    if (owner === undefined) return;
-    setBusy(true);
-    try {
-      await unwrap(
-        api.POST("/v1/owners/verify/request", {
-          body: ownerVerifyRequestBody({ ownerId: owner.id }),
-        }),
-      );
-      pushToast({ kind: "success", message: "Verification code sent." });
-    } catch (error) {
-      pushToast({ kind: "error", ...describeError(error) });
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const confirm = async (event: FormEvent): Promise<void> => {
-    event.preventDefault();
-    if (owner === undefined) return;
-    if (code.trim() === "") {
-      pushToast({ kind: "error", message: "The code from the SMS is required." });
-      return;
-    }
-    setBusy(true);
-    try {
-      const verified = await unwrap(
-        api.POST("/v1/owners/verify/confirm", {
-          body: ownerVerifyConfirmBody(owner.id, code),
-        }),
-      );
-      setOwner(verified.owner);
-      setCode("");
-      pushToast({ kind: "success", message: "Owner phone verified." });
-      await props.onChanged();
-    } catch (error) {
-      pushToast({ kind: "error", ...describeError(error) });
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const name = owner?.displayName ?? props.initialOwnerName;
-
-  return (
-    <Card title="Owner" description="The person liable for this vehicle.">
-      {name === null ? (
-        <ReadOnlyNote>
-          No owner is linked to this asset. Owners are attached when a driver is registered.
-        </ReadOnlyNote>
-      ) : (
-        <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-sm">
-          <dt className="text-slate-500">Name</dt>
-          <dd className="text-slate-900">{name}</dd>
-          {owner === undefined ? null : (
-            <>
-              <dt className="text-slate-500">Phone</dt>
-              <dd className="text-slate-900">{owner.phone}</dd>
-              <dt className="text-slate-500">Verification</dt>
-              <dd className="text-slate-900">{ownerVerifiedLabel(owner)}</dd>
-            </>
-          )}
-        </dl>
-      )}
-
-      {owner === undefined ? null : (
-        <div className="mt-4 space-y-3">
-          <Button
-            variant="ghost"
-            disabled={busy}
-            onClick={() => {
-              void requestCode();
-            }}
-          >
-            Send verification code
-          </Button>
-          <form
-            className="flex flex-wrap items-end gap-3"
-            onSubmit={(event) => void confirm(event)}
-          >
-            <Field label="Verification code">
-              <TextInput name="code" inputMode="numeric" value={code} onValueChange={setCode} />
-            </Field>
-            <Button type="submit" disabled={busy}>
-              Confirm code
-            </Button>
-          </form>
-        </div>
-      )}
-
-      <details className="mt-4">
-        <summary className="cursor-pointer text-sm text-slate-600">
-          Look up or add another person
-        </summary>
-        <div className="mt-3 space-y-3">
-          <p className="text-xs text-slate-500">
-            Adding a person here records them; it does not move this vehicle to them. A vehicle's
-            owner is set when the driver is registered.
-          </p>
-          <form className="flex flex-wrap items-end gap-3" onSubmit={(event) => void lookup(event)}>
-            <Field label="Owner id" hint="Only if you were given one.">
-              <TextInput name="ownerId" value={ownerId} onValueChange={setOwnerId} />
-            </Field>
-            <Button type="submit" variant="ghost" disabled={busy}>
-              Look up owner
-            </Button>
-          </form>
-          <form className="flex flex-wrap items-end gap-3" onSubmit={(event) => void create(event)}>
-            <Field label="Owner name">
-              <TextInput name="displayName" value={displayName} onValueChange={setDisplayName} />
-            </Field>
-            <Field label="Owner phone">
-              <TextInput
-                name="phone"
-                inputMode="tel"
-                value={phone}
-                onValueChange={setPhone}
-                placeholder="+234…"
-              />
-            </Field>
-            <Button type="submit" variant="ghost" disabled={busy}>
-              Create owner
-            </Button>
-          </form>
-        </div>
-      </details>
-    </Card>
-  );
 }
