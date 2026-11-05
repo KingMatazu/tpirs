@@ -31,6 +31,7 @@
 **Deploy gotchas:**
 
 - `@vercel/node` type-checks `apps/api` with **`strict` off**, so API source must compile under both settings. A discriminated union narrowed by `if (!result.ok)` works with `strictNullChecks` on and fails on Vercel with `TS2339: Property 'reason' does not exist`. `apps/api/tsconfig.deploy.json` reproduces the deployer's settings and runs as part of `pnpm --filter @tpirs/api typecheck`.
+- **The dashboard reaches the API through `apiUrl`, never a relative `/v1/...`.** The generated client knows `VITE_API_BASE_URL`; a hand-rolled `fetch`, an `<img>` or a download link does not, and on the split-origin pilot a relative path resolves against the dashboard's own origin, where the SPA rewrite answers `index.html` with a 200 (a sticker download once saved HTML and the browser refused to parse it as SVG, ADR 0063). Sticker preview/download, report export and `AuthenticatedImage` all use `apiUrl` from `apps/admin/src/api/client.ts`; the API exposes `content-disposition` so a cross-origin export can read the server's filename.
 - A migration that **grants a permission** (like `0024`'s `asset:create`) must land **after** the code that knows the key: the running build builds a principal from the role rows, and an unknown key fails closed with `403` on every authenticated request — including `/v1/auth/me`, which reads as "the tenant cannot sign in". Additive column migrations are safe before the deploy; permission grants are not. Order: columns → deploy → grants.
 
 **Lint gotchas (type-aware ESLint, `eslint.config.mjs`):**

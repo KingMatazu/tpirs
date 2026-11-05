@@ -1,4 +1,5 @@
 import { formatMoneyMinor } from "@tpirs/ui-tokens";
+import { apiUrl } from "../api/client.js";
 import { lastBusinessDays, type BusinessDateRange } from "./reconciliationView.js";
 
 /**
@@ -224,7 +225,7 @@ export async function downloadReport(
     ["to", request.to.trim()],
     ["format", request.format],
   ]).toString();
-  const path = `/v1/reports/${encodeURIComponent(request.reportKey)}/export?${query}`;
+  const path = apiUrl(`/v1/reports/${encodeURIComponent(request.reportKey)}/export?${query}`);
   const fetchImpl = dependencies.fetchImpl ?? fetch;
   const response = await fetchImpl(path, {
     method: "GET",

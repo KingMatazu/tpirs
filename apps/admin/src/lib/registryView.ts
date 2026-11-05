@@ -1,4 +1,5 @@
 import type { TenantAssetAttribute, TenantAssetType } from "@tpirs/config";
+import { apiUrl } from "../api/client.js";
 
 /**
  * Pure helpers behind the registry screens (Phase 9, Step 2).
@@ -386,7 +387,7 @@ export async function downloadSticker(
   request: StickerDownloadRequest,
   dependencies: StickerDependencies = {},
 ): Promise<string> {
-  const path = `/v1/assets/${encodeURIComponent(request.assetId)}/sticker`;
+  const path = apiUrl(`/v1/assets/${encodeURIComponent(request.assetId)}/sticker`);
   const blob = await fetchSticker(request, dependencies);
   const filename = stickerFilename(request.shortCode);
   (dependencies.saveBlob ?? saveBlobInBrowser)(blob, filename, path);
@@ -405,7 +406,7 @@ export async function fetchSticker(
   request: Pick<StickerDownloadRequest, "assetId" | "token">,
   dependencies: StickerDependencies = {},
 ): Promise<Blob> {
-  const path = `/v1/assets/${encodeURIComponent(request.assetId)}/sticker`;
+  const path = apiUrl(`/v1/assets/${encodeURIComponent(request.assetId)}/sticker`);
   const fetchImpl = dependencies.fetchImpl ?? fetch;
   const response = await fetchImpl(path, {
     method: "GET",

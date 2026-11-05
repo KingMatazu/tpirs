@@ -273,8 +273,14 @@ describe("downloadSticker", () => {
     );
 
     expect(filename).toBe("sticker-B123.svg");
-    expect(saved).toEqual([{ filename: "sticker-B123.svg", href: "/v1/assets/as_1/sticker" }]);
-    expect(calls).toEqual([{ path: "/v1/assets/as_1/sticker", authorization: "Bearer tok" }]);
+    // Absolute, because a relative path resolves against the dashboard's origin
+    // on a split deployment and the SPA rewrite answers index.html.
+    expect(saved).toHaveLength(1);
+    expect(saved[0]?.filename).toBe("sticker-B123.svg");
+    expect(saved[0]?.href).toMatch(/\/v1\/assets\/as_1\/sticker$/);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.path).toMatch(/\/v1\/assets\/as_1\/sticker$/);
+    expect(calls[0]?.authorization).toBe("Bearer tok");
   });
 
   it("throws instead of saving a failed response", async () => {
@@ -375,7 +381,7 @@ describe("fetchSticker", () => {
 
     const blob = await fetchSticker({ assetId: "as_1", token: "tok" }, { fetchImpl });
     expect(blob.size).toBeGreaterThan(0);
-    expect(seen[0]?.url).toBe("/v1/assets/as_1/sticker");
+    expect(seen[0]?.url).toMatch(/\/v1\/assets\/as_1\/sticker$/);
     expect(seen[0]?.authorization).toBe("Bearer tok");
   });
 

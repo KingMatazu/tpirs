@@ -112,7 +112,9 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
         "x-request-id",
         "x-setup-token",
       ],
-      exposedHeaders: ["x-request-id"],
+      // `content-disposition` names an export file; without it a cross-origin
+      // client cannot read the name the server chose and falls back to its own.
+      exposedHeaders: ["x-request-id", "content-disposition"],
       maxAge: 600,
     });
   }

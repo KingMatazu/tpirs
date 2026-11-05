@@ -20,6 +20,20 @@ export function wireSession(wiring: {
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? window.location.origin;
 
 /**
+ * The absolute URL for a path on the API.
+ *
+ * The generated client knows the base URL; a hand-rolled `fetch`, an `<img>` or a
+ * download link does not. On a split-origin deployment a relative `/v1/...`
+ * resolves against the dashboard's own origin, where the SPA rewrite answers
+ * `index.html` — which is how a sticker download produced an HTML file the
+ * browser refused to parse as SVG (ADR 0052). Every raw request goes through
+ * here so there is one place that knows where the API lives.
+ */
+export function apiUrl(path: string): string {
+  return new URL(path, apiBaseUrl).toString();
+}
+
+/**
  * `same-origin` for the default single-origin deployment; `include` when the
  * API lives on another site (ADR 0052), because a cross-site request with
  * `same-origin` neither sends nor stores the refresh cookie.

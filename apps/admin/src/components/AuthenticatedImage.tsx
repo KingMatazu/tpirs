@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactElement } from "react";
+import { apiUrl } from "../api/client.js";
 import { useSession } from "../session.js";
 
 /**
@@ -27,7 +28,7 @@ export function AuthenticatedImage(
     let objectUrl: string | undefined;
 
     const token = useSession.getState().accessToken;
-    void fetch(props.src, {
+    void fetch(apiUrl(props.src), {
       headers: token === undefined || token === "" ? {} : { authorization: `Bearer ${token}` },
     })
       .then(async (response) => {

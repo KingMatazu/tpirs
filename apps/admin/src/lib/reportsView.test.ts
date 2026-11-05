@@ -157,8 +157,10 @@ describe("downloadReport", () => {
     expect(filename).toBe("named-by-server.csv");
     expect(calls).toHaveLength(1);
     const call = calls[0];
-    expect(call?.url).toBe(
-      "/v1/reports/daily_collections/export?from=2026-06-15&to=2026-06-16&format=csv",
+    // Absolute: a relative path would resolve against the dashboard's own
+    // origin on a split deployment and hit the SPA rewrite.
+    expect(call?.url).toMatch(
+      /\/v1\/reports\/daily_collections\/export\?from=2026-06-15&to=2026-06-16&format=csv$/,
     );
     expect(call?.init?.headers).toEqual({ authorization: "Bearer tok" });
     expect(saved).toEqual([{ filename: "named-by-server.csv", size: 8 }]);

@@ -28,7 +28,7 @@ describe("AuthenticatedImage", () => {
     expect(image.getAttribute("src")).toBe("blob:photo");
     // A bare <img src="/v1/…"> carries no Authorization header and gets a 401.
     expect(fetchSpy).toHaveBeenCalledWith(
-      "/v1/assets/a-1/photos/p-1",
+      expect.stringMatching(/\/v1\/assets\/a-1\/photos\/p-1$/),
       expect.objectContaining({ headers: expect.anything() as unknown }),
     );
     vi.unstubAllGlobals();
