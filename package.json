@@ -24,6 +24,7 @@
     "db:migrate:down": "pnpm --filter @tpirs/db migrate down",
     "db:check": "pnpm --filter @tpirs/db migrate check",
     "db:seed": "pnpm --filter @tpirs/db seed",
+    "db:reset-demo": "pnpm --filter @tpirs/db reset-demo",
     "ci:verify": "sh scripts/ci/verify.sh",
     "ci:migration-check": "sh scripts/ci/migration-check.sh",
     "ci:deploy": "sh scripts/ci/deploy.sh",

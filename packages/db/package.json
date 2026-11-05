@@ -21,7 +21,8 @@
     "lint": "eslint src",
     "test": "vitest run",
     "migrate": "tsx src/cli/migrate.ts",
-    "seed": "tsx src/cli/seed.ts"
+    "seed": "tsx src/cli/seed.ts",
+    "reset-demo": "tsx src/cli/reset.ts"
   },
   "dependencies": {
     "@tpirs/config": "workspace:*",

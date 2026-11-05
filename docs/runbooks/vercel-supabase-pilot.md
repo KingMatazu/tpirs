@@ -396,3 +396,70 @@ No code change is needed; `apps/api/src/storage.ts` is the only selector.
 | Setup answers `401 setup_token_required`    | Missing/wrong `?setupToken=`; the token is the `SETUP_TOKEN` value                                                       |
 | Function timeout during onboarding          | Onboarding is normally sub-second; raise the project's function duration in Vercel settings if a report export times out |
 | Build cannot find `@tpirs/*`                | Root Directory wrong, or the build command did not build workspace dependencies                                          |
+
+## 10. Resetting the data for a demo
+
+A demo reset empties the application's tables and leaves the schema, roles and
+migrations in place. The dashboard then shows the **first-run wizard** again,
+because "setup is required" simply means "no tenants" (ADR 0064).
+
+**Before you wipe:**
+
+1. **Know the `SETUP_TOKEN`.** This deployment has one, so the wizard asks for it.
+   If it is lost, the zero-tenant window is closed to you as well.
+2. Take a backup if the current data matters — Supabase's dashboard has Backups
+   (paid plans also have point-in-time recovery). The reset cannot be undone from
+   the app.
+3. Expect to be signed out of everything: the accounts are part of the data.
+
+### Option A — Supabase SQL editor (no local tooling)
+
+Paste this into **SQL Editor** and run it. It truncates every table in `public`
+except Kysely's migration record, which must survive or the next migrate would
+try to create tables that already exist:
+
+```sql
+do $$
+declare t text;
+begin
+  for t in
+    select tablename from pg_tables
+    where schemaname = 'public'
+      and tablename not in ('kysely_migration', 'kysely_migration_lock')
+  loop
+    execute format('truncate table public.%I cascade', t);
+  end loop;
+end $$;
+
+alter sequence if exists asset_short_code_seq restart with 1000;
+
+select
+  (select count(*) from tenants) as tenants,
+  (select count(*) from users) as users,
+  (select count(*) from assets) as assets;
+```
+
+The last query should return `0, 0, 0`. Supabase's own schemas (`auth`,
+`storage`) are not touched, and neither are the `tpirs_app` role or its grants.
+
+### Option B — from the repo
+
+```sh
+DATABASE_URL='postgres://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres?sslmode=require&uselibpqcompat=true' \
+  pnpm db:reset-demo          # prints what it would remove
+DATABASE_URL='…same…' pnpm db:reset-demo --yes
+```
+
+Without `--yes` it only reports the target and the row counts. The truncate runs
+in one transaction.
+
+### After the wipe
+
+1. Reload the dashboard: it shows **Set up your state**. Complete the wizard (it
+   asks for the `SETUP_TOKEN`) and you are the new system administrator with a
+   temporary password.
+2. The short-code sequence is back at 1000, so the first registered driver is
+   `B001000` (or the tenant's own prefix).
+3. If you would rather demo a populated system than an empty one, create the
+   tenant first and then register a handful of drivers from **Registry → Add a
+   driver** — the sticker, the cash intake and the reports all follow from that.

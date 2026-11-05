@@ -1252,3 +1252,26 @@ delete: only disable, which left a mistyped account in the list forever.
 - Open follow-up: the `driver` role row still exists in the catalogue for every
   tenant. If drivers ever get self-service logins, the role comes back with a
   permission set; until then it grants nothing.
+
+---
+
+## D63: How do we hand a clean deployment to a state authority
+
+**Status:** resolved (ADR 0064). Truncate the data, keep the schema.
+
+The pilot database is full of test tenants, accounts and assets, and the demo
+should start with the first-run wizard — a state being created in front of the
+audience.
+
+- Decision: `pnpm db:reset-demo` (dry run) / `--yes` truncates every `public` table
+  except `kysely_migration*` and restarts the short-code sequence. The schema,
+  `tpirs_app`, RLS and the migration record stay, so no redeploy and no re-migrate.
+- Decision: the same SQL is in the runbook for the Supabase SQL editor, so the
+  database password need not be pasted anywhere.
+- Consequence: every account, sticker, payment and audit row is gone, and everyone
+  is signed out. The wizard needs `SETUP_TOKEN`; know it before wiping.
+- Rejected: dropping and recreating the schema (grants and RLS are migration-owned
+  and easy to get wrong on Supabase), a fresh Supabase project (new secrets, new
+  deploy), and selective deletes (same wipe with more ways to be wrong, and it
+  contradicts the append-only rule for everything except this one whole-database
+  reset).
