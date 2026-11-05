@@ -183,7 +183,9 @@ export function defaultTenantConfig(input: TenantConfigDefaultsInput): TenantCon
     },
     branding: {
       appName,
-      logoUrl: input.logoUrl ?? "logo.svg",
+      // No logo until the state uploads one: the screens fall back to the
+      // tenant's initials and the sticker prints its text header.
+      logoUrl: input.logoUrl ?? "",
       colors: input.colors ?? DEFAULT_COLORS,
       smsSenderId: input.smsSenderId,
       receiptHeader: input.name,

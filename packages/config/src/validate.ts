@@ -88,6 +88,88 @@ function isIsoDate(value: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`));
 }
 
+/**
+ * An uploaded logo travels inside the tenant config, not object storage: the
+ * hosted pilot runs the mock storage adapter, whose contents do not survive a
+ * serverless invocation (ADR 0065). That makes the config row — and the audit
+ * before/after that records each edit — the place the image lives, so the cap is
+ * deliberately small. The dashboard downscales before upload, so a 128 KB limit
+ * is generous for a logo and still keeps audit rows sane.
+ */
+const MAX_LOGO_DATA_URL_LENGTH = 128 * 1024;
+/** A hosted logo is a URL, so it only has to be a URL, not small. */
+const MAX_LOGO_URL_LENGTH = 2048;
+const LOGO_DATA_URL_PATTERN = /^data:image\/(?:png|jpeg|jpg|svg\+xml|webp)[;,]/i;
+const LOGO_HTTPS_PATTERN = /^https:\/\/[^\s]+$/i;
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const PHONE_CHARS_PATTERN = /^[+0-9()\-.\s]+$/;
+/** Three- and six-digit hex, because existing tenant configs use both. */
+const HEX_COLOUR_PATTERN = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
+
+/**
+ * `branding.logoUrl` is either an uploaded image (`data:image/…`) or a hosted
+ * one (`https://…`). An empty string means "no logo yet": the screens fall back
+ * to the tenant's initials, and the sticker prints its text header. The
+ * historical default `logo.svg` is neither, so it also reads as "no logo"
+ * rather than as a broken image.
+ */
+function validateLogoUrl(v: Validator, value: unknown): string | undefined {
+  if (value === undefined || value === null) return "";
+  if (typeof value !== "string") {
+    v.issue("schema_error", "branding.logoUrl must be a string", "logoUrl");
+    return undefined;
+  }
+  const logo = value.trim();
+  if (logo === "") return "";
+  if (LOGO_DATA_URL_PATTERN.test(logo)) {
+    if (logo.length > MAX_LOGO_DATA_URL_LENGTH) {
+      v.issue(
+        "schema_error",
+        `branding.logoUrl must be at most ${String(MAX_LOGO_DATA_URL_LENGTH / 1024)} KB; upload a smaller image`,
+        "logoUrl",
+      );
+      return undefined;
+    }
+    return logo;
+  }
+  if (LOGO_HTTPS_PATTERN.test(logo)) {
+    if (logo.length > MAX_LOGO_URL_LENGTH) {
+      v.issue("schema_error", "branding.logoUrl is too long to be a URL", "logoUrl");
+      return undefined;
+    }
+    return logo;
+  }
+  if (/^[a-z][a-z0-9+.-]*:/i.test(logo)) {
+    // A scheme that is neither data: nor https: — `http:` would be blocked as
+    // mixed content on the hosted deployment, anything else is a typo.
+    v.issue(
+      "schema_error",
+      "branding.logoUrl must be an uploaded image (data:image/…) or an https:// URL",
+      "logoUrl",
+    );
+    return undefined;
+  }
+  // A relative path such as the old `logo.svg` default: the API serves no static
+  // assets, so it was never a logo. Read it as "none" rather than failing every
+  // load of a configuration written before uploads existed.
+  return "";
+}
+
+/**
+ * Brand colours reach CSS custom properties and the sticker SVG, so a malformed
+ * value is a broken theme rather than a cosmetic typo. Hex only: three or six
+ * digits, because existing tenant configs use both (`#fc0` and `#f2c200`).
+ */
+function validateHexColour(v: Validator, value: unknown, key: string): string | undefined {
+  const colour = v.string(value, key);
+  if (colour === undefined) return undefined;
+  if (!HEX_COLOUR_PATTERN.test(colour.trim())) {
+    v.issue("schema_error", `branding.colors.${key} must be a hex colour such as #1d4ed8`, key);
+    return undefined;
+  }
+  return colour.trim();
+}
+
 function validateSupportContacts(
   v: Validator,
   value: unknown,
@@ -96,6 +178,23 @@ function validateSupportContacts(
   if (obj === undefined) return undefined;
   const email = v.string(obj.email, "email");
   const phone = v.string(obj.phone, "phone");
+  // The driver-facing copy prints these, so a typo is a driver who cannot reach
+  // anyone. Shape only: no locale-specific formatting rules, which belong to the
+  // tenant, not to the core.
+  if (email !== undefined && !EMAIL_PATTERN.test(email.trim())) {
+    v.issue("schema_error", "identity.supportContacts.email must be an email address", "email");
+    return undefined;
+  }
+  if (phone !== undefined) {
+    if (!PHONE_CHARS_PATTERN.test(phone.trim()) || !/\d/.test(phone)) {
+      v.issue(
+        "schema_error",
+        "identity.supportContacts.phone must be a dialable number (digits, spaces, + - ( ))",
+        "phone",
+      );
+      return undefined;
+    }
+  }
   if (email === undefined || phone === undefined) return undefined;
   return { email, phone };
 }
@@ -173,16 +272,16 @@ function validateBranding(v: Validator, value: unknown): TenantBranding | undefi
   const obj = v.object(value, "branding");
   if (obj === undefined) return undefined;
   const appName = v.string(obj.appName, "appName");
-  const logoUrl = v.string(obj.logoUrl, "logoUrl");
+  const logoUrl = validateLogoUrl(v, obj.logoUrl);
   const smsSenderId = v.string(obj.smsSenderId, "smsSenderId");
   const receiptHeader = v.string(obj.receiptHeader, "receiptHeader");
   const receiptFooter = v.string(obj.receiptFooter, "receiptFooter");
   const colorsObj = v.object(obj.colors, "colors");
   let colors: TenantBranding["colors"] | undefined;
   if (colorsObj !== undefined) {
-    const primary = v.string(colorsObj.primary, "primary");
-    const secondary = v.string(colorsObj.secondary, "secondary");
-    const accent = v.string(colorsObj.accent, "accent");
+    const primary = validateHexColour(v, colorsObj.primary, "primary");
+    const secondary = validateHexColour(v, colorsObj.secondary, "secondary");
+    const accent = validateHexColour(v, colorsObj.accent, "accent");
     if (primary !== undefined && secondary !== undefined && accent !== undefined) {
       colors = { primary, secondary, accent };
     }

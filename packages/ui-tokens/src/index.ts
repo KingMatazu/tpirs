@@ -142,3 +142,16 @@ export function formatTimestamp(
     timeZone: timezone,
   }).format(date);
 }
+
+/**
+ * The reseller's own branding, kept apart from tenant branding: the firm is who
+ * runs the platform, the tenant is the state whose levy system it is. See
+ * `firm.ts` for the "no tenant yet → firm logo" rule the apps follow.
+ */
+export {
+  FIRM_ATTRIBUTION,
+  FIRM_LOGO,
+  FIRM_NAME,
+  firmAttributionHref,
+  type FirmAttribution,
+} from "./firm.js";

@@ -311,6 +311,74 @@ describe("validateTenantConfig", () => {
     };
   }
 
+  it("accepts an uploaded logo and keeps it verbatim", () => {
+    const logo = `data:image/png;base64,${"A".repeat(64)}`;
+    const run = configWith((raw) => {
+      (raw.branding as Record<string, unknown>).logoUrl = logo;
+    });
+    expect(run().branding.logoUrl).toBe(logo);
+  });
+
+  it("accepts an empty logo, which means the screens show the state's initials", () => {
+    const run = configWith((raw) => {
+      (raw.branding as Record<string, unknown>).logoUrl = "";
+    });
+    expect(run().branding.logoUrl).toBe("");
+  });
+
+  it("reads the old relative logo placeholder as no logo instead of failing the load", () => {
+    const run = configWith((raw) => {
+      (raw.branding as Record<string, unknown>).logoUrl = "logo.svg";
+    });
+    expect(run().branding.logoUrl).toBe("");
+  });
+
+  it("rejects an uploaded logo that is too large to live in the config", () => {
+    const run = configWith((raw) => {
+      (raw.branding as Record<string, unknown>).logoUrl =
+        `data:image/png;base64,${"A".repeat(140 * 1024)}`;
+    });
+    expect(run).toThrow(/at most 128 KB/);
+  });
+
+  it("rejects a logo that is neither an upload nor an https URL", () => {
+    const run = configWith((raw) => {
+      (raw.branding as Record<string, unknown>).logoUrl = "http://example.state.gov/logo.png";
+    });
+    expect(run).toThrow(/uploaded image/);
+  });
+
+  it("rejects a support email that is not an address", () => {
+    const run = configWith((raw) => {
+      (raw.identity as Record<string, unknown>).supportContacts = {
+        email: "support at example",
+        phone: "+2348000000000",
+      };
+    });
+    expect(run).toThrow(/must be an email address/);
+  });
+
+  it("rejects a support phone with no digits", () => {
+    const run = configWith((raw) => {
+      (raw.identity as Record<string, unknown>).supportContacts = {
+        email: "support@example.state.gov",
+        phone: "call us",
+      };
+    });
+    expect(run).toThrow(/dialable number/);
+  });
+
+  it("rejects a brand colour that is not hex", () => {
+    const run = configWith((raw) => {
+      (raw.branding as Record<string, unknown>).colors = {
+        primary: "rebeccapurple",
+        secondary: "#111",
+        accent: "#222",
+      };
+    });
+    expect(run).toThrow(/hex colour/);
+  });
+
   it("rejects a bad currency code", () => {
     const run = configWith((raw) => {
       (raw.locale as Record<string, unknown>).currency = "naira";

@@ -27,7 +27,7 @@ branding:
     primary: "#0a5a4a"
     secondary: "#053b33"
   appName: Katsina State Levy
-  logoUrl: logo.svg
+  logoUrl: ""
   smsSenderId: KATSLEVY
   receiptFooter: Thank you
   receiptHeader: Katsina State
