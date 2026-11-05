@@ -1,8 +1,9 @@
 import { useState, type ReactElement } from "react";
-import { formatMoneyMinor, parseMajorToMinor } from "@tpirs/ui-tokens";
+import { FIRM_LOGO, FIRM_NAME, formatMoneyMinor, parseMajorToMinor } from "@tpirs/ui-tokens";
 import { api } from "../api/client.js";
 import { errorFrom, type ApiResult } from "../api/unwrap.js";
 import { Button, Field, TextInput } from "../components/ui.js";
+import { PoweredBy } from "../components/PoweredBy.js";
 import { CURRENCY_OPTIONS, TIME_ZONE_OPTIONS, browserTimeZone } from "../lib/onboardingOptions.js";
 import { useSession } from "../session.js";
 
@@ -338,6 +339,8 @@ export function SetupPage(): ReactElement {
     <main className="min-h-screen bg-slate-50 px-4 py-10">
       <div className="mx-auto w-full max-w-xl">
         <header className="mb-6">
+          {/* No tenant exists yet: this is the firm's screen, not the state's. */}
+          <img src={FIRM_LOGO} alt={FIRM_NAME} className="mb-4 h-12 w-auto" />
           <p className="text-xs font-semibold uppercase tracking-wide text-[var(--tpirs-color-accent)]">
             First-run setup
           </p>
@@ -657,6 +660,7 @@ export function SetupPage(): ReactElement {
             </div>
           ) : null}
         </section>
+        <PoweredBy className="mt-8 text-center text-xs text-slate-500" />
       </div>
     </main>
   );

@@ -25,6 +25,8 @@ import { dashboardTranslator } from "../lib/uiCopy.js";
 import { useUiLanguage } from "../lib/uiLanguage.js";
 import { useMediaQuery } from "../lib/useMediaQuery.js";
 import { useSession } from "../session.js";
+import { BrandingLogo } from "../components/BrandingLogo.js";
+import { PoweredBy } from "../components/PoweredBy.js";
 
 /**
  * Layout nav shell. Navigation is permission-aware: entries the signed-in user
@@ -235,9 +237,10 @@ export function Layout(props: Readonly<{ readonly children: ReactElement }>): Re
             <Menu size={22} />
           </button>
           <div className="flex min-w-0 items-center gap-2">
-            <span
-              className="inline-block h-5 w-5 shrink-0 rounded bg-[var(--tpirs-color-primary)]"
-              aria-hidden={true}
+            <BrandingLogo
+              logoUrl={tenantConfig?.branding.logoUrl}
+              name={appName}
+              className="h-7 w-7 rounded"
             />
             <span className="truncate font-semibold text-slate-900">{appName}</span>
             {tenantConfig === undefined ? null : (
@@ -314,7 +317,14 @@ export function Layout(props: Readonly<{ readonly children: ReactElement }>): Re
             className="absolute inset-y-0 left-0 flex w-64 max-w-[85%] flex-col bg-white shadow-xl"
           >
             <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
-              <span className="truncate font-semibold text-slate-900">{appName}</span>
+              <span className="flex min-w-0 items-center gap-2">
+                <BrandingLogo
+                  logoUrl={tenantConfig?.branding.logoUrl}
+                  name={appName}
+                  className="h-7 w-7 rounded"
+                />
+                <span className="truncate font-semibold text-slate-900">{appName}</span>
+              </span>
               <button
                 ref={closeButtonRef}
                 type="button"
@@ -343,6 +353,9 @@ export function Layout(props: Readonly<{ readonly children: ReactElement }>): Re
         </nav>
         <main className="min-w-0 flex-1">{props.children}</main>
       </div>
+      <footer className="mx-auto max-w-6xl px-3 pb-6 sm:px-4">
+        <PoweredBy />
+      </footer>
     </div>
   );
 }

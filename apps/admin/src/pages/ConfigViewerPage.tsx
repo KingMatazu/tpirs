@@ -2,15 +2,21 @@ import { type ReactElement } from "react";
 import { useTenantConfig } from "../lib/tenantConfig.js";
 import { configSections } from "../lib/configSections.js";
 import { Badge, Card, ReadOnlyNote } from "../components/ui.js";
+import { IdentityBrandingCard } from "../components/IdentityBrandingCard.js";
 import { useSession } from "../session.js";
 
 /**
- * Step 4: read-only config viewer, permission-gated on `tenant:read`. It renders
- * the validated config the API serves; changing configuration belongs to the
- * audited PUT endpoint (dual control), not to this screen.
+ * Step 4: the tenant config, readable by anyone holding `tenant:read`.
+ *
+ * A system admin also gets an editable card at the top for the state's own
+ * details — logo, support contacts, legal entity, app name, brand colours —
+ * because those change without a deployment and without touching money. Every
+ * other section stays read-only: a fee or a provider binding is not a branding
+ * choice, and those go through their own audited paths.
  */
 export function ConfigViewerPage(): ReactElement {
   const canRead = useSession((state) => state.hasPermission("tenant:read"));
+  const canConfigure = useSession((state) => state.hasPermission("tenant:configure"));
   const { config, isLoading, error } = useTenantConfig();
 
   if (!canRead) {
@@ -31,10 +37,16 @@ export function ConfigViewerPage(): ReactElement {
         <h1 className="text-xl font-semibold text-slate-900">Tenant configuration</h1>
         <Badge tone="brand">version {String(config.version)}</Badge>
       </div>
-      <ReadOnlyNote>
-        Read-only view of the validated tenant config. Changes go through the audited configuration
-        endpoint with `tenant:configure`.
-      </ReadOnlyNote>
+      {canConfigure ? (
+        // Keyed on the version so a successful save remounts the form with the
+        // values the server actually stored, rather than the ones typed.
+        <IdentityBrandingCard key={config.version} config={tenantConfig} />
+      ) : (
+        <ReadOnlyNote>
+          Read-only view of the validated tenant config. A system administrator can edit the state's
+          identity and branding; every other change goes through the audited configuration endpoint.
+        </ReadOnlyNote>
+      )}
       {sections.map((section) => (
         <Card key={section.id} title={section.title}>
           <EntriesList entries={section.entries} />

@@ -6,6 +6,8 @@ import { z } from "zod";
 import { navigate } from "../lib/router.js";
 import { useSession } from "../session.js";
 import { Button, Field } from "../components/ui.js";
+import { PoweredBy } from "../components/PoweredBy.js";
+import { FIRM_LOGO, FIRM_NAME } from "@tpirs/ui-tokens";
 
 const inputClass =
   "w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-[var(--tpirs-color-primary)] focus:outline-none";
@@ -50,6 +52,9 @@ export function LoginPage(): ReactElement {
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-sm flex-col justify-center px-4">
+      {/* Before sign-in there is no tenant to brand with, so this screen carries
+          the firm's mark; the state's logo appears once a tenant is known. */}
+      <img src={FIRM_LOGO} alt={FIRM_NAME} className="mb-6 h-12 w-auto self-start" />
       <h1 className="mb-6 text-xl font-semibold text-slate-900">Staff sign-in</h1>
       <form
         className="space-y-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
@@ -108,6 +113,7 @@ export function LoginPage(): ReactElement {
           {submitting ? "Signing in…" : "Sign in"}
         </Button>
       </form>
+      <PoweredBy className="mt-8 text-center text-xs text-slate-500" />
     </main>
   );
 }

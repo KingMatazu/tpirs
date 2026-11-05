@@ -29,6 +29,25 @@ function onOff(value: boolean, on = "enabled", off = "disabled"): string {
   return value ? on : off;
 }
 
+/**
+ * A logo is stored inline (ADR 0065), so the viewer must never print the value:
+ * a data URL would be a wall of base64. Describe it instead.
+ */
+export function describeLogo(logoUrl: string): string {
+  const value = logoUrl.trim();
+  if (value === "") return "Not set — screens show the state's initials";
+  if (!value.startsWith("data:")) return value;
+  const comma = value.indexOf(",");
+  const header = comma === -1 ? value : value.slice(0, comma);
+  const payload = comma === -1 ? "" : value.slice(comma + 1);
+  const format = (/([a-z0-9+]+)[;,]/.exec(header)?.[1] ?? "image")
+    .replace("svg+xml", "svg")
+    .replace("jpeg", "jpg")
+    .toUpperCase();
+  const bytes = header.includes(";base64") ? Math.floor((payload.length * 3) / 4) : payload.length;
+  return `Uploaded ${format} (${String(Math.max(1, Math.round(bytes / 1024)))} KB)`;
+}
+
 function money(config: TenantConfig, amountMinor: number): string {
   return formatMoneyMinor(amountMinor, config.locale.currency, config.locale.numberFormat);
 }
@@ -65,12 +84,12 @@ export function configSections(config: TenantConfig): readonly ConfigSection[] {
       title: "Branding",
       entries: [
         { label: "App name", value: config.branding.appName },
-        { label: "Logo", value: config.branding.logoUrl },
+        { label: "Logo", value: describeLogo(config.branding.logoUrl) },
         { label: "Primary colour", value: config.branding.colors.primary },
         { label: "Secondary colour", value: config.branding.colors.secondary },
         { label: "Accent colour", value: config.branding.colors.accent },
         { label: "SMS sender ID", value: config.branding.smsSenderId },
-        { label: "Receipt header", value: config.branding.receiptHeader },
+        { label: "Receipt header", value: `${config.branding.receiptHeader} (the state's name)` },
         { label: "Receipt footer", value: config.branding.receiptFooter },
       ],
       subGroups: [],
