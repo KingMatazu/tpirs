@@ -62,3 +62,30 @@ describe("renderAssetSticker", () => {
     expect(svg).toContain('viewBox="0 0 80 50"');
   });
 });
+
+describe("sticker logo", () => {
+  it("inlines an uploaded logo beside the app name", async () => {
+    const logo = `data:image/png;base64,${"A".repeat(32)}`;
+    const svg = await renderAssetSticker({ ...baseInput, logoUrl: logo });
+    expect(svg).toContain('<image x="1.5"');
+    expect(svg).toContain('preserveAspectRatio="xMidYMid meet"');
+    expect(svg).toContain(`href="${logo}"`);
+    // The title moves out of the logo's way.
+    expect(svg).toContain('text-anchor="start"');
+  });
+
+  it("never fetches a hosted logo: that sticker prints the text header", async () => {
+    const svg = await renderAssetSticker({
+      ...baseInput,
+      logoUrl: "https://cdn.example.gov/logo.svg",
+    });
+    expect(svg).not.toContain("<image");
+    expect(svg).toContain('text-anchor="middle"');
+  });
+
+  it("prints the text header when there is no logo at all", async () => {
+    const svg = await renderAssetSticker({ ...baseInput, logoUrl: "" });
+    expect(svg).not.toContain("<image");
+    expect(svg).toContain("Example Levy");
+  });
+});

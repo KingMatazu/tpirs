@@ -259,6 +259,7 @@ export function createAssetService(deps: AssetServiceDeps) {
       qrToken: asset.qrToken,
       shortCode: asset.shortCode,
       appName: config.branding.appName,
+      logoUrl: config.branding.logoUrl,
       primaryColor: config.branding.colors.primary,
       secondaryColor: config.branding.colors.secondary,
       accentColor: config.branding.colors.accent,

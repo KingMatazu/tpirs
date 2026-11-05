@@ -4,6 +4,12 @@ export interface StickerInput {
   readonly qrToken: string;
   readonly shortCode: string;
   readonly appName: string;
+  /**
+   * The state's logo, when it is an upload (`data:image/…`). A hosted https logo
+   * is not fetched at render time: the API must not make outbound requests on a
+   * sticker download, so those stickers print the text header alone.
+   */
+  readonly logoUrl?: string;
   readonly primaryColor: string;
   readonly secondaryColor: string;
   readonly accentColor: string;
@@ -69,11 +75,27 @@ export async function renderAssetSticker(input: StickerInput): Promise<string> {
   const codeY = qrY + qrSize + 6;
   const footerY = heightMm - 2;
 
+  // Only an uploaded logo can be inlined: an https URL would make the API fetch
+  // an external host on every sticker download, and an SVG viewer may refuse it
+  // anyway. The header falls back to the app name alone.
+  const logo = input.logoUrl?.startsWith("data:image/") === true ? input.logoUrl : undefined;
+  const logoSize = Math.max(0, headerHeight - 2);
+  const logoX = 1.5;
+  const logoY = (headerHeight - logoSize) / 2;
+  const titleSize = Math.max(3, headerHeight * 0.55);
+  const titleX = logo === undefined ? widthMm / 2 : logoX + logoSize + 2;
+  const titleAnchor = logo === undefined ? "middle" : "start";
+
   return [
     `<svg xmlns="http://www.w3.org/2000/svg" width="${widthMm}mm" height="${heightMm}mm" viewBox="0 0 ${widthMm} ${heightMm}">`,
     `<rect width="${widthMm}" height="${heightMm}" fill="#ffffff" stroke="${escapeXml(input.secondaryColor)}" stroke-width="0.5"/>`,
     `<rect width="${widthMm}" height="${headerHeight}" fill="${escapeXml(input.primaryColor)}"/>`,
-    `<text x="${widthMm / 2}" y="${headerHeight / 2 + 1.6}" text-anchor="middle" font-family="sans-serif" font-size="${Math.max(3, headerHeight * 0.55)}" font-weight="bold" fill="#ffffff">${escapeXml(input.appName)}</text>`,
+    ...(logo === undefined
+      ? []
+      : [
+          `<image x="${logoX}" y="${logoY}" width="${logoSize}" height="${logoSize}" preserveAspectRatio="xMidYMid meet" href="${escapeXml(logo)}"/>`,
+        ]),
+    `<text x="${titleX}" y="${headerHeight / 2 + 1.6}" text-anchor="${titleAnchor}" font-family="sans-serif" font-size="${titleSize}" font-weight="bold" fill="#ffffff">${escapeXml(input.appName)}</text>`,
     `<rect x="${qrX - 1}" y="${qrY - 1}" width="${qrSize + 2}" height="${qrSize + 2}" fill="#ffffff" stroke="${escapeXml(input.accentColor)}" stroke-width="0.8"/>`,
     `<svg x="${qrX}" y="${qrY}" width="${qrSize}" height="${qrSize}">${qrBody.replace(/^<svg[^>]*>/u, "").replace(/<\/svg>\s*$/u, "")}</svg>`,
     `<text x="${widthMm / 2}" y="${codeY}" text-anchor="middle" font-family="sans-serif" font-size="${Math.max(3.5, widthMm * 0.09)}" font-weight="bold" fill="${escapeXml(input.primaryColor)}">${escapeXml(input.shortCode)}</text>`,
