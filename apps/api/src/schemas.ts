@@ -862,6 +862,47 @@ export const tenantConfigPutSchema: FastifySchema = {
   body: { type: "object" },
 };
 
+/**
+ * The editable slice of the tenant config: what a state authority wants to fix
+ * after the first-run wizard without touching fees, providers or channels.
+ *
+ * A PATCH of named fields rather than a whole-document PUT, for two reasons: a
+ * partial save cannot clobber a concurrent change to a section this screen does
+ * not show, and the generated API client gets a real body type instead of the
+ * opaque `object` the PUT schema produces. The server merges into the stored
+ * document and validates the result, so the same rules still apply.
+ */
+export const tenantIdentityPatchSchema: FastifySchema = {
+  body: {
+    type: "object",
+    additionalProperties: false,
+    minProperties: 1,
+    properties: {
+      /**
+       * Uploaded image as a data URL, an https URL, or "" for no logo. The
+       * transport limit is deliberately looser than the 128 KB the config
+       * validator enforces: too large should be a 422 that says "upload a
+       * smaller image", not an opaque 400 from the schema layer.
+       */
+      logoUrl: { type: "string", maxLength: 600_000 },
+      supportEmail: { type: "string", minLength: 3, maxLength: 254 },
+      supportPhone: { type: "string", minLength: 2, maxLength: 40 },
+      legalEntity: { type: "string", minLength: 1, maxLength: 200 },
+      appName: { type: "string", minLength: 1, maxLength: 80 },
+      colors: {
+        type: "object",
+        additionalProperties: false,
+        required: ["primary", "secondary", "accent"],
+        properties: {
+          primary: { type: "string", maxLength: 7 },
+          secondary: { type: "string", maxLength: 7 },
+          accent: { type: "string", maxLength: 7 },
+        },
+      },
+    },
+  },
+};
+
 // ---------------------------------------------------------------------------
 // Zones (11.0b). The tenant hierarchy the registry and reports group by.
 // ---------------------------------------------------------------------------

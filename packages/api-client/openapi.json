@@ -1617,6 +1617,76 @@
         }
       }
     },
+    "/v1/tenants/current/identity": {
+      "patch": {
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "minProperties": 1,
+                "properties": {
+                  "logoUrl": {
+                    "type": "string",
+                    "maxLength": 600000
+                  },
+                  "supportEmail": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 254
+                  },
+                  "supportPhone": {
+                    "type": "string",
+                    "minLength": 2,
+                    "maxLength": 40
+                  },
+                  "legalEntity": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "appName": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "colors": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "primary",
+                      "secondary",
+                      "accent"
+                    ],
+                    "properties": {
+                      "primary": {
+                        "type": "string",
+                        "maxLength": 7
+                      },
+                      "secondary": {
+                        "type": "string",
+                        "maxLength": 7
+                      },
+                      "accent": {
+                        "type": "string",
+                        "maxLength": 7
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
     "/v1/zones": {
       "get": {
         "responses": {

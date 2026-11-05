@@ -320,6 +320,100 @@ describeIntegration("api auth/config/audit (integration)", () => {
       payload: validConfig(slug),
     });
     expect(write.statusCode).toBe(403);
+
+    // The identity patch is the same permission: an officer cannot rebrand the
+    // state any more than they can rewrite its fees.
+    const rebrand = await app.inject({
+      method: "PATCH",
+      url: "/v1/tenants/current/identity",
+      headers,
+      payload: { appName: "Officer Was Here" },
+    });
+    expect(rebrand.statusCode).toBe(403);
+  });
+
+  it("lets a system admin rebrand the state without touching the rest of the config", async () => {
+    const token = await login("rt.admin");
+    const headers = { authorization: `Bearer ${token}` };
+
+    const before = await app.inject({ method: "GET", url: "/v1/tenants/current/config", headers });
+    const beforeConfig = (before.json() as { config: TenantConfig }).config;
+    const beforeVersion = (before.json() as { version: number }).version;
+    const logo = `data:image/png;base64,${"A".repeat(48)}`;
+
+    const patched = await app.inject({
+      method: "PATCH",
+      url: "/v1/tenants/current/identity",
+      headers,
+      payload: {
+        logoUrl: logo,
+        supportEmail: "help@state.example.gov",
+        supportPhone: "+234 800 000 0000",
+        legalEntity: "State Revenue Authority",
+        appName: "State Levy",
+        colors: { primary: "#123456", secondary: "#111111", accent: "#abcdef" },
+      },
+    });
+    expect(patched.statusCode).toBe(200);
+    const body = patched.json() as { config: TenantConfig; version: number };
+
+    expect(body.version).toBe(beforeVersion + 1);
+    expect(body.config.branding.logoUrl).toBe(logo);
+    expect(body.config.branding.appName).toBe("State Levy");
+    expect(body.config.branding.colors.primary).toBe("#123456");
+    expect(body.config.identity.supportContacts.email).toBe("help@state.example.gov");
+    expect(body.config.identity.supportContacts.phone).toBe("+234 800 000 0000");
+    expect(body.config.identity.legalEntity).toBe("State Revenue Authority");
+    // The receipt header is the state's name, not a separate choice.
+    expect(body.config.branding.receiptHeader).toBe(body.config.identity.name);
+    // The sections this screen does not show come through untouched, and the
+    // slug (the sign-in identifier) never changes.
+    expect(body.config.obligations.feeRules).toEqual(beforeConfig.obligations.feeRules);
+    expect(body.config.channels).toEqual(beforeConfig.channels);
+    expect(body.config.identity.slug).toBe(slug);
+
+    // `legal_entity` is a column as well as a config field; both must agree.
+    const row = await withSystem(db, async (tx) => repositories(tx).tenants.findById(tenantId));
+    expect(row?.legalEntity).toBe("State Revenue Authority");
+
+    const audit = await withSystem(db, async (tx) =>
+      repositories(tx).audit.search({ action: "tenant.identity.update", limit: 5 }),
+    );
+    expect(audit[0]?.entityId).toBe(tenantId);
+  });
+
+  it("refuses a rebrand with a bad contact or an oversized logo, naming the field", async () => {
+    const token = await login("rt.admin");
+    const headers = { authorization: `Bearer ${token}` };
+
+    const badEmail = await app.inject({
+      method: "PATCH",
+      url: "/v1/tenants/current/identity",
+      headers,
+      payload: { supportEmail: "not-an-address" },
+    });
+    expect(badEmail.statusCode).toBe(422);
+    expect(
+      (badEmail.json() as { error: { issues: { path: string }[] } }).error.issues.map(
+        (issue) => issue.path,
+      ),
+    ).toContain("identity.supportContacts.email");
+
+    const hugeLogo = await app.inject({
+      method: "PATCH",
+      url: "/v1/tenants/current/identity",
+      headers,
+      payload: { logoUrl: `data:image/png;base64,${"A".repeat(140 * 1024)}` },
+    });
+    expect(hugeLogo.statusCode).toBe(422);
+
+    const empty = await app.inject({
+      method: "PATCH",
+      url: "/v1/tenants/current/identity",
+      headers,
+      payload: {},
+    });
+    expect(empty.statusCode).toBe(400);
   });
 
   it("refuses a non-uuid actor filter instead of failing in the database", async () => {

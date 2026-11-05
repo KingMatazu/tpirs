@@ -164,7 +164,7 @@ function validateHexColour(v: Validator, value: unknown, key: string): string | 
   const colour = v.string(value, key);
   if (colour === undefined) return undefined;
   if (!HEX_COLOUR_PATTERN.test(colour.trim())) {
-    v.issue("schema_error", `branding.colors.${key} must be a hex colour such as #1d4ed8`, key);
+    v.issue("schema_error", `branding.${key} must be a hex colour such as #1d4ed8`, key);
     return undefined;
   }
   return colour.trim();
@@ -176,13 +176,19 @@ function validateSupportContacts(
 ): TenantIdentity["supportContacts"] | undefined {
   const obj = v.object(value, "supportContacts");
   if (obj === undefined) return undefined;
-  const email = v.string(obj.email, "email");
-  const phone = v.string(obj.phone, "phone");
+  // Keys carry the full section path so an API 422 names the field exactly as
+  // the config does: `identity.supportContacts.email`, not `identity.email`.
+  const email = v.string(obj.email, "supportContacts.email");
+  const phone = v.string(obj.phone, "supportContacts.phone");
   // The driver-facing copy prints these, so a typo is a driver who cannot reach
   // anyone. Shape only: no locale-specific formatting rules, which belong to the
   // tenant, not to the core.
   if (email !== undefined && !EMAIL_PATTERN.test(email.trim())) {
-    v.issue("schema_error", "identity.supportContacts.email must be an email address", "email");
+    v.issue(
+      "schema_error",
+      "identity.supportContacts.email must be an email address",
+      "supportContacts.email",
+    );
     return undefined;
   }
   if (phone !== undefined) {
@@ -190,7 +196,7 @@ function validateSupportContacts(
       v.issue(
         "schema_error",
         "identity.supportContacts.phone must be a dialable number (digits, spaces, + - ( ))",
-        "phone",
+        "supportContacts.phone",
       );
       return undefined;
     }
@@ -279,9 +285,9 @@ function validateBranding(v: Validator, value: unknown): TenantBranding | undefi
   const colorsObj = v.object(obj.colors, "colors");
   let colors: TenantBranding["colors"] | undefined;
   if (colorsObj !== undefined) {
-    const primary = validateHexColour(v, colorsObj.primary, "primary");
-    const secondary = validateHexColour(v, colorsObj.secondary, "secondary");
-    const accent = validateHexColour(v, colorsObj.accent, "accent");
+    const primary = validateHexColour(v, colorsObj.primary, "colors.primary");
+    const secondary = validateHexColour(v, colorsObj.secondary, "colors.secondary");
+    const accent = validateHexColour(v, colorsObj.accent, "colors.accent");
     if (primary !== undefined && secondary !== undefined && accent !== undefined) {
       colors = { primary, secondary, accent };
     }

@@ -75,4 +75,27 @@ export class TenantRepository {
       .returning(["id", "slug", "name", "legalEntity", "config", "configVersion"])
       .executeTakeFirstOrThrow();
   }
+
+  /**
+   * The state's own details: display name on documents, support contacts and
+   * branding. `legal_entity` is a column as well as a config field, so it is
+   * written in both places here; `name` and `slug` are not editable after
+   * provisioning — the slug is the sign-in identifier.
+   */
+  async updateIdentity(
+    id: string,
+    input: { readonly config: unknown; readonly legalEntity: string },
+  ): Promise<TenantRecord> {
+    return this.db
+      .updateTable("tenants")
+      .set((eb) => ({
+        config: input.config,
+        legalEntity: input.legalEntity,
+        configVersion: eb("configVersion", "+", 1),
+        updatedAt: new Date(),
+      }))
+      .where("id", "=", id)
+      .returning(["id", "slug", "name", "legalEntity", "config", "configVersion"])
+      .executeTakeFirstOrThrow();
+  }
 }

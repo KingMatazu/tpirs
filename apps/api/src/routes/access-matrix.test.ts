@@ -82,6 +82,7 @@ const REQUIRED: Readonly<Record<string, readonly Permission[]>> = {
   "GET /v1/cash/deposits": ["cash:deposit:read"],
   "POST /v1/cash/deposits/:id/match": ["cash:deposit:match"],
   "PUT /v1/tenants/current/config": ["tenant:configure"],
+  "PATCH /v1/tenants/current/identity": ["tenant:configure"],
   "GET /v1/zones": ["zone:read"],
   "POST /v1/zones": ["zone:manage"],
   "PATCH /v1/zones/:id": ["zone:manage"],
