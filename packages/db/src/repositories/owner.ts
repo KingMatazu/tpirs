@@ -51,6 +51,23 @@ export class OwnerRepository {
       .executeTakeFirst();
   }
 
+  /**
+   * Display names for a set of owners, keyed by id.
+   *
+   * List screens show a person's name, never the opaque id: a registry clerk
+   * reading "Owner: 7f3a…" learns nothing. One query for the whole page keeps
+   * the asset list from turning into a lookup per row.
+   */
+  async namesByIds(ids: readonly string[]): Promise<Readonly<Record<string, string>>> {
+    if (ids.length === 0) return {};
+    const rows = await this.db
+      .selectFrom("owners")
+      .select(["id", "displayName"])
+      .where("id", "in", [...ids])
+      .execute();
+    return Object.fromEntries(rows.map((row) => [row.id, row.displayName]));
+  }
+
   /** Marks the phone verified (idempotent); returns the updated owner. */
   async markPhoneVerified(id: string): Promise<OwnerRecord> {
     return this.db

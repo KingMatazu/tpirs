@@ -297,12 +297,20 @@ describeIntegration("api asset registry e2e (integration)", () => {
     });
     expect(response.statusCode).toBe(201);
     const body = response.json() as {
-      asset: { id: string; qrToken: string; shortCode: string; status: string };
+      asset: {
+        id: string;
+        qrToken: string;
+        shortCode: string;
+        status: string;
+        ownerName: string | null;
+      };
     };
     expect(body.asset.id).toBeTruthy();
     expect(body.asset.qrToken).toContain(".");
     expect(body.asset.shortCode.startsWith("B")).toBe(true);
     expect(body.asset.status).toBe("active");
+    // The response names the owner: screens never show the id alone.
+    expect(body.asset.ownerName).toBe("Ada Owner");
     assetId = body.asset.id;
     qrToken = body.asset.qrToken;
     shortCode = body.asset.shortCode;
@@ -312,6 +320,21 @@ describeIntegration("api asset registry e2e (integration)", () => {
     );
     expect(audit.length).toBeGreaterThanOrEqual(1);
     expect(audit[0]?.entityId).toBe(assetId);
+  });
+
+  it("lists assets with the owner's name beside the id", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: "/v1/assets",
+      headers: { authorization: `Bearer ${managerToken}` },
+    });
+    expect(response.statusCode).toBe(200);
+    const listed = (
+      response.json() as { assets: { id: string; ownerId: string; ownerName: string }[] }
+    ).assets;
+    const row = listed.find((asset) => asset.id === assetId);
+    expect(row?.ownerId).toBeTruthy();
+    expect(row?.ownerName).toBe("Ada Owner");
   });
 
   it("rejects attributes that violate the tenant's schema", async () => {

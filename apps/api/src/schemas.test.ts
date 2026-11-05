@@ -35,6 +35,7 @@ const sampleAsset = {
   status: "active",
   zoneId: null,
   ownerId: null,
+  ownerName: null,
   attributes: { plate_number: "AB-123", year: 2021 },
   qrToken: "tok_1",
   shortCode: "AB12CD",

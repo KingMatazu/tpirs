@@ -32,6 +32,8 @@ export interface AssetView {
   readonly status: AssetStatus;
   readonly zoneId: string | null;
   readonly ownerId: string | null;
+  /** The owner's display name, resolved by the API; null when unassigned. */
+  readonly ownerName: string | null;
   readonly attributes: Readonly<Record<string, unknown>>;
   readonly qrToken: string;
   readonly shortCode: string;

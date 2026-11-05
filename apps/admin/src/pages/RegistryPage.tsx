@@ -84,6 +84,7 @@ function issueMap(error: unknown): Record<string, string> {
  */
 export function RegistryPage(): ReactElement {
   const canRead = useSession((state) => state.hasPermission("asset:read"));
+  const canSeeZones = useSession((state) => state.hasPermission("zone:read"));
   const canCreate = useSession((state) => state.hasPermission("asset:create"));
   const { config } = useTenantConfig();
   const queryClient = useQueryClient();
@@ -106,10 +107,11 @@ export function RegistryPage(): ReactElement {
     enabled: canRead,
   });
   // The driver form offers a zone. A supervisor's zone comes from their session
-  // and is fixed; a system admin picks one. Only fetched when the form is shown.
+  // and is fixed; a system admin picks one. The table also shows zone *names*,
+  // so a reader who may list zones fetches them too — a raw id helps nobody.
   const zones = useQuery({
     queryKey: ["zones"],
-    enabled: canCreate,
+    enabled: canCreate || canSeeZones,
     queryFn: async () => (await unwrap(await api.GET("/v1/zones"))).zones,
   });
 
@@ -211,6 +213,7 @@ export function RegistryPage(): ReactElement {
           <AssetTable
             assets={rows}
             assetTypes={assetTypes}
+            zones={zones.data ?? []}
             selected={selected}
             onSelect={setSelected}
           />
@@ -222,6 +225,7 @@ export function RegistryPage(): ReactElement {
           key={selected}
           assetId={selected}
           assetTypes={assetTypes}
+          zones={zones.data ?? []}
           onChanged={refresh}
         />
       )}
@@ -238,9 +242,19 @@ async function fetchAssetDetail(assetId: string): Promise<AssetDetailView> {
   return await unwrap(api.GET("/v1/assets/{id}", { params: { path: { id: assetId } } }));
 }
 
+/** A zone id is an internal detail; the table shows the zone's name. */
+function zoneName(
+  zones: readonly { readonly id: string; readonly name: string }[],
+  zoneId: string | null,
+): string | undefined {
+  if (zoneId === null) return undefined;
+  return zones.find((zone) => zone.id === zoneId)?.name;
+}
+
 function AssetTable(props: {
   readonly assets: readonly AssetView[];
   readonly assetTypes: readonly TenantAssetType[];
+  readonly zones: readonly { readonly id: string; readonly name: string }[];
   readonly selected: string | undefined;
   readonly onSelect: (assetId: string) => void;
 }): ReactElement {
@@ -267,8 +281,12 @@ function AssetTable(props: {
               <td className="py-2 pr-4">
                 <Badge tone={assetStatusTone(asset.status)}>{assetStatusLabel(asset.status)}</Badge>
               </td>
-              <td className="py-2 pr-4 text-slate-600">{asset.zoneId ?? "—"}</td>
-              <td className="py-2 pr-4 font-mono text-xs text-slate-600">{asset.ownerId ?? "—"}</td>
+              <td className="py-2 pr-4 text-slate-600">
+                {zoneName(props.zones, asset.zoneId) ?? "—"}
+              </td>
+              <td className="py-2 pr-4 text-slate-700">
+                {asset.ownerName ?? (asset.ownerId === null ? "Not assigned" : "—")}
+              </td>
               <td className="py-2">
                 <button
                   type="button"
@@ -681,6 +699,7 @@ function StickerPreview(props: {
 function AssetDetail(props: {
   readonly assetId: string;
   readonly assetTypes: readonly TenantAssetType[];
+  readonly zones: readonly { readonly id: string; readonly name: string }[];
   readonly onChanged: () => Promise<void>;
 }): ReactElement {
   const canManage = useSession((state) => state.hasPermission("asset:manage"));
@@ -716,9 +735,11 @@ function AssetDetail(props: {
             <Badge tone={assetStatusTone(asset.status)}>{assetStatusLabel(asset.status)}</Badge>
           </dd>
           <dt className="text-slate-500">Zone</dt>
-          <dd className="text-slate-900">{asset.zoneId ?? "—"}</dd>
+          <dd className="text-slate-900">{zoneName(props.zones, asset.zoneId) ?? "—"}</dd>
           <dt className="text-slate-500">Owner</dt>
-          <dd className="font-mono text-xs text-slate-900">{asset.ownerId ?? "—"}</dd>
+          <dd className="text-slate-900">
+            {asset.ownerName ?? (asset.ownerId === null ? "Not assigned" : "—")}
+          </dd>
         </dl>
         <div className="mt-3">
           <StickerPreview assetId={asset.id} shortCode={asset.shortCode} />
@@ -800,7 +821,11 @@ function AssetDetail(props: {
             attributes={asset.attributes}
             onDone={props.onChanged}
           />
-          <OwnerPanel initialOwnerId={asset.ownerId} />
+          <OwnerPanel
+            initialOwnerId={asset.ownerId}
+            initialOwnerName={asset.ownerName}
+            onChanged={props.onChanged}
+          />
         </>
       ) : null}
     </div>
@@ -1053,13 +1078,35 @@ function readBase64(file: File): Promise<string> {
   });
 }
 
-function OwnerPanel(props: { readonly initialOwnerId: string | null }): ReactElement {
+function OwnerPanel(props: {
+  readonly initialOwnerId: string | null;
+  readonly initialOwnerName: string | null;
+  readonly onChanged: () => Promise<void>;
+}): ReactElement {
   const [ownerId, setOwnerId] = useState(props.initialOwnerId ?? "");
   const [owner, setOwner] = useState<OwnerView | undefined>(undefined);
   const [displayName, setDisplayName] = useState("");
   const [phone, setPhone] = useState("");
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
+
+  /**
+   * The asset already names its owner, so the panel opens on that person: the
+   * lookup form used to make an operator paste an id before seeing a name they
+   * had already been shown in the table.
+   */
+  useEffect(() => {
+    const id = props.initialOwnerId;
+    if (id === null) return;
+    void (async () => {
+      try {
+        const found = await unwrap(api.GET("/v1/owners/{id}", { params: { path: { id } } }));
+        setOwner(found.owner);
+      } catch {
+        // The name from the asset list still renders; the lookup is a detail.
+      }
+    })();
+  }, [props.initialOwnerId]);
 
   const lookup = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
@@ -1097,6 +1144,7 @@ function OwnerPanel(props: { readonly initialOwnerId: string | null }): ReactEle
       pushToast({ kind: "success", message: `Owner ${created.owner.displayName} created.` });
       setDisplayName("");
       setPhone("");
+      await props.onChanged();
     } catch (error) {
       pushToast({ kind: "error", ...describeError(error) });
     } finally {
@@ -1138,6 +1186,7 @@ function OwnerPanel(props: { readonly initialOwnerId: string | null }): ReactEle
       setOwner(verified.owner);
       setCode("");
       pushToast({ kind: "success", message: "Owner phone verified." });
+      await props.onChanged();
     } catch (error) {
       pushToast({ kind: "error", ...describeError(error) });
     } finally {
@@ -1145,56 +1194,28 @@ function OwnerPanel(props: { readonly initialOwnerId: string | null }): ReactEle
     }
   };
 
-  return (
-    <Card
-      title="Owner"
-      description="Look up, create or verify the owner who is liable for this asset."
-    >
-      <form className="flex flex-wrap items-end gap-3" onSubmit={(event) => void lookup(event)}>
-        <Field label="Owner id">
-          <TextInput name="ownerId" value={ownerId} onValueChange={setOwnerId} />
-        </Field>
-        <Button type="submit" variant="ghost" disabled={busy}>
-          Look up owner
-        </Button>
-      </form>
+  const name = owner?.displayName ?? props.initialOwnerName;
 
-      {owner === undefined ? null : (
-        <dl className="mt-3 grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-sm">
+  return (
+    <Card title="Owner" description="The person liable for this vehicle.">
+      {name === null ? (
+        <ReadOnlyNote>
+          No owner is linked to this asset. Owners are attached when a driver is registered.
+        </ReadOnlyNote>
+      ) : (
+        <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-sm">
           <dt className="text-slate-500">Name</dt>
-          <dd className="text-slate-900">{owner.displayName}</dd>
-          <dt className="text-slate-500">Phone</dt>
-          <dd className="text-slate-900">{owner.phone}</dd>
-          <dt className="text-slate-500">Verification</dt>
-          <dd className="text-slate-900">
-            {ownerVerifiedLabel(owner)}
-            {owner.phoneVerifiedAt === null ? null : (
-              <span className="ml-2 font-mono text-xs text-slate-500">{owner.phoneVerifiedAt}</span>
-            )}
-          </dd>
+          <dd className="text-slate-900">{name}</dd>
+          {owner === undefined ? null : (
+            <>
+              <dt className="text-slate-500">Phone</dt>
+              <dd className="text-slate-900">{owner.phone}</dd>
+              <dt className="text-slate-500">Verification</dt>
+              <dd className="text-slate-900">{ownerVerifiedLabel(owner)}</dd>
+            </>
+          )}
         </dl>
       )}
-
-      <form
-        className="mt-4 flex flex-wrap items-end gap-3"
-        onSubmit={(event) => void create(event)}
-      >
-        <Field label="Owner name">
-          <TextInput name="displayName" value={displayName} onValueChange={setDisplayName} />
-        </Field>
-        <Field label="Owner phone">
-          <TextInput
-            name="phone"
-            inputMode="tel"
-            value={phone}
-            onValueChange={setPhone}
-            placeholder="+234…"
-          />
-        </Field>
-        <Button type="submit" variant="ghost" disabled={busy}>
-          Create owner
-        </Button>
-      </form>
 
       {owner === undefined ? null : (
         <div className="mt-4 space-y-3">
@@ -1220,6 +1241,43 @@ function OwnerPanel(props: { readonly initialOwnerId: string | null }): ReactEle
           </form>
         </div>
       )}
+
+      <details className="mt-4">
+        <summary className="cursor-pointer text-sm text-slate-600">
+          Look up or add another person
+        </summary>
+        <div className="mt-3 space-y-3">
+          <p className="text-xs text-slate-500">
+            Adding a person here records them; it does not move this vehicle to them. A vehicle's
+            owner is set when the driver is registered.
+          </p>
+          <form className="flex flex-wrap items-end gap-3" onSubmit={(event) => void lookup(event)}>
+            <Field label="Owner id" hint="Only if you were given one.">
+              <TextInput name="ownerId" value={ownerId} onValueChange={setOwnerId} />
+            </Field>
+            <Button type="submit" variant="ghost" disabled={busy}>
+              Look up owner
+            </Button>
+          </form>
+          <form className="flex flex-wrap items-end gap-3" onSubmit={(event) => void create(event)}>
+            <Field label="Owner name">
+              <TextInput name="displayName" value={displayName} onValueChange={setDisplayName} />
+            </Field>
+            <Field label="Owner phone">
+              <TextInput
+                name="phone"
+                inputMode="tel"
+                value={phone}
+                onValueChange={setPhone}
+                placeholder="+234…"
+              />
+            </Field>
+            <Button type="submit" variant="ghost" disabled={busy}>
+              Create owner
+            </Button>
+          </form>
+        </div>
+      </details>
     </Card>
   );
 }

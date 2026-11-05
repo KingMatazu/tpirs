@@ -28,6 +28,7 @@ const asset = {
   status: "active" as "active" | "suspended" | "retired",
   zoneId: "zone-a",
   ownerId: "ow_1",
+  ownerName: "Ada Driver",
   // `colour` is not in the fixture's bike schema: it must still be shown.
   attributes: { plate_number: "AB12345", colour: "red" } as Record<string, unknown>,
   qrToken: "qr_1",
@@ -139,7 +140,7 @@ function json(status: number, body: unknown): Response {
   });
 }
 
-const ALL_PERMISSIONS = ["asset:read", "asset:manage"];
+const ALL_PERMISSIONS = ["asset:read", "asset:manage", "zone:read"];
 /** The set that may add a driver: `asset:create` is the supervisory permission. */
 const CREATE_PERMISSIONS = [...ALL_PERMISSIONS, "asset:create"];
 
@@ -210,7 +211,11 @@ describe("RegistryPage", () => {
     expect(await screen.findByText("B123")).toBeTruthy();
     expect(screen.getByRole("cell", { name: "Motorbike" })).toBeTruthy();
     expect(screen.getByRole("cell", { name: "Active" })).toBeTruthy();
-    expect(screen.getByText("zone-a")).toBeTruthy();
+    // People and places are shown by name; the opaque ids stay out of the table.
+    expect((await screen.findAllByText("Zone A")).length).toBeGreaterThan(0);
+    expect(screen.getByRole("cell", { name: "Ada Driver" })).toBeTruthy();
+    expect(screen.queryByText("zone-a")).toBeNull();
+    expect(screen.queryByText("ow_1")).toBeNull();
     // The unfiltered list sends the page size only.
     const first = requests.find((row) => row.path === "/v1/assets");
     expect(new URLSearchParams(first?.search ?? "").get("query")).toBeNull();

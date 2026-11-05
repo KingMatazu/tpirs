@@ -3704,6 +3704,7 @@ export interface components {
             status: "active" | "suspended" | "retired";
             zoneId: string | null;
             ownerId: string | null;
+            ownerName: string | null;
             attributes: {
                 [key: string]: unknown;
             };

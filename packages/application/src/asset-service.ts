@@ -200,6 +200,22 @@ export function createAssetService(deps: AssetServiceDeps) {
     );
   }
 
+  /**
+   * Display names for the owners of a page of assets.
+   *
+   * The asset row stores an owner id; every screen that shows an asset to a
+   * person needs the name instead. Resolving the whole page at once keeps a
+   * fifty-row list at one extra query rather than fifty.
+   */
+  async function ownerNames(
+    tenantId: string,
+    ownerIds: readonly (string | null)[],
+  ): Promise<Readonly<Record<string, string>>> {
+    const ids = [...new Set(ownerIds.filter((id): id is string => id !== null))];
+    if (ids.length === 0) return {};
+    return withTenant(deps.db, tenantId, async (tx) => repositories(tx).owners.namesByIds(ids));
+  }
+
   async function listPhotos(tenantId: string, assetId: string) {
     return withTenant(deps.db, tenantId, async (tx) =>
       repositories(tx).assetPhotos.listForAsset(assetId),
@@ -306,6 +322,7 @@ export function createAssetService(deps: AssetServiceDeps) {
     attachPhoto,
     getById,
     search,
+    ownerNames,
     listPhotos,
     getPhoto,
     getSticker,

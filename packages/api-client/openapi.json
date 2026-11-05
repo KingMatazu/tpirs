@@ -169,6 +169,7 @@
           "status",
           "zoneId",
           "ownerId",
+          "ownerName",
           "attributes",
           "qrToken",
           "shortCode"
@@ -193,6 +194,10 @@
             "nullable": true
           },
           "ownerId": {
+            "type": "string",
+            "nullable": true
+          },
+          "ownerName": {
             "type": "string",
             "nullable": true
           },

@@ -66,6 +66,7 @@ const asset = {
     "status",
     "zoneId",
     "ownerId",
+    "ownerName",
     "attributes",
     "qrToken",
     "shortCode",
@@ -76,6 +77,8 @@ const asset = {
     status: { type: "string", enum: ["active", "suspended", "retired"] },
     zoneId: { type: "string", nullable: true },
     ownerId: { type: "string", nullable: true },
+    /** The owner's display name, resolved server-side so lists never show an id. */
+    ownerName: { type: "string", nullable: true },
     attributes: { type: "object", additionalProperties: true },
     qrToken: { type: "string" },
     shortCode: { type: "string" },

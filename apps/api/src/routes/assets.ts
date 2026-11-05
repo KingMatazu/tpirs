@@ -35,13 +35,22 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
     : undefined;
 }
 
-function serializeAsset(asset: AssetRecord) {
+/**
+ * An asset as the contract shows it.
+ *
+ * `ownerName` sits beside `ownerId` because every screen that lists assets
+ * shows the person, not the identifier: an owner id is a database detail, and a
+ * registry clerk reading "7f3a…" learns nothing. The id stays in the payload for
+ * the clients that need to act on it (filtering, linking a different owner).
+ */
+function serializeAsset(asset: AssetRecord, ownerName: string | null) {
   return {
     id: asset.id,
     assetTypeKey: asset.assetTypeKey,
     status: asset.status,
     zoneId: asset.zoneId,
     ownerId: asset.ownerId,
+    ownerName,
     attributes: asset.attributes,
     qrToken: asset.qrToken,
     shortCode: asset.shortCode,
@@ -117,6 +126,22 @@ function validationError(
 export function registerAssetRoutes(app: FastifyInstance, context: AssetRoutesContext): void {
   const { services, loadConfig } = context;
 
+  /** One extra query per page, not per row: the owner names for a set of assets. */
+  async function presentAssets(tenantId: string, assets: readonly AssetRecord[]) {
+    const names = await services.asset.ownerNames(
+      tenantId,
+      assets.map((asset) => asset.ownerId),
+    );
+    return assets.map((asset) =>
+      serializeAsset(asset, asset.ownerId === null ? null : (names[asset.ownerId] ?? null)),
+    );
+  }
+
+  async function presentAsset(tenantId: string, asset: AssetRecord) {
+    const [presented] = await presentAssets(tenantId, [asset]);
+    return presented ?? serializeAsset(asset, null);
+  }
+
   app.post("/v1/assets", { schema: createAssetSchema }, async (request, reply) => {
     // Registering is a supervisory act: a collector takes cash, a zone
     // supervisor or a system admin adds the vehicle. Correcting an existing
@@ -164,13 +189,14 @@ export function registerAssetRoutes(app: FastifyInstance, context: AssetRoutesCo
         ...(ownerInput === undefined ? {} : { owner: ownerInput }),
         createdByUserId: principal.userId,
       });
+      const presented = await presentAsset(principal.tenantId, asset);
       request.audit = {
         action: "asset.register",
         entityType: "asset",
         entityId: asset.id,
-        after: serializeAsset(asset),
+        after: presented,
       };
-      return await reply.code(201).send({ asset: serializeAsset(asset) });
+      return await reply.code(201).send({ asset: presented });
     } catch (error) {
       if (error instanceof AssetValidationError) return validationError(request, reply, error);
       throw error;
@@ -198,7 +224,7 @@ export function registerAssetRoutes(app: FastifyInstance, context: AssetRoutesCo
       ...(limitRaw === undefined ? {} : { limit: Number(limitRaw) }),
       ...(offsetRaw === undefined ? {} : { offset: Number(offsetRaw) }),
     });
-    return reply.send({ assets: assets.map(serializeAsset) });
+    return reply.send({ assets: await presentAssets(principal.tenantId, assets) });
   });
 
   app.get("/v1/assets/:id", { schema: getAssetSchema }, async (request, reply) => {
@@ -208,7 +234,7 @@ export function registerAssetRoutes(app: FastifyInstance, context: AssetRoutesCo
       const asset = await services.asset.getById(principal.tenantId, id);
       const photos = await services.asset.listPhotos(principal.tenantId, id);
       return await reply.send({
-        asset: serializeAsset(asset),
+        asset: await presentAsset(principal.tenantId, asset),
         photos: photos.map((photo) => ({
           id: photo.id,
           contentType: photo.contentType,
@@ -299,13 +325,14 @@ export function registerAssetRoutes(app: FastifyInstance, context: AssetRoutesCo
     }
     try {
       const asset = await services.asset.setStatus(principal.tenantId, id, "suspended");
+      const presented = await presentAsset(principal.tenantId, asset);
       request.audit = {
         action: "asset.suspend",
         entityType: "asset",
         entityId: id,
-        after: { ...serializeAsset(asset), reason: reason.trim() },
+        after: { ...presented, reason: reason.trim() },
       };
-      return await reply.send({ asset: serializeAsset(asset) });
+      return await reply.send({ asset: presented });
     } catch (error) {
       if (error instanceof AssetNotFoundError) return notFound(request, reply);
       throw error;
@@ -320,13 +347,14 @@ export function registerAssetRoutes(app: FastifyInstance, context: AssetRoutesCo
     if (attributes === undefined) return badRequest(request, reply, "attributes is required");
     try {
       const asset = await services.asset.correctAttributes(principal.tenantId, id, attributes);
+      const presented = await presentAsset(principal.tenantId, asset);
       request.audit = {
         action: "asset.correct",
         entityType: "asset",
         entityId: id,
-        after: serializeAsset(asset),
+        after: presented,
       };
-      return await reply.send({ asset: serializeAsset(asset) });
+      return await reply.send({ asset: presented });
     } catch (error) {
       if (error instanceof AssetValidationError) return validationError(request, reply, error);
       if (error instanceof AssetNotFoundError) return notFound(request, reply);
