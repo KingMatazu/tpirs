@@ -205,6 +205,9 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       // Secure cookies need HTTPS; local development is plain http://localhost.
       secureCookies: config.nodeEnv === "production",
       sameSiteCookies: config.refreshCookieSameSite ?? "strict",
+      // The origins CORS already trusts are the ones that make a refresh
+      // request cross-site, so the cookie is scoped from them (ADR 0068).
+      crossSiteOrigins: config.corsOrigins ?? [],
       ...(options.rateLimiter === undefined ? {} : { rateLimiter: options.rateLimiter }),
     });
     registerConfigRoutes(app, { identity: options.identity, db: options.db });

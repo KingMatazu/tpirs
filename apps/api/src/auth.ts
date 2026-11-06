@@ -27,6 +27,13 @@ export interface AuthContext {
    * refuses to store/send the cookie (ADR 0052).
    */
   readonly sameSiteCookies?: "strict" | "lax" | "none";
+  /**
+   * Browser origins that make a request cross-site — the same list CORS trusts.
+   * When the caller's `Origin` is one of them the refresh cookie is issued
+   * `SameSite=None; Secure`, because a `strict` cookie is never presented on a
+   * cross-site request and every reload would sign the user out (ADR 0068).
+   */
+  readonly crossSiteOrigins?: readonly string[];
 }
 
 declare module "fastify" {

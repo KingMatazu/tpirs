@@ -1,4 +1,4 @@
-import type { FastifyInstance, FastifyReply } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { PortError } from "@tpirs/ports";
 import type { DeviceRegistration } from "@tpirs/ports";
 import {
@@ -64,6 +64,30 @@ function asString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() !== "" ? value : undefined;
 }
 
+/**
+ * How the refresh cookie is scoped for one request.
+ *
+ * Derived per request rather than read from a single environment variable:
+ * a `strict` cookie is stored but never *presented* on a cross-site request, so
+ * a split-origin deployment that forgot one setting stored a cookie the browser
+ * would never send, and every reload signed the user out. The origins the
+ * deployment already trusts for CORS are exactly the origins that make a
+ * request cross-site, so they decide this too.
+ */
+export function cookiePolicyFor(
+  request: FastifyRequest,
+  secure: boolean,
+  configured: "strict" | "lax" | "none",
+  crossSiteOrigins: readonly string[],
+): { readonly secure: boolean; readonly sameSite: "strict" | "lax" | "none" } {
+  const origin = request.headers.origin;
+  const crossSite = typeof origin === "string" && crossSiteOrigins.includes(origin);
+  if (!crossSite && configured !== "none") return { secure, sameSite: configured };
+  // A `SameSite=None` cookie without `Secure` is rejected outright, so a
+  // cross-site deployment over plain http gets the closest valid cookie.
+  return secure ? { secure, sameSite: "none" } : { secure, sameSite: "lax" };
+}
+
 function asDevice(value: unknown): DeviceRegistration | undefined {
   if (typeof value !== "object" || value === null) return undefined;
   const record = value as Record<string, unknown>;
@@ -83,11 +107,16 @@ async function sessionReply(
     refreshExpiresAt: Date;
     user: { userId: string; tenantId: string; displayName: string; roles: readonly string[] };
   },
-  secure: boolean,
-  sameSite: "strict" | "lax" | "none",
+  policy: { readonly secure: boolean; readonly sameSite: "strict" | "lax" | "none" },
   account: { mustChangeCredentials: boolean; zoneId: string | null },
 ): Promise<unknown> {
-  setRefreshCookie(reply, session.refreshToken, session.refreshExpiresAt, secure, sameSite);
+  setRefreshCookie(
+    reply,
+    session.refreshToken,
+    session.refreshExpiresAt,
+    policy.secure,
+    policy.sameSite,
+  );
   return reply.send({
     token: session.token,
     expiresAt: session.expiresAt.toISOString(),
@@ -156,6 +185,10 @@ function tooMany(reply: FastifyReply, request: { id: string }, retryAfterSeconds
 export function registerAuthRoutes(app: FastifyInstance, context: AuthContext): void {
   const secureCookies = context.secureCookies ?? true;
   const sameSiteCookies = context.sameSiteCookies ?? "strict";
+  const crossSiteOrigins = context.crossSiteOrigins ?? [];
+  // One policy object per response, so no call site can pass the wrong pair.
+  const policyFor = (request: FastifyRequest): ReturnType<typeof cookiePolicyFor> =>
+    cookiePolicyFor(request, secureCookies, sameSiteCookies, crossSiteOrigins);
   const limiter = context.rateLimiter;
   app.post("/v1/auth/login", { schema: authLoginSchema }, async (request, reply) => {
     const body = (request.body ?? {}) as LoginBody;
@@ -221,8 +254,7 @@ export function registerAuthRoutes(app: FastifyInstance, context: AuthContext): 
       return await sessionReply(
         reply,
         session,
-        secureCookies,
-        sameSiteCookies,
+        policyFor(request),
         await sessionAccount(context, session.user.tenantId, session.user.userId),
       );
     } catch (error) {
@@ -265,8 +297,7 @@ export function registerAuthRoutes(app: FastifyInstance, context: AuthContext): 
       return await sessionReply(
         reply,
         rotated,
-        secureCookies,
-        sameSiteCookies,
+        policyFor(request),
         await sessionAccount(context, rotated.user.tenantId, rotated.user.userId),
       );
     } catch (error) {
@@ -436,8 +467,7 @@ export function registerAuthRoutes(app: FastifyInstance, context: AuthContext): 
       return await sessionReply(
         reply,
         session,
-        secureCookies,
-        sameSiteCookies,
+        policyFor(request),
         await sessionAccount(context, session.user.tenantId, session.user.userId),
       );
     },
@@ -519,8 +549,7 @@ export function registerAuthRoutes(app: FastifyInstance, context: AuthContext): 
       return await sessionReply(
         reply,
         session,
-        secureCookies,
-        sameSiteCookies,
+        policyFor(request),
         await sessionAccount(context, session.user.tenantId, session.user.userId),
       );
     },
@@ -581,8 +610,7 @@ export function registerAuthRoutes(app: FastifyInstance, context: AuthContext): 
       return await sessionReply(
         reply,
         session,
-        secureCookies,
-        sameSiteCookies,
+        policyFor(request),
         await sessionAccount(context, session.user.tenantId, session.user.userId),
       );
     },

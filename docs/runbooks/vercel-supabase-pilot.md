@@ -65,7 +65,7 @@ Environment variables (Production, and Preview if you want previews):
 | `SECRET_QR_TOKEN_SIGNING_KEY` | a new random secret, 32+ bytes; rotating it invalidates printed stickers      |
 | `SETUP_TOKEN`                 | a new random secret; **required**, or production refuses first-run setup      |
 | `CORS_ORIGINS`                | the three frontend origins, comma-separated (set after step 3, then redeploy) |
-| `REFRESH_COOKIE_SAMESITE`     | `none`                                                                        |
+| `REFRESH_COOKIE_SAMESITE`     | optional — derived from `CORS_ORIGINS` (ADR 0068); leave it unset             |
 | `TRUST_PROXY`                 | `true`                                                                        |
 | `OBJECT_STORAGE_ADAPTER`      | `mock` (see step 7)                                                           |
 | `METRICS_ENABLED`             | `false`                                                                       |
@@ -386,20 +386,20 @@ No code change is needed; `apps/api/src/storage.ts` is the only selector.
 
 ## 9. Troubleshooting
 
-| Symptom                                          | Likely cause / fix                                                                                                                                 |
-| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `permission denied to set role "tpirs_app"`      | Migrations ran under a different role; run `grant tpirs_app to <that role>` or re-run 0021                                                         |
-| `self signed certificate` / SSL error            | Missing `?sslmode=require` on `DATABASE_URL`                                                                                                       |
-| `too many connections`                           | `DB_POOL_MAX` above 1, or the direct (5432) URL used at runtime                                                                                    |
-| Login succeeds but a reload signs you out        | Cookie blocked: wrong `CORS_ORIGINS`, `SameSite` still `strict`, or `VITE_API_BASE_URL` mismatch                                                   |
-| Browser CORS error                               | Origin typo/trailing slash; redeploy the API after changing `CORS_ORIGINS`                                                                         |
-| Setup answers `503 setup_disabled`               | `SETUP_TOKEN` unset while `NODE_ENV=production`; set it and redeploy                                                                               |
-| Setup answers `401 setup_token_required`         | Missing/wrong `?setupToken=`; the token is the `SETUP_TOKEN` value                                                                                 |
-| Setup answers `500`, or `503 schema_out_of_date` | The database is behind this build: run `pnpm --filter @tpirs/db migrate status`, then `migrate up`, against the **5432** session pooler, and retry |
-| A brand-new column is `undefined` in a response  | Same cause: the API is newer than the schema. Migrations are applied by hand, never by Vercel                                                      |
-| Function timeout during onboarding               | Onboarding is normally sub-second; raise the project's function duration in Vercel settings if a report export times out                           |
-| Build cannot find `@tpirs/*`                     | Root Directory wrong, or the build command did not build workspace dependencies                                                                    |
-| Sticker QR scans as nothing                      | Stickers printed before ADR 0067 had a clipped QR; download and reprint them. Cameras also need HTTPS: an `http://` LAN address has no camera      |
+| Symptom                                          | Likely cause / fix                                                                                                                                                                                    |
+| ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `permission denied to set role "tpirs_app"`      | Migrations ran under a different role; run `grant tpirs_app to <that role>` or re-run 0021                                                                                                            |
+| `self signed certificate` / SSL error            | Missing `?sslmode=require` on `DATABASE_URL`                                                                                                                                                          |
+| `too many connections`                           | `DB_POOL_MAX` above 1, or the direct (5432) URL used at runtime                                                                                                                                       |
+| Login succeeds but a reload signs you out        | The refresh cookie is `SameSite=Strict` on a cross-site call: `CORS_ORIGINS` is unset or missing this app's origin. The API derives `SameSite=None` from that list (ADR 0068), so set it and redeploy |
+| Browser CORS error                               | Origin typo/trailing slash; redeploy the API after changing `CORS_ORIGINS`                                                                                                                            |
+| Setup answers `503 setup_disabled`               | `SETUP_TOKEN` unset while `NODE_ENV=production`; set it and redeploy                                                                                                                                  |
+| Setup answers `401 setup_token_required`         | Missing/wrong `?setupToken=`; the token is the `SETUP_TOKEN` value                                                                                                                                    |
+| Setup answers `500`, or `503 schema_out_of_date` | The database is behind this build: run `pnpm --filter @tpirs/db migrate status`, then `migrate up`, against the **5432** session pooler, and retry                                                    |
+| A brand-new column is `undefined` in a response  | Same cause: the API is newer than the schema. Migrations are applied by hand, never by Vercel                                                                                                         |
+| Function timeout during onboarding               | Onboarding is normally sub-second; raise the project's function duration in Vercel settings if a report export times out                                                                              |
+| Build cannot find `@tpirs/*`                     | Root Directory wrong, or the build command did not build workspace dependencies                                                                                                                       |
+| Sticker QR scans as nothing                      | Stickers printed before ADR 0067 had a clipped QR; download and reprint them. Cameras also need HTTPS: an `http://` LAN address has no camera                                                         |
 
 ## 10. Resetting the data for a demo
 
