@@ -49,6 +49,10 @@ export default defineConfig({
     }),
   ],
   server: {
+    // Bind 0.0.0.0 so a phone on the same network can open the collector app at
+    // this machine's LAN IP. Service workers need a secure context, so the PWA
+    // install prompt only appears over https or on localhost.
+    host: true,
     port: 5175,
     proxy: {
       "/v1": {

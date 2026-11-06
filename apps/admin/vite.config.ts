@@ -8,6 +8,10 @@ import tailwindcss from "@tailwindcss/vite";
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
+    // Bind 0.0.0.0 so a phone or a second laptop on the same network can reach
+    // the dev server at this machine's LAN IP. Dev only; the API already listens
+    // on 0.0.0.0 and the proxy target below stays loopback.
+    host: true,
     port: 5173,
     proxy: {
       "/v1": {
