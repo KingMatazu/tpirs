@@ -31,7 +31,9 @@ export const copy = {
     submitting: "Signing in…",
     failed: "Check the state, username and password, then try again.",
     locked: "Too many attempts. Wait a minute and try again.",
-    offline: "No connection. Sign in when the phone is back online.",
+    offline: "The phone reports no connection. You can still try to sign in.",
+    unreachable: "Could not reach the server. Check the phone's Wi-Fi, then try again.",
+    serverError: "The server could not sign you in. Try again in a moment.",
   },
   home: {
     greeting: "Signed in as",

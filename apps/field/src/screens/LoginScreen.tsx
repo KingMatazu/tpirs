@@ -22,6 +22,13 @@ export function LoginScreen(): ReactElement {
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
+  /**
+   * A hint, never a gate. Android reports `navigator.onLine === false` for a
+   * Wi-Fi network it cannot reach the internet through — a state levy office
+   * with a router that is up but unplugged, or a phone on a LAN-only dev server.
+   * The server is often perfectly reachable in that state, so the officer must
+   * still be allowed to press Sign in; the request itself is the authority.
+   */
   const [offline, setOffline] = useState(!globalThis.navigator.onLine);
 
   useEffect(() => {
@@ -49,6 +56,8 @@ export function LoginScreen(): ReactElement {
     setError(undefined);
     try {
       await useSession.getState().login({ tenantSlug, username, password });
+      // The request got through, whatever the radio claimed: stop saying offline.
+      setOffline(false);
       try {
         globalThis.localStorage.setItem(TENANT_KEY, tenantSlug);
       } catch {
@@ -133,7 +142,7 @@ export function LoginScreen(): ReactElement {
             </button>
           </div>
         </Field>
-        <PrimaryButton type="submit" disabled={busy || offline}>
+        <PrimaryButton type="submit" disabled={busy}>
           {busy ? copy.login.submitting : copy.login.submit}
         </PrimaryButton>
       </form>
@@ -145,9 +154,11 @@ export function LoginScreen(): ReactElement {
 function messageFor(error: unknown): string {
   if (error instanceof ApiError) {
     if (error.status === 429) return copy.login.locked;
-    if (error.status === 0 || error.status >= 500) return copy.login.offline;
+    // Status 0 is the client's own "the request never arrived" answer.
+    if (error.status === 0) return copy.login.unreachable;
+    if (error.status >= 500) return copy.login.serverError;
   }
   // A failed fetch surfaces as a TypeError, not an ApiError.
-  if (error instanceof TypeError) return copy.login.offline;
+  if (error instanceof TypeError) return copy.login.unreachable;
   return copy.login.failed;
 }
