@@ -6,7 +6,13 @@ import cors from "@fastify/cors";
 import swagger from "@fastify/swagger";
 import type { FastifyInstance, FastifyServerOptions } from "fastify";
 import type { AppConfig, BuildAppOptions } from "./config.js";
-import { clientErrorMessage, defaultErrorCode, errorEnvelope } from "./errors.js";
+import {
+  clientErrorMessage,
+  defaultErrorCode,
+  errorEnvelope,
+  isSchemaDrift,
+  SCHEMA_DRIFT_MESSAGE,
+} from "./errors.js";
 import { authenticate, enforceCredentialRotation, UnauthorizedError } from "./auth.js";
 import { auditOnSuccess } from "./audit.js";
 import { sharedSchemas, healthSchema, readySchema } from "./schemas.js";
@@ -296,7 +302,11 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
             typeof error.statusCode === "number"
           ? error.statusCode
           : 500;
-    const message = clientErrorMessage(error, statusCode);
+    // A missing table or column is not an internal fault the caller can do
+    // nothing about: it is a deployment that is behind its schema, and the
+    // remedy is a migration command. Say so, and keep the SQL in telemetry.
+    const drift = statusCode >= 500 && isSchemaDrift(error);
+    const message = drift ? SCHEMA_DRIFT_MESSAGE : clientErrorMessage(error, statusCode);
     if (statusCode >= 500) {
       telemetry.captureError(error, {
         requestId: request.id,
@@ -306,7 +316,13 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     }
     void reply
       .code(statusCode)
-      .send(errorEnvelope(defaultErrorCode(statusCode), message, request.id));
+      .send(
+        errorEnvelope(
+          drift ? "schema_out_of_date" : defaultErrorCode(statusCode),
+          message,
+          request.id,
+        ),
+      );
   });
 
   app.get("/v1/health", { schema: healthSchema }, (_request, reply) => {

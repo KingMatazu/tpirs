@@ -5,7 +5,7 @@ import type { AppConfig } from "./config.js";
 import { createMockTelemetry } from "@tpirs/telemetry-mock";
 import { createPrometheusTelemetry } from "@tpirs/adapters-prometheus-telemetry";
 import { LOG_REDACT_PATHS } from "./build-app.js";
-import { clientErrorMessage } from "./errors.js";
+import { clientErrorMessage, isSchemaDrift, SCHEMA_DRIFT_MESSAGE, sqlState } from "./errors.js";
 
 const config: AppConfig = {
   nodeEnv: "test",
@@ -117,6 +117,21 @@ describe("api server", () => {
     expect(clientErrorMessage(error, 400)).toContain("invalid input syntax");
     expect(clientErrorMessage(error, 500)).toBe("Internal server error");
     expect(clientErrorMessage(error, 503)).toBe("Internal server error");
+  });
+
+  it("recognises a database that is behind the build, and says how to fix it", () => {
+    // What the driver throws for a column or table this build expects and the
+    // database does not have yet, including when it arrives wrapped.
+    const missingColumn = Object.assign(new Error("column u.zone_id does not exist"), {
+      code: "42703",
+    });
+    expect(isSchemaDrift(missingColumn)).toBe(true);
+    expect(isSchemaDrift(new Error("boom", { cause: missingColumn }))).toBe(true);
+    // A real fault is not dressed up as a migration problem.
+    expect(isSchemaDrift(new Error("connection terminated"))).toBe(false);
+    expect(isSchemaDrift(Object.assign(new Error("timeout"), { code: "57014" }))).toBe(false);
+    expect(sqlState({ code: "not-a-sqlstate" })).toBeUndefined();
+    expect(SCHEMA_DRIFT_MESSAGE).toContain("migrate up");
   });
 
   it("redacts credentials from anything the logger serialises", () => {

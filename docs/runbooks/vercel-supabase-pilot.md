@@ -385,17 +385,19 @@ No code change is needed; `apps/api/src/storage.ts` is the only selector.
 
 ## 9. Troubleshooting
 
-| Symptom                                     | Likely cause / fix                                                                                                       |
-| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `permission denied to set role "tpirs_app"` | Migrations ran under a different role; run `grant tpirs_app to <that role>` or re-run 0021                               |
-| `self signed certificate` / SSL error       | Missing `?sslmode=require` on `DATABASE_URL`                                                                             |
-| `too many connections`                      | `DB_POOL_MAX` above 1, or the direct (5432) URL used at runtime                                                          |
-| Login succeeds but a reload signs you out   | Cookie blocked: wrong `CORS_ORIGINS`, `SameSite` still `strict`, or `VITE_API_BASE_URL` mismatch                         |
-| Browser CORS error                          | Origin typo/trailing slash; redeploy the API after changing `CORS_ORIGINS`                                               |
-| Setup answers `503 setup_disabled`          | `SETUP_TOKEN` unset while `NODE_ENV=production`; set it and redeploy                                                     |
-| Setup answers `401 setup_token_required`    | Missing/wrong `?setupToken=`; the token is the `SETUP_TOKEN` value                                                       |
-| Function timeout during onboarding          | Onboarding is normally sub-second; raise the project's function duration in Vercel settings if a report export times out |
-| Build cannot find `@tpirs/*`                | Root Directory wrong, or the build command did not build workspace dependencies                                          |
+| Symptom                                          | Likely cause / fix                                                                                                                                 |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `permission denied to set role "tpirs_app"`      | Migrations ran under a different role; run `grant tpirs_app to <that role>` or re-run 0021                                                         |
+| `self signed certificate` / SSL error            | Missing `?sslmode=require` on `DATABASE_URL`                                                                                                       |
+| `too many connections`                           | `DB_POOL_MAX` above 1, or the direct (5432) URL used at runtime                                                                                    |
+| Login succeeds but a reload signs you out        | Cookie blocked: wrong `CORS_ORIGINS`, `SameSite` still `strict`, or `VITE_API_BASE_URL` mismatch                                                   |
+| Browser CORS error                               | Origin typo/trailing slash; redeploy the API after changing `CORS_ORIGINS`                                                                         |
+| Setup answers `503 setup_disabled`               | `SETUP_TOKEN` unset while `NODE_ENV=production`; set it and redeploy                                                                               |
+| Setup answers `401 setup_token_required`         | Missing/wrong `?setupToken=`; the token is the `SETUP_TOKEN` value                                                                                 |
+| Setup answers `500`, or `503 schema_out_of_date` | The database is behind this build: run `pnpm --filter @tpirs/db migrate status`, then `migrate up`, against the **5432** session pooler, and retry |
+| A brand-new column is `undefined` in a response  | Same cause: the API is newer than the schema. Migrations are applied by hand, never by Vercel                                                      |
+| Function timeout during onboarding               | Onboarding is normally sub-second; raise the project's function duration in Vercel settings if a report export times out                           |
+| Build cannot find `@tpirs/*`                     | Root Directory wrong, or the build command did not build workspace dependencies                                                                    |
 
 ## 10. Resetting the data for a demo
 
