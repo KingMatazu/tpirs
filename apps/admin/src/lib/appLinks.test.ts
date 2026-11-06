@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { appDestinations, destinationsForRoles, handoverText } from "./appLinks.js";
+import { describe, expect, it, vi } from "vitest";
+import { appDestinations, destinationsForRoles, devAddress, handoverText } from "./appLinks.js";
 
 const DASHBOARD = "https://admin.example.test";
 
@@ -12,8 +12,34 @@ describe("handover addresses", () => {
   });
 
   it("reports an unset address rather than guessing one", () => {
-    const field = appDestinations(DASHBOARD).find((destination) => destination.key === "field");
+    const field = appDestinations(DASHBOARD, false).find(
+      (destination) => destination.key === "field",
+    );
     expect(field?.url).toBeUndefined();
+  });
+
+  it("points a development build at the sibling dev servers", () => {
+    // `pnpm dev` runs the three apps side by side, so a handover card on a LAN
+    // address hands out the same host on the app's own port.
+    const destinations = appDestinations("http://192.168.0.183:5173", true);
+    expect(destinations.find((destination) => destination.key === "field")?.url).toBe(
+      "http://192.168.0.183:5174",
+    );
+    expect(destinations.find((destination) => destination.key === "collector")?.url).toBe(
+      "http://192.168.0.183:5175",
+    );
+  });
+
+  it("keeps a configured address even in a development build", () => {
+    vi.stubEnv("VITE_FIELD_APP_URL", "https://field.example.test");
+    try {
+      const destinations = appDestinations("http://localhost:5173", true);
+      expect(destinations.find((destination) => destination.key === "field")?.url).toBe(
+        "https://field.example.test",
+      );
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("sends officers and collectors to their own apps", () => {
@@ -46,6 +72,17 @@ describe("handover addresses", () => {
     expect(destinationsForRoles([], appDestinations(DASHBOARD)).map((entry) => entry.key)).toEqual([
       "admin",
     ]);
+  });
+});
+
+describe("dev addresses", () => {
+  it("swaps the port and keeps the host a phone typed", () => {
+    expect(devAddress("field", "http://192.168.0.183:5173")).toBe("http://192.168.0.183:5174");
+    expect(devAddress("collector", "http://localhost:5173")).toBe("http://localhost:5175");
+  });
+
+  it("says it does not know rather than throwing on a nonsense origin", () => {
+    expect(devAddress("field", "not a url")).toBeUndefined();
   });
 });
 

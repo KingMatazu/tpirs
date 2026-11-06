@@ -9,7 +9,10 @@
  * and needs no configuration at all.
  *
  * An unset address is reported as undefined rather than guessed: a handover card
- * that links nowhere is worse than one that says it does not know.
+ * that links nowhere is worse than one that says it does not know. The one
+ * exception is `vite dev`, where the sibling apps are always on this machine at
+ * known ports — a local handover card that says "not configured in this build"
+ * sends an officer to the dashboard, where they have no pages.
  */
 export type AppKey = "admin" | "field" | "collector";
 
@@ -26,12 +29,47 @@ const ROLE_APPS: Readonly<Record<string, AppKey>> = {
   collector: "collector",
 };
 
-export function appDestinations(origin?: string): readonly AppDestination[] {
+/** The ports `scripts/dev.mjs` binds for the three apps. */
+const DEV_PORTS: Readonly<Record<AppKey, number>> = { admin: 5173, field: 5174, collector: 5175 };
+
+/**
+ * A sibling app's address on the machine serving the dashboard.
+ *
+ * `vite dev` is the only caller: there the three apps always run side by side.
+ * The host is taken from the page rather than hardcoded to `localhost`, because
+ * the realistic local test is a phone that opened the dashboard at
+ * `http://192.168.0.183:5173` and has to be handed `…:5174`, not loopback. A
+ * production build is told its addresses and never guesses.
+ */
+export function devAddress(key: AppKey, origin: string): string | undefined {
+  try {
+    const url = new URL(origin);
+    return `${url.protocol}//${url.hostname}:${String(DEV_PORTS[key])}`;
+  } catch {
+    return undefined;
+  }
+}
+
+export function appDestinations(
+  origin?: string,
+  /** True under `vite dev`; a build must be configured. */
+  dev: boolean = import.meta.env.MODE === "development",
+): readonly AppDestination[] {
   const dashboard = origin ?? globalThis.location.origin;
   return [
     { key: "admin", label: "Dashboard", url: import.meta.env.VITE_ADMIN_APP_URL ?? dashboard },
-    { key: "field", label: "Officer app", url: import.meta.env.VITE_FIELD_APP_URL },
-    { key: "collector", label: "Collector app", url: import.meta.env.VITE_COLLECTOR_APP_URL },
+    {
+      key: "field",
+      label: "Officer app",
+      url: import.meta.env.VITE_FIELD_APP_URL ?? (dev ? devAddress("field", dashboard) : undefined),
+    },
+    {
+      key: "collector",
+      label: "Collector app",
+      url:
+        import.meta.env.VITE_COLLECTOR_APP_URL ??
+        (dev ? devAddress("collector", dashboard) : undefined),
+    },
   ];
 }
 

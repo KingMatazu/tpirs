@@ -104,6 +104,28 @@ describe("route access", () => {
 
     expect(await screen.findByText(/this account has no pages yet/i)).toBeTruthy();
   });
+
+  it("sends an officer to the officer app instead of asking for a dashboard role", async () => {
+    window.location.hash = "#/";
+    // A field account: it works, just not here. "Ask for a role" would be wrong
+    // advice, and the handover card's address is the thing they actually need.
+    useSession.setState({
+      status: "authenticated",
+      accessToken: "token",
+      user: {
+        userId: "u-2",
+        tenantId: "t-1",
+        displayName: "Officer",
+        roles: ["officer"],
+        permissions: ["scan:create"],
+      },
+    });
+    renderApp();
+
+    expect(await screen.findByText(/works on another app/i)).toBeTruthy();
+    expect(screen.getByText(/Officer app:/)).toBeTruthy();
+    expect(screen.queryByText(/ask an administrator to give it a role/i)).toBeNull();
+  });
 });
 
 describe("provisioning-credential gate", () => {
