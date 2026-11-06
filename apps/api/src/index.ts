@@ -126,6 +126,12 @@ async function main(): Promise<void> {
         locks: createMockLockService(),
         clock: createMockClock(),
         qrKeyRef: QR_KEY_REF,
+        // Printed stickers point their QR at the public verification page once a
+        // deployment has one; unset keeps the bare opaque token (ADR 0067).
+        ...(process.env.PUBLIC_VERIFY_BASE_URL === undefined ||
+        process.env.PUBLIC_VERIFY_BASE_URL.trim() === ""
+          ? {}
+          : { publicVerifyBaseUrl: process.env.PUBLIC_VERIFY_BASE_URL.trim() }),
         // Payment intake needs the adapters the tenant config names. Without
         // them every webhook answers "provider not configured", which is how the
         // load harness found this gap in Phase 10 (Step 11).

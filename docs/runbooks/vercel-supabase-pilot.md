@@ -70,6 +70,7 @@ Environment variables (Production, and Preview if you want previews):
 | `OBJECT_STORAGE_ADAPTER`      | `mock` (see step 7)                                                           |
 | `METRICS_ENABLED`             | `false`                                                                       |
 | `REQUIRE_STAFF_TOTP`          | `false`                                                                       |
+| `PUBLIC_VERIFY_BASE_URL`      | optional; leave empty until the public verify page ships (ADR 0067)           |
 | `DEPLOYMENT_REGION`           | e.g. `katsina-pilot`                                                          |
 
 `NODE_ENV` is `production` on Vercel; that is what makes the refresh cookie
@@ -398,6 +399,7 @@ No code change is needed; `apps/api/src/storage.ts` is the only selector.
 | A brand-new column is `undefined` in a response  | Same cause: the API is newer than the schema. Migrations are applied by hand, never by Vercel                                                      |
 | Function timeout during onboarding               | Onboarding is normally sub-second; raise the project's function duration in Vercel settings if a report export times out                           |
 | Build cannot find `@tpirs/*`                     | Root Directory wrong, or the build command did not build workspace dependencies                                                                    |
+| Sticker QR scans as nothing                      | Stickers printed before ADR 0067 had a clipped QR; download and reprint them. Cameras also need HTTPS: an `http://` LAN address has no camera      |
 
 ## 10. Resetting the data for a demo
 

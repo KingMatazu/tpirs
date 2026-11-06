@@ -108,6 +108,12 @@ export interface ServiceDeps {
   readonly settlementReader?: SettlementImport;
   /** Report renderers by format. A missing format is refused by the report service. */
   readonly exporters?: Partial<Record<ExportFormat, ExportService>>;
+  /**
+   * Base address of the public verification page, when the deployment has one.
+   * Printed stickers then encode `<base>/v/<token>` instead of a bare token, so
+   * a phone camera opens a page; the officer app accepts both (ADR 0067).
+   */
+  readonly publicVerifyBaseUrl?: string;
 }
 
 export interface Services {
@@ -167,6 +173,9 @@ export async function buildServices(deps: ServiceDeps): Promise<Services> {
     qrSigner,
     objectStorage: deps.objectStorage,
     loadConfig,
+    ...(deps.publicVerifyBaseUrl === undefined
+      ? {}
+      : { publicVerifyBaseUrl: deps.publicVerifyBaseUrl }),
   });
   const owner = createOwnerService({ db: deps.db });
   const otp = createOtpService({ cache: deps.cache, sms: deps.sms, clock: deps.clock });

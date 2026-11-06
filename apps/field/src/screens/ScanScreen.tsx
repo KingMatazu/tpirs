@@ -10,6 +10,23 @@ import { scannerSupport, startScanner } from "../scanner/index.js";
  * the gesture browsers require, and so a permission prompt never appears while
  * they are reading a result. Manual entry is a tab, not a hidden fallback.
  */
+
+/** How long a live viewfinder may find nothing before the screen says so. */
+const NO_CODE_TIMEOUT_MS = 12_000;
+
+/**
+ * Why there may be no camera at all.
+ *
+ * Browsers only expose `getUserMedia` on a secure origin, so a phone pointed at
+ * `http://192.168.…` during a pilot test has no camera even though the hardware
+ * is fine. Saying so beats an unexplained jump to the manual tab.
+ */
+function cameraUnavailableReason(): "insecure" | "unsupported" | undefined {
+  if (scannerSupport() !== "none") return undefined;
+  const secure = (globalThis as { isSecureContext?: boolean }).isSecureContext;
+  return secure === false ? "insecure" : "unsupported";
+}
+
 export function ScanScreen(
   props: Readonly<{
     onBack: () => void;
@@ -17,10 +34,12 @@ export function ScanScreen(
   }>,
 ): ReactElement {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const unavailable = cameraUnavailableReason();
   const [mode, setMode] = useState<"camera" | "manual">(
-    scannerSupport() === "none" ? "manual" : "camera",
+    unavailable === undefined ? "camera" : "manual",
   );
   const [cameraError, setCameraError] = useState<string | undefined>(undefined);
+  const [noCodeYet, setNoCodeYet] = useState(false);
   const [reference, setReference] = useState("");
   const [starting, setStarting] = useState(false);
   const stopRef = useRef<(() => void) | undefined>(undefined);
@@ -71,6 +90,25 @@ export function ScanScreen(
     };
   }, [mode]);
 
+  // A viewfinder that never finds anything looks like a working camera: silence
+  // it with a nudge toward the manual tab after a few seconds.
+  useEffect(() => {
+    setNoCodeYet(false);
+    if (mode !== "camera") return undefined;
+    const timer = setTimeout(() => {
+      setNoCodeYet(true);
+    }, NO_CODE_TIMEOUT_MS);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [mode]);
+
+  const hint = (): string => {
+    if (starting) return copy.scan.starting;
+    if (noCodeYet) return copy.scan.noCodeYet;
+    return copy.scan.hint;
+  };
+
   return (
     <Screen title={copy.scan.title} onBack={props.onBack}>
       <div className="flex gap-2">
@@ -101,6 +139,11 @@ export function ScanScreen(
       </div>
 
       {cameraError === undefined ? null : <Banner tone="warning">{cameraError}</Banner>}
+      {unavailable === undefined || cameraError !== undefined ? null : (
+        <Banner tone="warning">
+          {unavailable === "insecure" ? copy.scan.cameraNeedsHttps : copy.scan.cameraUnavailable}
+        </Banner>
+      )}
 
       {mode === "camera" ? (
         <>
@@ -114,9 +157,7 @@ export function ScanScreen(
             />
             <div className="pointer-events-none absolute inset-6 rounded-xl border-4 border-white/70" />
           </div>
-          <p className="text-center text-base text-slate-700">
-            {starting ? copy.scan.starting : copy.scan.hint}
-          </p>
+          <p className="text-center text-base text-slate-700">{hint()}</p>
         </>
       ) : (
         <form

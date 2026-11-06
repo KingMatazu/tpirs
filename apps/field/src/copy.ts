@@ -70,6 +70,9 @@ export const copy = {
     starting: "Starting the camera…",
     cameraDenied: "Camera permission was refused. Type the short code or plate instead.",
     cameraUnavailable: "This phone cannot scan QR codes here. Type the code instead.",
+    cameraNeedsHttps:
+      "The camera only works over a secure (https) connection. Type the short code or plate instead.",
+    noCodeYet: "No code found yet. Move closer, steady the phone, or type the short code.",
     manualLabel: "Short code or plate number",
     manualSubmit: "Check this vehicle",
   },

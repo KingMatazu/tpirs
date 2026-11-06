@@ -24,6 +24,12 @@ export interface AssetServiceDeps {
   readonly qrSigner: QrTokenSigner;
   readonly objectStorage: ObjectStorage;
   readonly loadConfig: TenantConfigLoader;
+  /**
+   * Public verification address the sticker's QR points at, e.g.
+   * `https://field.example.gov`. Unset means the QR carries the bare opaque
+   * token, which scans identically in the officer app (ADR 0067).
+   */
+  readonly publicVerifyBaseUrl?: string;
 }
 
 export interface RegisterAssetInput {
@@ -286,6 +292,9 @@ export function createAssetService(deps: AssetServiceDeps) {
     const type = assetTypeFromConfig(config, asset.assetTypeKey);
     return renderAssetSticker({
       qrToken: asset.qrToken,
+      ...(deps.publicVerifyBaseUrl === undefined
+        ? {}
+        : { verifyBaseUrl: deps.publicVerifyBaseUrl }),
       shortCode: asset.shortCode,
       appName: config.branding.appName,
       logoUrl: config.branding.logoUrl,
