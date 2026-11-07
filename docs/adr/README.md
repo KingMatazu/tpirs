@@ -60,3 +60,15 @@ Format: context, decision, consequences, alternatives considered.
 - [0055](./0055-primary-role.md) One primary role per person, with extra roles that can be revoked
 - [0056](./0056-handover-print-and-reissue.md) The handover card prints itself; a lost password is re-issued, not recovered
 - [0057](./0057-collector-install-and-profile.md) The collector app is installable, and its profile is read-only
+- [0058](./0058-supervisory-registration.md) Registration is a supervisory act, scoped to the supervisor's zone
+- [0059](./0059-fee-is-tenant-config.md) The fee is the tenant's; no intake screen edits it
+- [0060](./0060-temporary-admin-recovery.md) Temporary administrator recovery until email reset ships
+- [0061](./0061-driver-registration-and-sticker.md) Register a driver and print their sticker from the dashboard
+- [0062](./0062-account-deletion-tombstone.md) Deleting an account tombstones it; driver is not grantable
+- [0063](./0063-cross-origin-file-downloads.md) Downloads use `apiUrl()` and read the server's filename
+- [0064](./0064-demo-reset.md) A demo reset truncates data but keeps the schema
+- [0065](./0065-inline-branding-logo.md) Branding lives in tenant config, including the logo bytes
+- [0066](./0066-ownership-transfer.md) A vehicle changes hands by reassignment; the sticker stays
+- [0067](./0067-sticker-qr-geometry-and-verify-url.md) The sticker QR scales to its box, and may carry a verify URL
+- [0068](./0068-refresh-cookie-samesite.md) The refresh cookie's SameSite is derived from the request
+- [0069](./0069-collector-virtual-terminal-funding.md) A Virtual Terminal per collector funds a prepaid float
