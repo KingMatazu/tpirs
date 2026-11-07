@@ -587,7 +587,7 @@ describeIntegration("api collector cash (integration)", () => {
     expect(match.statusCode).toBe(403);
   });
 
-  it("provisions a deposit instruction from the tenant's configured provider", async () => {
+  it("provisions a terminal destination from the tenant's configured provider", async () => {
     const token = await login("cash.finance");
     const response = await app.inject({
       method: "POST",
@@ -597,11 +597,58 @@ describeIntegration("api collector cash (integration)", () => {
     });
     expect(response.statusCode).toBe(200);
     const body = response.json() as {
-      instruction: { provider: string; reference: string; kind: string; status: string };
+      instruction: {
+        provider: string;
+        reference: string;
+        kind: string;
+        status: string;
+        accountNumber: string | null;
+      };
     };
     expect(body.instruction.provider).toBe("mock");
-    expect(body.instruction.kind).toBe("narration");
-    expect(body.instruction.reference).toMatch(/^cash-dep-/);
+    expect(body.instruction.kind).toBe("virtual_terminal");
+    expect(body.instruction.reference).toMatch(/^VT_MOCK_/);
     expect(body.instruction.status).toBe("active");
+    // The mock issues a NUBAN; a market without one returns null, not a gap.
+    expect(body.instruction.accountNumber).toBe("0000000000");
+  });
+
+  it("returns the live terminal on a repeat and rotates only when asked", async () => {
+    const token = await login("cash.finance");
+    const post = async (payload: Record<string, unknown>) =>
+      (
+        await app.inject({
+          method: "POST",
+          url: `/v1/cash/collectors/${collectorId}/deposit-instruction`,
+          headers: { authorization: `Bearer ${token}` },
+          payload,
+        })
+      ).json() as { instruction: { id: string; reference: string } };
+
+    const first = await post({ rotate: true });
+    const repeat = await post({});
+    expect(repeat.instruction.id).toBe(first.instruction.id);
+
+    const rotated = await post({ rotate: true });
+    expect(rotated.instruction.id).not.toBe(first.instruction.id);
+    expect(rotated.instruction.reference).not.toBe(first.instruction.reference);
+  });
+
+  it("deactivates the terminal for a departing collector", async () => {
+    const token = await login("cash.finance");
+    await app.inject({
+      method: "POST",
+      url: `/v1/cash/collectors/${collectorId}/deposit-instruction`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: {},
+    });
+    const response = await app.inject({
+      method: "DELETE",
+      url: `/v1/cash/collectors/${collectorId}/deposit-instruction`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(response.statusCode).toBe(200);
+    const body = response.json() as { instruction: { status: string } };
+    expect(body.instruction.status).toBe("revoked");
   });
 });

@@ -83,6 +83,7 @@ const REQUIRED: Readonly<Record<string, readonly Permission[]>> = {
   "GET /v1/cash/wallets": ["cash:read"],
   "GET /v1/cash/wallets/:collectorUserId": ["cash:read"],
   "POST /v1/cash/collectors/:collectorUserId/deposit-instruction": ["payment:manage"],
+  "DELETE /v1/cash/collectors/:collectorUserId/deposit-instruction": ["payment:manage"],
   "GET /v1/cash/deposits": ["cash:deposit:read"],
   "POST /v1/cash/deposits/:id/match": ["cash:deposit:match"],
   "PUT /v1/tenants/current/config": ["tenant:configure"],
