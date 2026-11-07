@@ -6,6 +6,8 @@ import { unwrap } from "../api/unwrap.js";
 import { Badge, Button, Card, EmptyState, Field, TextInput } from "../components/ui.js";
 import {
   assetLabel,
+  availableMinorOf,
+  creditMinorOf,
   depositStatusLabel,
   heldHours,
   isOverdue,
@@ -16,6 +18,7 @@ import {
   type CashDepositView,
   type CashIntakeView,
   type CashWalletView,
+  type DepositInstructionView,
 } from "../lib/collectorsView.js";
 import { resolveTenantFeeMinor } from "../lib/tenantFee.js";
 import { useTenantConfig } from "../lib/tenantConfig.js";
@@ -158,7 +161,7 @@ function WalletTable(props: {
                   <Badge tone={overdue ? "brand" : "neutral"}>{walletStatusLabel(wallet)}</Badge>
                 </td>
                 <td className="py-2 pr-4 text-slate-900">
-                  {formatMoneyMinor(wallet.balanceMinor, props.currency, props.numberFormat)}
+                  {formatMoneyMinor(availableMinorOf(wallet), props.currency, props.numberFormat)}
                 </td>
                 <td className="py-2 pr-4 text-slate-700">
                   {formatMoneyMinor(
@@ -211,6 +214,7 @@ function WalletDetail(props: {
   const canFreeze = useSession((state) => state.hasPermission("cash:freeze"));
   const canUnfreeze = useSession((state) => state.hasPermission("cash:unfreeze"));
   const canMatch = useSession((state) => state.hasPermission("cash:deposit:match"));
+  const canProvision = useSession((state) => state.hasPermission("payment:manage"));
 
   const detail = useQuery({
     queryKey: ["cash-wallet", collectorUserId],
@@ -259,10 +263,26 @@ function WalletDetail(props: {
               <span className="ml-2 text-slate-600">reason: {wallet.frozenReason}</span>
             )}
           </dd>
-          <dt className="text-slate-500">Float held</dt>
+          <dt className="text-slate-500">
+            {wallet.model === "prepaid" ? "Float available" : "Float held"}
+          </dt>
           <dd className="text-slate-900">
-            {formatMoneyMinor(wallet.balanceMinor, props.currency, props.numberFormat)}
+            {formatMoneyMinor(availableMinorOf(wallet), props.currency, props.numberFormat)}
           </dd>
+          {wallet.model === "prepaid" ? (
+            <>
+              <dt className="text-slate-500">Credit held</dt>
+              <dd className="text-slate-900">
+                {formatMoneyMinor(creditMinorOf(wallet), props.currency, props.numberFormat)}
+              </dd>
+              <dt className="text-slate-500">Maximum balance</dt>
+              <dd className="text-slate-900">
+                {wallet.maxBalanceMinor === null || wallet.maxBalanceMinor === undefined
+                  ? "—"
+                  : formatMoneyMinor(wallet.maxBalanceMinor, props.currency, props.numberFormat)}
+              </dd>
+            </>
+          ) : null}
           <dt className="text-slate-500">Open intakes</dt>
           <dd className="text-slate-900">
             {formatMoneyMinor(wallet.openIntakeTotalMinor, props.currency, props.numberFormat)}
@@ -290,6 +310,13 @@ function WalletDetail(props: {
           onDone={refresh}
         />
       ) : null}
+
+      <TerminalCard
+        collectorUserId={wallet.collectorUserId}
+        instruction={wallet.depositInstruction ?? null}
+        canManage={canProvision}
+        onDone={refresh}
+      />
 
       <Card title="Intakes" description="Newest first; a matched intake has a deposit behind it.">
         {intakes.length === 0 ? (
@@ -693,6 +720,128 @@ function TakeCashForm(props: {
           {busy ? "Recording…" : "Record cash intake"}
         </Button>
       </form>
+    </Card>
+  );
+}
+
+/**
+ * The collector's funding terminal (ADR 0069).
+ *
+ * Finance provisions once; the collector transfers any amount to the account.
+ * Rotating deactivates the old terminal at the gateway and issues a new one, so
+ * an old number cannot keep crediting a collector whose destination leaked.
+ */
+function TerminalCard(props: {
+  readonly collectorUserId: string;
+  readonly instruction: DepositInstructionView | null;
+  readonly canManage: boolean;
+  readonly onDone: () => Promise<void>;
+}): ReactElement {
+  const [busy, setBusy] = useState(false);
+
+  const provision = async (rotate: boolean): Promise<void> => {
+    setBusy(true);
+    try {
+      await unwrap(
+        api.POST("/v1/cash/collectors/{collectorUserId}/deposit-instruction", {
+          params: { path: { collectorUserId: props.collectorUserId } },
+          body: rotate ? { rotate: true } : {},
+        }),
+      );
+      pushToast({
+        kind: "success",
+        message: rotate ? "A new terminal is live; the old one is off." : "Terminal provisioned.",
+      });
+      await props.onDone();
+    } catch (error) {
+      pushToast({ kind: "error", ...describeError(error) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const deactivate = async (): Promise<void> => {
+    setBusy(true);
+    try {
+      await unwrap(
+        api.DELETE("/v1/cash/collectors/{collectorUserId}/deposit-instruction", {
+          params: { path: { collectorUserId: props.collectorUserId } },
+        }),
+      );
+      pushToast({ kind: "success", message: "Terminal deactivated." });
+      await props.onDone();
+    } catch (error) {
+      pushToast({ kind: "error", ...describeError(error) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card
+      title="Funding terminal"
+      description="What the collector transfers into. The code is how a transfer is attributed to them."
+    >
+      {props.instruction === null ? (
+        <EmptyState message="No funding terminal is provisioned for this collector." />
+      ) : (
+        <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-sm">
+          <dt className="text-slate-500">Kind</dt>
+          <dd className="text-slate-900">
+            {props.instruction.kind === "virtual_terminal"
+              ? "Virtual terminal"
+              : props.instruction.kind === "virtual_account"
+                ? "Virtual account"
+                : "Narration"}
+          </dd>
+          <dt className="text-slate-500">Code</dt>
+          <dd className="font-mono text-xs text-slate-900">{props.instruction.reference}</dd>
+          <dt className="text-slate-500">Account name</dt>
+          <dd className="text-slate-900">{props.instruction.accountName ?? "—"}</dd>
+          <dt className="text-slate-500">Account number</dt>
+          <dd className="font-mono text-slate-900">{props.instruction.accountNumber ?? "—"}</dd>
+          <dt className="text-slate-500">Bank</dt>
+          <dd className="text-slate-900">{props.instruction.bank ?? "—"}</dd>
+          <dt className="text-slate-500">Payment page</dt>
+          <dd className="truncate text-slate-900">
+            {props.instruction.pageUrl === null || props.instruction.pageUrl === undefined ? (
+              "—"
+            ) : (
+              <a
+                href={props.instruction.pageUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="underline"
+              >
+                {props.instruction.pageUrl}
+              </a>
+            )}
+          </dd>
+        </dl>
+      )}
+      {props.canManage ? (
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Button
+            onClick={() => {
+              void provision(props.instruction !== null);
+            }}
+            disabled={busy}
+          >
+            {props.instruction === null ? "Provision terminal" : "Rotate terminal"}
+          </Button>
+          {props.instruction === null ? null : (
+            <Button
+              variant="ghost"
+              disabled={busy}
+              onClick={() => {
+                void deactivate();
+              }}
+            >
+              Deactivate
+            </Button>
+          )}
+        </div>
+      ) : null}
     </Card>
   );
 }

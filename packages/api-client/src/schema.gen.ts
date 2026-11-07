@@ -1686,6 +1686,7 @@ export interface paths {
                 content: {
                     "application/json": {
                         provider?: string;
+                        rotate?: boolean;
                     };
                 };
             };
@@ -1704,6 +1705,11 @@ export interface paths {
                                 reference: string;
                                 kind: string;
                                 status: string;
+                                accountNumber?: string | null;
+                                accountName?: string | null;
+                                bank?: string | null;
+                                pageUrl?: string | null;
+                                currency?: string | null;
                             };
                         };
                     };
@@ -1727,6 +1733,15 @@ export interface paths {
                     };
                 };
                 /** @description Default Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["def-9"];
+                    };
+                };
+                /** @description Default Response */
                 409: {
                     headers: {
                         [name: string]: unknown;
@@ -1737,7 +1752,64 @@ export interface paths {
                 };
             };
         };
-        delete?: never;
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    collectorUserId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            instruction: {
+                                id: string;
+                                collectorUserId: string;
+                                provider: string;
+                                reference: string;
+                                kind: string;
+                                status: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Default Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["def-9"];
+                    };
+                };
+                /** @description Default Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["def-9"];
+                    };
+                };
+                /** @description Default Response */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["def-9"];
+                    };
+                };
+            };
+        };
         options?: never;
         head?: never;
         patch?: never;
@@ -3863,6 +3935,11 @@ export interface components {
             overdueSince: string | null;
             floatCeilingMinor: string | null;
             balanceMinor: string;
+            /** @enum {string} */
+            model: "postpaid" | "prepaid";
+            availableMinor: string;
+            intakeLimitMinor: string;
+            maxBalanceMinor: string | null;
             openIntakeTotalMinor: string;
             oldestOpenIntakeAt: string | null;
             lastDepositAt: string | null;
@@ -3870,7 +3947,12 @@ export interface components {
                 provider: string;
                 reference: string;
                 /** @enum {string} */
-                kind: "virtual_account" | "narration";
+                kind: "virtual_account" | "narration" | "virtual_terminal";
+                accountNumber?: string | null;
+                accountName?: string | null;
+                bank?: string | null;
+                pageUrl?: string | null;
+                currency?: string | null;
             } | null;
         };
         /** CashIntake */

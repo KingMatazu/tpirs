@@ -438,6 +438,10 @@
           "overdueSince",
           "floatCeilingMinor",
           "balanceMinor",
+          "model",
+          "availableMinor",
+          "intakeLimitMinor",
+          "maxBalanceMinor",
           "openIntakeTotalMinor",
           "oldestOpenIntakeAt",
           "lastDepositAt",
@@ -473,6 +477,23 @@
           "balanceMinor": {
             "type": "string"
           },
+          "model": {
+            "type": "string",
+            "enum": [
+              "postpaid",
+              "prepaid"
+            ]
+          },
+          "availableMinor": {
+            "type": "string"
+          },
+          "intakeLimitMinor": {
+            "type": "string"
+          },
+          "maxBalanceMinor": {
+            "type": "string",
+            "nullable": true
+          },
           "openIntakeTotalMinor": {
             "type": "string"
           },
@@ -503,8 +524,29 @@
                 "type": "string",
                 "enum": [
                   "virtual_account",
-                  "narration"
+                  "narration",
+                  "virtual_terminal"
                 ]
+              },
+              "accountNumber": {
+                "type": "string",
+                "nullable": true
+              },
+              "accountName": {
+                "type": "string",
+                "nullable": true
+              },
+              "bank": {
+                "type": "string",
+                "nullable": true
+              },
+              "pageUrl": {
+                "type": "string",
+                "nullable": true
+              },
+              "currency": {
+                "type": "string",
+                "nullable": true
               }
             }
           }
@@ -3096,12 +3138,135 @@
                 "properties": {
                   "provider": {
                     "type": "string"
+                  },
+                  "rotate": {
+                    "type": "boolean"
                   }
                 }
               }
             }
           }
         },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "collectorUserId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "instruction"
+                  ],
+                  "properties": {
+                    "instruction": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "collectorUserId",
+                        "provider",
+                        "reference",
+                        "kind",
+                        "status"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "collectorUserId": {
+                          "type": "string"
+                        },
+                        "provider": {
+                          "type": "string"
+                        },
+                        "reference": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "string"
+                        },
+                        "accountNumber": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "accountName": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "bank": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "pageUrl": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "currency": {
+                          "type": "string",
+                          "nullable": true
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/def-9"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/def-9"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/def-9"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/def-9"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
         "parameters": [
           {
             "schema": {
@@ -3159,7 +3324,7 @@
               }
             }
           },
-          "400": {
+          "403": {
             "description": "Default Response",
             "content": {
               "application/json": {
@@ -3169,7 +3334,7 @@
               }
             }
           },
-          "403": {
+          "404": {
             "description": "Default Response",
             "content": {
               "application/json": {

@@ -7,6 +7,18 @@
  * thin arrangement of queries and forms.
  */
 
+/** The collector's funding destination, when finance provisioned one. */
+export interface DepositInstructionView {
+  readonly provider: string;
+  readonly reference: string;
+  readonly kind: "virtual_account" | "narration" | "virtual_terminal";
+  readonly accountNumber?: string | null;
+  readonly accountName?: string | null;
+  readonly bank?: string | null;
+  readonly pageUrl?: string | null;
+  readonly currency?: string | null;
+}
+
 /** One wallet as `GET /v1/cash/wallets` returns it (money as strings). */
 export interface CashWalletView {
   readonly collectorUserId: string;
@@ -16,9 +28,15 @@ export interface CashWalletView {
   readonly overdueSince: string | null;
   readonly floatCeilingMinor: string | null;
   readonly balanceMinor: string;
+  /** Present on every response since ADR 0069; optional keeps old fixtures valid. */
+  readonly model?: "postpaid" | "prepaid";
+  readonly availableMinor?: string;
+  readonly intakeLimitMinor?: string;
+  readonly maxBalanceMinor?: string | null;
   readonly openIntakeTotalMinor: string;
   readonly oldestOpenIntakeAt: string | null;
   readonly lastDepositAt: string | null;
+  readonly depositInstruction?: DepositInstructionView | null;
 }
 
 /** One intake as the wallet detail returns it. */
@@ -78,6 +96,9 @@ export function newClientReference(collectorUserId: string): string {
  * sees the clock ticking before the next sweep runs.
  */
 export function isOverdue(wallet: CashWalletView, deadlineHours: number, now: Date): boolean {
+  // Prepaid collectors owe nothing: the wallet is funded before the cash is
+  // taken, so there is no deposit deadline to be late for (ADR 0069).
+  if (wallet.model === "prepaid") return false;
   if (wallet.overdueSince !== null) return true;
   if (wallet.oldestOpenIntakeAt === null) return false;
   const age = now.getTime() - new Date(wallet.oldestOpenIntakeAt).getTime();
@@ -110,7 +131,32 @@ export function matchCandidates(
 /** Human label for a wallet state; the API keeps the enum, the UI explains it. */
 export function walletStatusLabel(wallet: CashWalletView): string {
   if (wallet.status === "frozen") return "Frozen";
+  if (wallet.model === "prepaid" && toMinor(wallet.availableMinor) <= 0n) return "No float";
   return wallet.overdueSince === null ? "Active" : "Active (overdue)";
+}
+
+function toMinor(value: string | undefined): bigint {
+  if (value === undefined || value === "") return 0n;
+  try {
+    return BigInt(value);
+  } catch {
+    return 0n;
+  }
+}
+
+/** The number the screen calls "float available", for either model. */
+export function availableMinorOf(wallet: CashWalletView): string {
+  if (wallet.model === "prepaid") return wallet.availableMinor ?? "0";
+  return wallet.availableMinor ?? wallet.balanceMinor;
+}
+
+/**
+ * Prepaid credit as a positive amount: the signed balance is negative while the
+ * platform holds the collector's money, and finance reads that as a credit.
+ */
+export function creditMinorOf(wallet: CashWalletView): string {
+  const balance = toMinor(wallet.balanceMinor);
+  return (balance < 0n ? -balance : 0n).toString();
 }
 
 /** Human label for a deposit state. */

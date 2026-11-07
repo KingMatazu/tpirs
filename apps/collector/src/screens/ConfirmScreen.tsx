@@ -29,6 +29,8 @@ function cashMessage(code: string | undefined, message: string | undefined): str
       return "Your wallet is frozen. Speak to your supervisor before taking more cash.";
     case "ceiling_exceeded":
       return "That would take you over your float ceiling. Deposit before taking more cash.";
+    case "insufficient_float":
+      return "Your wallet float is finished. Fund the wallet before taking more cash.";
     case "already_paid":
       return "This vehicle is already paid for today.";
     case "cash_disabled":
@@ -203,7 +205,8 @@ export function ConfirmScreen(
         <BlockedBanner
           reason={decision.reason}
           onDeposit={props.onDeposit}
-          floatLeft={formatMoneyMinor(decision.floatLeftMinor, currency, numberFormat)}
+          floatLeft={formatMoneyMinor(decision.availableMinor, currency, numberFormat)}
+          prepaid={wallet.data?.wallet.model === "prepaid"}
         />
       )}
     </Screen>
@@ -215,6 +218,7 @@ function BlockedBanner(
     reason: ReturnType<typeof decideCollect>["reason"];
     onDeposit: () => void;
     floatLeft: string;
+    prepaid: boolean;
   }>,
 ): ReactElement {
   if (props.reason === "already_paid") {
@@ -233,9 +237,10 @@ function BlockedBanner(
   if (props.reason === "float_low") {
     return (
       <Banner tone="danger">
-        Float too low ({props.floatLeft} in hand). Deposit cash to keep collecting.
+        Float too low ({props.floatLeft} available).{" "}
+        {props.prepaid ? "Fund the wallet to keep collecting." : "Deposit cash to keep collecting."}
         <button type="button" onClick={props.onDeposit} className="mt-2 block underline">
-          Deposit cash
+          {props.prepaid ? "Fund wallet" : "Deposit cash"}
         </button>
       </Banner>
     );

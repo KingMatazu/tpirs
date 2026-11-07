@@ -66,10 +66,23 @@ export function HomeScreen(
       ) : null}
 
       <Card>
-        <p className="text-sm text-slate-500">Cash in hand</p>
+        <p className="text-sm text-slate-500">
+          {view?.model === "prepaid" ? "Wallet float" : "Cash in hand"}
+        </p>
         <p className="text-2xl font-semibold text-slate-900">
-          {formatMoneyMinor(toBigInt(view?.balanceMinor), currency, numberFormat)}
-          {ceiling === null ? null : (
+          {formatMoneyMinor(
+            toBigInt(view?.model === "prepaid" ? view.availableMinor : view?.balanceMinor),
+            currency,
+            numberFormat,
+          )}
+          {view?.model === "prepaid" ? (
+            view.maxBalanceMinor === null || view.maxBalanceMinor === undefined ? null : (
+              <span className="ml-1 text-base font-normal text-slate-500">
+                available of{" "}
+                {formatMoneyMinor(toBigInt(view.maxBalanceMinor), currency, numberFormat)}
+              </span>
+            )
+          ) : ceiling === null ? null : (
             <span className="ml-1 text-base font-normal text-slate-500">
               of {formatMoneyMinor(toBigInt(ceiling), currency, numberFormat)}
             </span>
@@ -78,7 +91,11 @@ export function HomeScreen(
         <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200">
           <div className="h-2 rounded-full bg-slate-900" style={{ width: `${percent}%` }} />
         </div>
-        {view === undefined || view.oldestOpenIntakeAt === null ? null : (
+        {view?.model === "prepaid" ? (
+          <p className="mt-2 text-xs text-slate-500">
+            Fund the wallet when the float runs low; each collection uses it.
+          </p>
+        ) : view === undefined || view.oldestOpenIntakeAt === null ? null : (
           <p className="mt-2 text-xs text-slate-500">
             Oldest intake still open: {new Date(view.oldestOpenIntakeAt).toLocaleString()}
           </p>

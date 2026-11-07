@@ -108,3 +108,61 @@ describe("toBigInt", () => {
     expect(toBigInt("not-a-number")).toBe(0n);
   });
 });
+
+describe("prepaid float (ADR 0069)", () => {
+  const prepaidWallet = (overrides: Partial<WalletView> = {}): WalletView => ({
+    collectorUserId: "collector-1",
+    status: "active",
+    frozenReason: null,
+    floatCeilingMinor: null,
+    balanceMinor: "-5000000",
+    availableMinor: "5000000",
+    intakeLimitMinor: "0",
+    model: "prepaid",
+    maxBalanceMinor: "5000000",
+    openIntakeTotalMinor: "0",
+    oldestOpenIntakeAt: null,
+    lastDepositAt: null,
+    depositInstruction: null,
+    ...overrides,
+  });
+
+  it("allows a collection while prepaid credit covers the fee", () => {
+    const decision = decideCollect({
+      wallet: prepaidWallet(),
+      paymentStatus: "no_payment_recorded",
+      feeMinor: 100000n,
+      online: true,
+    });
+    expect(decision.allowed).toBe(true);
+    // The signed position is still negative: the platform holds the credit.
+    expect(decision.floatLeftMinor).toBe(-5000000n);
+    expect(decision.availableMinor).toBe(5000000n);
+  });
+
+  it("blocks at zero credit, which is the hard guard", () => {
+    const decision = decideCollect({
+      wallet: prepaidWallet({ balanceMinor: "0", availableMinor: "0" }),
+      paymentStatus: "no_payment_recorded",
+      feeMinor: 100000n,
+      online: true,
+    });
+    expect(decision).toMatchObject({ allowed: false, reason: "float_low" });
+  });
+
+  it("shows a grace position as usable float", () => {
+    const decision = decideCollect({
+      wallet: prepaidWallet({ balanceMinor: "0", availableMinor: "200000" }),
+      paymentStatus: "no_payment_recorded",
+      feeMinor: 100000n,
+      online: true,
+    });
+    expect(decision.allowed).toBe(true);
+  });
+
+  it("measures the prepaid bar against the maximum balance, not the ceiling", () => {
+    expect(
+      floatPercent(prepaidWallet({ balanceMinor: "-2500000", availableMinor: "2500000" })),
+    ).toBe(50);
+  });
+});
