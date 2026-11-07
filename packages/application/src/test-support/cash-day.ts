@@ -29,6 +29,10 @@ export interface CashConfigOptions {
   readonly disabled?: boolean;
   readonly freezeOnShortfall?: boolean;
   readonly depositDeadlineHours?: number;
+  readonly model?: "postpaid" | "prepaid";
+  readonly maxBalanceMinor?: number;
+  readonly intakeGuard?: "hard" | "grace";
+  readonly graceMinor?: number;
 }
 
 /** The tenant config both acceptance suites use, with the knobs they vary. */
@@ -96,6 +100,12 @@ export function cashConfig(slug: string, options: CashConfigOptions = {}): Tenan
       floatCeilingMinor: options.ceilingMinor ?? 1_000_000,
       depositDeadlineHours: options.depositDeadlineHours ?? 8,
       freezeOnShortfall: options.freezeOnShortfall ?? true,
+      ...(options.model === undefined ? {} : { model: options.model }),
+      ...(options.maxBalanceMinor === undefined
+        ? {}
+        : { maxBalanceMinor: options.maxBalanceMinor }),
+      ...(options.intakeGuard === undefined ? {} : { intakeGuard: options.intakeGuard }),
+      ...(options.graceMinor === undefined ? {} : { graceMinor: options.graceMinor }),
     },
     payments: { underpaymentPolicy: "wallet" },
     featureFlags: { disputes: true, prepay: false, offlineMode: true, anomalyAlerts: true },

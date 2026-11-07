@@ -166,23 +166,46 @@ export function createSettlementImportService(deps: {
               row.providerReference,
             )
           ).filter((payment) => payment.status === "applied" || payment.status === "credited");
-          if (candidates.length !== 1) {
+
+          // A collector top-up is not a payment row: the terminal credit lives in
+          // `cash_deposits` (ADR 0069). The statement carries the gateway's
+          // transaction reference, so the deposit is found by it.
+          const deposits =
+            candidates.length === 0
+              ? await repos.collectorCash.findDepositsByProviderReference(
+                  input.tenantId,
+                  input.provider,
+                  row.providerReference,
+                )
+              : [];
+
+          // Exactly one source, or the row is ambiguous and stays for a human.
+          const source =
+            candidates.length === 1
+              ? {
+                  paymentId: candidates[0]?.id ?? null,
+                  amountMinor: candidates[0]?.amountMinor ?? 0n,
+                  currency: candidates[0]?.currency ?? "",
+                }
+              : deposits.length === 1
+                ? {
+                    paymentId: null,
+                    amountMinor: deposits[0]?.amountMinor ?? 0n,
+                    currency: deposits[0]?.currency ?? "",
+                  }
+                : undefined;
+          if (source === undefined) {
             skip("no_unique_payment");
             continue;
           }
-          const payment = candidates[0];
-          if (payment === undefined) {
-            skip("no_unique_payment");
-            continue;
-          }
-          if (payment.currency !== row.currency) {
+          if (source.currency !== row.currency) {
             skip("currency_mismatch");
             continue;
           }
           const bankMinor = row.amountMinor - row.feeMinor;
           try {
             const split = feeSplit({
-              paymentMinor: payment.amountMinor,
+              paymentMinor: source.amountMinor,
               bankMinor,
               feeToleranceMinor: input.feeToleranceMinor,
             });
@@ -201,7 +224,7 @@ export function createSettlementImportService(deps: {
             // A replay means another caller raced and won; do not re-stamp.
             if (!posted.replayed) {
               await repos.settlements.markPosted(input.tenantId, row.id, {
-                paymentId: payment.id,
+                paymentId: source.paymentId,
                 transactionId: posted.transaction.id,
               });
               postedCount += 1;

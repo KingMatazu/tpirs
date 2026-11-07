@@ -109,6 +109,58 @@ describeIntegration("settlement import (integration)", () => {
     expect(balances.row?.transactionId).not.toBeNull();
   });
 
+  it("settles a prepaid collector top-up, which is not a payment row", async () => {
+    const tenant = await makeCashTenant(db, configs, {
+      model: "prepaid",
+      maxBalanceMinor: 5_000_000,
+    });
+    const reference = await provisionInstruction(db, services.cashService, tenant);
+    const deposit = await deliverDeposit(services.paymentService, {
+      tenantId: tenant.tenantId,
+      reference,
+      amountMinor: 50_000,
+    });
+    expect(deposit.outcome).toBe("deposit_matched");
+
+    // The top-up credited the wallet gross and left the money in clearing.
+    const before = await withTenant(db, tenant.tenantId, async (tx) =>
+      repositories(tx).ledger.accountBalance(tenant.tenantId, "GATEWAY_CLEARING"),
+    );
+    expect(before).toBe(0n - 50_000n);
+
+    const service = makeService([
+      statementRow({ reference, amountMinor: 50_000, feeMinor: 300, marker: "topup" }),
+    ]);
+    const summary = await service.importStatement({
+      tenantId: tenant.tenantId,
+      provider: "mock",
+      filename: "statement.csv",
+      content: statementContent("topup"),
+      mapping: RECON_MAPPING,
+      defaultCurrency: "NGN",
+      feeToleranceMinor: 1_000n,
+      actor: financeActor(tenant),
+    });
+
+    expect(summary.postedCount).toBe(1);
+    const balances = await withTenant(db, tenant.tenantId, async (tx) => {
+      const repos = repositories(tx);
+      return {
+        bank: await repos.ledger.accountBalance(tenant.tenantId, "SETTLEMENT_BANK"),
+        fees: await repos.ledger.accountBalance(tenant.tenantId, "GATEWAY_FEES"),
+        clearing: await repos.ledger.accountBalance(tenant.tenantId, "GATEWAY_CLEARING"),
+        row: (await repos.settlements.list(tenant.tenantId, {})).at(0),
+      };
+    });
+    // Dr SETTLEMENT_BANK 49,700 + Dr GATEWAY_FEES 300 / Cr GATEWAY_CLEARING 50,000.
+    expect(balances.bank).toBe(0n - 49_700n);
+    expect(balances.fees).toBe(0n - 300n);
+    expect(balances.clearing).toBe(0n);
+    expect(balances.row?.status).toBe("posted");
+    // There is no payment to point at: the deposit is the source of the money.
+    expect(balances.row?.paymentId).toBeNull();
+  });
+
   it("treats a re-upload of the same bytes as a no-op", async () => {
     const tenant = await makeCashTenant(db, configs);
     const reference = await payLevyDay(services.paymentService, {

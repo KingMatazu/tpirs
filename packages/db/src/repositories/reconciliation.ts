@@ -223,7 +223,7 @@ export class SettlementRepository {
   async markPosted(
     tenantId: string,
     id: string,
-    input: { readonly paymentId: string; readonly transactionId: string },
+    input: { readonly paymentId: string | null; readonly transactionId: string },
   ): Promise<SettlementRowRow | undefined> {
     return this.db
       .updateTable("settlementRows")

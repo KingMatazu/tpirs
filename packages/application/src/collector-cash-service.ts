@@ -463,7 +463,10 @@ export class CollectorCashService {
 
       const { deposit, existed } = await repos.collectorCash.insertDepositIfAbsent(tenantId, {
         provider: input.provider,
-        providerReference: destination,
+        // The transfer's identity at the gateway. The destination (`VT_…`) is on
+        // the instruction, which is what attribution used; the settlement
+        // statement carries this transaction reference, so it is the one stored.
+        providerReference: input.event.providerReference,
         amountMinor: BigInt(input.event.amount.amount),
         currency: input.event.amount.currency,
         collectorUserId: instruction.collectorUserId,

@@ -570,6 +570,29 @@ export class CollectorCashRepository {
       .executeTakeFirst();
   }
 
+  /**
+   * The collector deposits a provider reference names, newest first.
+   *
+   * A statement row carries the gateway's transaction reference; finding the
+   * deposit by it is what lets a terminal top-up settle like any other credit
+   * (ADR 0069). `provider_reference` is only an index (migration 0013), so the
+   * caller must treat more than one row as ambiguous.
+   */
+  async findDepositsByProviderReference(
+    tenantId: string,
+    provider: string,
+    providerReference: string,
+  ): Promise<CashDepositRow[]> {
+    return this.db
+      .selectFrom("cashDeposits")
+      .selectAll()
+      .where("tenantId", "=", tenantId)
+      .where("provider", "=", provider)
+      .where("providerReference", "=", providerReference)
+      .orderBy("createdAt", "desc")
+      .execute();
+  }
+
   /** Marks a deposit matched (or partially matched) and attributes the collector. */
   async setDepositOutcome(
     tenantId: string,

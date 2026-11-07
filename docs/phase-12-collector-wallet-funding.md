@@ -1,8 +1,17 @@
 # Collector wallet funding: a Virtual Terminal per collector, prepaid float
 
-Status: implementation in progress (Phase 12). ADR [0069](adr/0069-collector-virtual-terminal-funding.md).
+Status: **delivered** (Phase 12). ADR [0069](adr/0069-collector-virtual-terminal-funding.md).
 Supersedes the dedicated-account (DVA) funding design in ADR
 [0032](adr/0032-cash-deposit-attribution.md) for tenants on the prepaid model.
+
+Verified on 2026-11-08: migration 0028 applies and rolls back on a scratch
+Postgres (`scripts/ci/migration-check.sh`); the prepaid top-up, hard/grace guard
+and over-cap audit pass against a real database
+(`packages/application/src/collector-cash-service.test.ts`); the terminal route,
+rotation and deactivation pass through HTTP (`apps/api/src/routes/cash.routes.test.ts`);
+`pnpm format`, `lint`, `typecheck` and `test` are green. The live Paystack calls
+are exercised against an injected transport only — Paystack is still in **Test
+Mode**, so the six Gate 0 checks below are outstanding deployment work.
 
 ## Why this exists
 
