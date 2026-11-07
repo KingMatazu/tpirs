@@ -25,6 +25,7 @@ export interface MockPaymentProvider extends PaymentProvider {
 interface RawWebhookPayload {
   readonly providerEventId?: unknown;
   readonly providerReference?: unknown;
+  readonly attributionKey?: unknown;
   readonly amount?: { readonly amount?: unknown; readonly currency?: unknown };
   readonly status?: unknown;
   readonly paidAt?: unknown;
@@ -114,6 +115,9 @@ export function createMockPaymentProvider(): MockPaymentProvider {
       return {
         providerEventId: parsed.providerEventId,
         providerReference: parsed.providerReference,
+        ...(typeof parsed.attributionKey === "string" && parsed.attributionKey !== ""
+          ? { attributionKey: parsed.attributionKey }
+          : {}),
         amount: value,
         status: parsed.status,
         paidAt,
@@ -129,13 +133,23 @@ export function createMockPaymentProvider(): MockPaymentProvider {
       settlements.push(settlement);
     },
     createDepositAttribution(request) {
-      // A narration reference the collector writes on the deposit; the
-      // idempotency key carries the rotation id, so each provisioning call
-      // mints a fresh, unique destination reference.
+      // A mock Virtual Terminal: the code is the attribution key and the fake
+      // NUBAN is what the collector app renders. Each provisioning call mints
+      // a fresh code because the idempotency key changes on rotation.
+      const code = `VT_MOCK_${request.idempotencyKey.slice(-8).toUpperCase()}`;
       return Promise.resolve({
-        kind: "narration",
-        value: `cash-dep-${request.idempotencyKey}`,
+        kind: "virtual_terminal",
+        value: code,
+        accountNumber: "0000000000",
+        accountName: request.name ?? `Mock terminal ${request.collectorUserId.slice(0, 8)}`,
+        bank: "Mock Bank",
+        pageUrl: `https://paystack.shop/pay/${code.toLowerCase()}`,
+        ...(request.currency === undefined ? {} : { currency: request.currency }),
       });
+    },
+    deactivateDepositAttribution(reference) {
+      // The mock keeps no remote state; the platform row is the record.
+      return Promise.resolve(reference === "" ? Promise.reject(new Error("empty")) : undefined);
     },
   };
 }

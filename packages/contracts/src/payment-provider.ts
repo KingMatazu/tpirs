@@ -109,8 +109,33 @@ export function createPaymentProviderConformanceSuite(
         });
         expect(Array.isArray(settlements)).toBe(true);
       }));
+
+    it("issues a deposit destination when the adapter supports collector funding", () =>
+      withAdapter(factory, async (provider) => {
+        if (provider.createDepositAttribution === undefined) return;
+        const destination = await provider.createDepositAttribution({
+          tenantId: "conformance-tenant",
+          collectorUserId: "conformance-collector",
+          idempotencyKey: "conformance-deposit-1",
+          name: "Conformance collector",
+          currency: conformanceFixtures.currency,
+        });
+        expect(destination.value.length).toBeGreaterThan(0);
+        expect(PAYMENT_DEPOSIT_KINDS).toContain(destination.kind);
+        // The display fields are market-dependent: an absent NUBAN is normal.
+        for (const field of [
+          destination.accountNumber,
+          destination.accountName,
+          destination.bank,
+          destination.pageUrl,
+        ]) {
+          if (field !== undefined) expect(field.length).toBeGreaterThan(0);
+        }
+      }));
   });
 }
+
+const PAYMENT_DEPOSIT_KINDS = ["virtual_account", "narration", "virtual_terminal"] as const;
 
 /** A recorded delivery, exactly as the gateway sent it. */
 export interface PaymentProviderWebhookFixture {

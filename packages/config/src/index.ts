@@ -1,4 +1,5 @@
 export * from "./errors.js";
+export * from "./cash-rules.js";
 export * from "./channel-contract.js";
 export * from "./cron.js";
 export * from "./defaults.js";

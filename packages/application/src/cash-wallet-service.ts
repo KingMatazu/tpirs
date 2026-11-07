@@ -1,7 +1,10 @@
 import { CashError, ForbiddenError, transitionWallet } from "@tpirs/domain";
 import type { CashWalletStatus, CashWalletTransition, Permission, Principal } from "@tpirs/domain";
+import { cashModelOf, maxBalanceMinorOf } from "@tpirs/config";
+import type { TenantCashRules } from "@tpirs/config";
 import { repositories, withTenant } from "@tpirs/db";
 import type { AnyDb, CollectorWalletRow } from "@tpirs/db";
+import type { TenantConfigLoader } from "./asset-service.js";
 
 /** The repository bundle a tenant-scoped transaction gives back. */
 type Repositories = ReturnType<typeof repositories>;
@@ -46,20 +49,39 @@ export interface CashWalletView {
   readonly oldestOpenIntakeAt: Date | null;
   /** When this collector's most recent deposit arrived; null before the first. */
   readonly lastDepositAt: Date | null;
+  /** How this tenant funds a wallet; prepaid changes what the numbers mean. */
+  readonly model: "postpaid" | "prepaid";
   /**
-   * The collector's dedicated deposit account, when finance has provisioned one.
-   * It is the reference the collector quotes when paying cash into the bank, so
-   * the collector app can show it instead of asking finance every time.
+   * How much more cash the collector may take right now, minor units.
+   *
+   * `max(0, limit - balance)`, where `limit` is the postpaid ceiling or the
+   * prepaid grace. The phone shows this; the server checks the same number.
+   */
+  readonly availableMinor: bigint;
+  /** The signed position an intake may reach: ceiling (postpaid) or grace. */
+  readonly intakeLimitMinor: bigint;
+  /** Prepaid only: the most credit the collector may hold; null under postpaid. */
+  readonly maxBalanceMinor: bigint | null;
+  /**
+   * The collector's funding destination, when finance has provisioned one.
+   * Under the prepaid model this is what "fund my wallet" shows (ADR 0069);
+   * the account details are absent when the gateway issues only a page.
    */
   readonly depositInstruction: {
     readonly provider: string;
     readonly reference: string;
-    readonly kind: "virtual_account" | "narration";
+    readonly kind: "virtual_account" | "narration" | "virtual_terminal";
+    readonly accountNumber?: string;
+    readonly accountName?: string;
+    readonly bank?: string;
+    readonly pageUrl?: string;
+    readonly currency?: string;
   } | null;
 }
 
 export interface CashWalletServiceDeps {
   readonly db: AnyDb;
+  readonly loadConfig: TenantConfigLoader;
   readonly now?: () => Date;
 }
 
@@ -92,11 +114,12 @@ export class CashWalletService {
    * query the detail view runs.
    */
   async list(tenantId: string): Promise<CashWalletView[]> {
+    const rules = await this.rules(tenantId);
     return withTenant(this.deps.db, tenantId, async (tx) => {
       const repos = repositories(tx);
       const views: CashWalletView[] = [];
       for (const wallet of await repos.collectorCash.listWallets(tenantId)) {
-        views.push(await this.view(repos, wallet));
+        views.push(await this.view(repos, wallet, rules));
       }
       return views;
     });
@@ -104,6 +127,7 @@ export class CashWalletService {
 
   /** The wallet and its derived position; `wallet_unknown` when absent. */
   async wallet(tenantId: string, collectorUserId: string): Promise<CashWalletView> {
+    const rules = await this.rules(tenantId);
     return withTenant(this.deps.db, tenantId, async (tx) => {
       const repos = repositories(tx);
       const wallet = await repos.collectorCash.findWallet(tenantId, collectorUserId);
@@ -113,8 +137,17 @@ export class CashWalletService {
           `no cash wallet exists for collector ${collectorUserId}`,
         );
       }
-      return this.view(repos, wallet);
+      return this.view(repos, wallet, rules);
     });
+  }
+
+  /** The tenant's cash rules, which decide what the derived numbers mean. */
+  private async rules(tenantId: string): Promise<TenantCashRules> {
+    const config = await this.deps.loadConfig(tenantId);
+    if (config === undefined) {
+      throw new Error(`No configuration found for tenant "${tenantId}"`);
+    }
+    return config.cashRules;
   }
 
   private async instruction(
@@ -127,10 +160,12 @@ export class CashWalletService {
       collectorUserId,
     );
     if (instruction === undefined) return null;
+    const details = instructionDetails(instruction.details);
     return {
       provider: instruction.provider,
       reference: instruction.reference,
       kind: instruction.kind,
+      ...details,
     };
   }
 
@@ -147,6 +182,7 @@ export class CashWalletService {
         `a reason is required to ${transition} a collector wallet`,
       );
     }
+    const rules = await this.rules(input.tenantId);
 
     return withTenant(this.deps.db, input.tenantId, async (tx) => {
       const repos = repositories(tx);
@@ -160,7 +196,7 @@ export class CashWalletService {
       // Nothing changed: a double click is answered with the current state and
       // must not append a second audit entry that says it did.
       if (next.status === current.status) {
-        return this.view(repos, current);
+        return this.view(repos, current, rules);
       }
 
       await repos.collectorCash.setWalletStatus(input.tenantId, input.collectorUserId, {
@@ -186,11 +222,27 @@ export class CashWalletService {
       });
 
       const updated = await repos.collectorCash.findWallet(input.tenantId, input.collectorUserId);
-      return this.view(repos, updated ?? current);
+      return this.view(repos, updated ?? current, rules);
     });
   }
 
-  private async view(repos: Repositories, wallet: CollectorWalletRow): Promise<CashWalletView> {
+  private async view(
+    repos: Repositories,
+    wallet: CollectorWalletRow,
+    rules: TenantCashRules,
+  ): Promise<CashWalletView> {
+    const model = cashModelOf(rules);
+    const balanceMinor = await repos.ledger.collectorCashBalance(
+      wallet.tenantId,
+      wallet.collectorUserId,
+    );
+    // Postpaid caps the cash the collector may hold; prepaid caps how far an
+    // intake may cross zero. Either way the phone sees one "available" number.
+    const limitMinor =
+      model === "prepaid"
+        ? BigInt(rules.intakeGuard === "grace" ? (rules.graceMinor ?? 0) : 0)
+        : (wallet.floatCeilingMinor ?? BigInt(rules.floatCeilingMinor));
+    const availableMinor = balanceMinor >= limitMinor ? 0n : limitMinor - balanceMinor;
     return {
       tenantId: wallet.tenantId,
       collectorUserId: wallet.collectorUserId,
@@ -199,10 +251,11 @@ export class CashWalletService {
       frozenReason: wallet.frozenReason,
       overdueSince: wallet.overdueSince,
       floatCeilingMinor: wallet.floatCeilingMinor,
-      balanceMinor: await repos.ledger.collectorCashBalance(
-        wallet.tenantId,
-        wallet.collectorUserId,
-      ),
+      balanceMinor,
+      model,
+      availableMinor,
+      intakeLimitMinor: limitMinor,
+      maxBalanceMinor: model === "prepaid" ? BigInt(maxBalanceMinorOf(rules)) : null,
       openIntakeTotalMinor: await repos.collectorCash.sumOpenIntakes(
         wallet.tenantId,
         wallet.collectorUserId,
@@ -218,6 +271,34 @@ export class CashWalletService {
       depositInstruction: await this.instruction(repos, wallet.tenantId, wallet.collectorUserId),
     };
   }
+}
+
+/** The display fields stored on a terminal instruction; absent is normal. */
+function instructionDetails(value: unknown): {
+  accountNumber?: string;
+  accountName?: string;
+  bank?: string;
+  pageUrl?: string;
+  currency?: string;
+} {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return {};
+  const record = value as Record<string, unknown>;
+  const pick = (key: string): string | undefined => {
+    const candidate = record[key];
+    return typeof candidate === "string" && candidate.trim() !== "" ? candidate : undefined;
+  };
+  const accountNumber = pick("accountNumber");
+  const accountName = pick("accountName");
+  const bank = pick("bank");
+  const pageUrl = pick("pageUrl");
+  const currency = pick("currency");
+  return {
+    ...(accountNumber === undefined ? {} : { accountNumber }),
+    ...(accountName === undefined ? {} : { accountName }),
+    ...(bank === undefined ? {} : { bank }),
+    ...(pageUrl === undefined ? {} : { pageUrl }),
+    ...(currency === undefined ? {} : { currency }),
+  };
 }
 
 export function createCashWalletService(deps: CashWalletServiceDeps): CashWalletService {

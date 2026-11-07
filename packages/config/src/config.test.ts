@@ -6,6 +6,13 @@ import { loadTenantConfigFromString } from "./loader.js";
 import { validateTenantConfig } from "./validate.js";
 import { enabledAnomalyRules } from "./reconciliation.js";
 import { nationalIdPattern } from "./defaults.js";
+import {
+  cashModelOf,
+  fundingRailOf,
+  graceMinorOf,
+  intakeLimitMinorOf,
+  maxBalanceMinorOf,
+} from "./cash-rules.js";
 import { TenantConfigValidationError } from "./errors.js";
 import type { TenantConfig } from "./schema.js";
 
@@ -1072,5 +1079,53 @@ describe("tenants/_template", () => {
     expect(statement?.provider).toBe("mock");
     expect(statement?.columns.settledAt).toBe("settled_at");
     expect(statement?.amountInMinorUnits).toBe(true);
+  });
+});
+
+describe("cashRules funding model (ADR 0069)", () => {
+  const withRules = (extra: string): TenantConfig =>
+    loadTenantConfigFromString(
+      validYaml.replace("  freezeOnShortfall: true", `  freezeOnShortfall: true\n${extra}`),
+    );
+
+  it("keeps postpaid as the default when the new fields are absent", () => {
+    const config = loadTenantConfigFromString(validYaml);
+    expect(cashModelOf(config.cashRules)).toBe("postpaid");
+    expect(intakeLimitMinorOf(config.cashRules)).toBe(5_000_000);
+    expect(maxBalanceMinorOf(config.cashRules)).toBe(5_000_000);
+    expect(cashModelOf(config.cashRules)).toBe("postpaid");
+  });
+
+  it("reads a prepaid configuration with a hard guard", () => {
+    const config = withRules(
+      [
+        "  model: prepaid",
+        "  maxBalanceMinor: 5000000",
+        "  intakeGuard: hard",
+        "  graceMinor: 0",
+        "  funding: virtual_terminal",
+      ].join("\n"),
+    );
+    expect(cashModelOf(config.cashRules)).toBe("prepaid");
+    expect(intakeLimitMinorOf(config.cashRules)).toBe(0);
+    expect(fundingRailOf(config.cashRules)).toBe("virtual_terminal");
+  });
+
+  it("reads a grace configuration", () => {
+    const config = withRules(
+      ["  model: prepaid", "  intakeGuard: grace", "  graceMinor: 200000"].join("\n"),
+    );
+    expect(intakeLimitMinorOf(config.cashRules)).toBe(200_000);
+    expect(graceMinorOf(config.cashRules)).toBe(200_000);
+  });
+
+  it("rejects a positive grace under the hard guard", () => {
+    expect(() => withRules(["  intakeGuard: hard", "  graceMinor: 100"].join("\n"))).toThrow(
+      /graceMinor must be 0/,
+    );
+  });
+
+  it("rejects an unknown model", () => {
+    expect(() => withRules("  model: credit")).toThrow(/model/);
   });
 });

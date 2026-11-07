@@ -192,6 +192,12 @@ export function assertNormalizedPaymentEvent(
       providerName,
     );
   }
+  if (event.attributionKey !== undefined && !isNonEmptyString(event.attributionKey)) {
+    brokenAdapter(
+      `Payment provider "${providerName}" normalized an empty attribution key`,
+      providerName,
+    );
+  }
   const status: unknown = event.status;
   if (status !== "success" && status !== "failed") {
     brokenAdapter(

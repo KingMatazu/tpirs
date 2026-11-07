@@ -393,19 +393,22 @@ export function createPaymentService(deps: PaymentServiceDeps): PaymentService {
     }
 
     // Collector deposit instructions are resolved BEFORE payment instructions
-    // (ADR 0032): a reference that belongs to a collector's deposit account
-    // must never be inspected as a payment reference, so the two namespaces
-    // cannot cross-credit.
+    // (ADR 0032): a destination that belongs to a collector must never be
+    // inspected as a payment reference, so the two namespaces cannot
+    // cross-credit. A Virtual Terminal names itself in metadata, so the
+    // attribution key wins over the transaction reference (ADR 0069).
+    const depositDestination = event.attributionKey ?? event.providerReference;
     const depositInstruction = await repos.collectorCash.findActiveInstruction(
       tenantId,
       provider,
-      event.providerReference,
+      depositDestination,
     );
     if (depositInstruction !== undefined) {
       const deposit = await collectorCash.ingestDeposit({
         tenantId,
         config,
         provider,
+        instruction: depositInstruction,
         event,
         webhookEventId: eventRow.id,
         // Same transaction that recorded the event: the deposit's identity is

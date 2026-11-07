@@ -442,8 +442,11 @@ export interface CollectorDepositInstructionTable {
   tenantId: string;
   collectorUserId: string;
   provider: string;
+  /** The destination the webhook resolves: a terminal code, account or narration. */
   reference: string;
-  kind: "virtual_account" | "narration";
+  kind: "virtual_account" | "narration" | "virtual_terminal";
+  /** Display details for the funding screen (account number, bank, page URL). */
+  details: Json;
   status: Generated<"active" | "revoked">;
   createdAt: Generated<Timestamp>;
   revokedAt: Timestamp | null;

@@ -15,6 +15,9 @@ import type {
   TenantAssetType,
   TenantBranding,
   TenantCashRules,
+  CashFundingRail,
+  CashIntakeGuard,
+  CashModel,
   TenantChannels,
   TenantCompliance,
   TenantConfig,
@@ -51,6 +54,9 @@ const DEFAULT_UNDERPAYMENT_POLICY: UnderpaymentPolicy = "wallet";
 const ATTRIBUTE_TYPES = ["string", "number", "date", "enum"] as const;
 const MENU_NODE_TYPES = ["menu", "input", "action"] as const;
 const USSD_ACTIONS: readonly UssdAction[] = ["status", "pay", "pay_from_balance", "cancel"];
+const CASH_MODELS: readonly CashModel[] = ["postpaid", "prepaid"];
+const CASH_INTAKE_GUARDS: readonly CashIntakeGuard[] = ["hard", "grace"];
+const CASH_FUNDING_RAILS: readonly CashFundingRail[] = ["virtual_terminal"];
 
 /** Rules that compare a rate against a trailing mean, and so need a percent. */
 const PERCENT_ANOMALY_RULES: readonly TenantAnomalyRuleKey[] = [
@@ -1056,7 +1062,51 @@ function validateCashRules(v: Validator, value: unknown): TenantCashRules | unde
   ) {
     return undefined;
   }
-  return { enabled, floatCeilingMinor, depositDeadlineHours, freezeOnShortfall };
+
+  // The funding model fields are optional so a config written before ADR 0069
+  // keeps working; when they are present they are validated, not guessed.
+  const model = obj.model === undefined ? undefined : v.enum(obj.model, "model", CASH_MODELS);
+  const maxBalanceMinor =
+    obj.maxBalanceMinor === undefined
+      ? undefined
+      : v.integer(obj.maxBalanceMinor, "maxBalanceMinor", { min: 0 });
+  const intakeGuard =
+    obj.intakeGuard === undefined
+      ? undefined
+      : v.enum(obj.intakeGuard, "intakeGuard", CASH_INTAKE_GUARDS);
+  const graceMinor =
+    obj.graceMinor === undefined ? undefined : v.integer(obj.graceMinor, "graceMinor", { min: 0 });
+  const funding =
+    obj.funding === undefined ? undefined : v.enum(obj.funding, "funding", CASH_FUNDING_RAILS);
+  if (
+    (obj.model !== undefined && model === undefined) ||
+    (obj.maxBalanceMinor !== undefined && maxBalanceMinor === undefined) ||
+    (obj.intakeGuard !== undefined && intakeGuard === undefined) ||
+    (obj.graceMinor !== undefined && graceMinor === undefined) ||
+    (obj.funding !== undefined && funding === undefined)
+  ) {
+    return undefined;
+  }
+  if ((intakeGuard ?? "hard") === "hard" && (graceMinor ?? 0) > 0) {
+    v.issue(
+      "schema_error",
+      "cashRules.graceMinor must be 0 when intakeGuard is hard",
+      "graceMinor",
+    );
+    return undefined;
+  }
+
+  return {
+    enabled,
+    floatCeilingMinor,
+    depositDeadlineHours,
+    freezeOnShortfall,
+    ...(model === undefined ? {} : { model }),
+    ...(maxBalanceMinor === undefined ? {} : { maxBalanceMinor }),
+    ...(intakeGuard === undefined ? {} : { intakeGuard }),
+    ...(graceMinor === undefined ? {} : { graceMinor }),
+    ...(funding === undefined ? {} : { funding }),
+  };
 }
 
 /**

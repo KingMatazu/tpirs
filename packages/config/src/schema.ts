@@ -160,11 +160,39 @@ export interface TenantChannels {
   readonly sms?: TenantSmsSettings;
 }
 
+/** How a collector's cash position is funded (ADR 0069). */
+export type CashModel = "postpaid" | "prepaid";
+
+/** Whether a prepaid intake may cross zero, and by how much. */
+export type CashIntakeGuard = "hard" | "grace";
+
+/** The rail that provisions a collector's funding destination. */
+export type CashFundingRail = "virtual_terminal";
+
 export interface TenantCashRules {
   readonly enabled: boolean;
   readonly floatCeilingMinor: number;
   readonly depositDeadlineHours: number;
   readonly freezeOnShortfall: boolean;
+  /**
+   * `postpaid`: the collector takes cash first and deposits it by a deadline;
+   * the float ceiling caps the State's exposure (ADR 0033).
+   * `prepaid`: the collector funds the wallet first and each intake draws it
+   * down; the intake guard replaces the ceiling (ADR 0069). Default `postpaid`,
+   * so omitting this field keeps every existing tenant's behaviour.
+   */
+  readonly model?: CashModel;
+  /** Prepaid only: the most credit a collector may hold, minor units. */
+  readonly maxBalanceMinor?: number;
+  /**
+   * Prepaid only: `hard` (default) refuses an intake that would take the
+   * position above zero; `grace` allows it up to `graceMinor`.
+   */
+  readonly intakeGuard?: CashIntakeGuard;
+  /** Prepaid only, with `intakeGuard: grace`: the allowed negative position. */
+  readonly graceMinor?: number;
+  /** Which rail provisions a collector's destination. */
+  readonly funding?: CashFundingRail;
 }
 
 /**

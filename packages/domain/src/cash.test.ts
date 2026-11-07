@@ -3,8 +3,10 @@ import fc from "fast-check";
 import {
   COLLECTOR_CASH_ACCOUNT,
   CashError,
+  assertIntakeAllowed,
   assertWithinCeiling,
   canIntake,
+  exceedsMaxBalance,
   cashFundingPostings,
   classifyDeposit,
   depositAgeHours,
@@ -216,5 +218,122 @@ describe("cash postings", () => {
         .map((posting) => posting.collectorUserId),
     ).toEqual([undefined]);
     expect(() => validateBalancedTransaction(mirrored)).not.toThrow();
+  });
+});
+
+describe("assertIntakeAllowed (ADR 0069)", () => {
+  it("keeps the postpaid ceiling rule unchanged", () => {
+    expect(() =>
+      assertIntakeAllowed({
+        model: "postpaid",
+        balanceMinor: 18_000,
+        intakeMinor: 500,
+        ceilingMinor: 50_000,
+        graceMinor: 0,
+      }),
+    ).not.toThrow();
+    try {
+      assertIntakeAllowed({
+        model: "postpaid",
+        balanceMinor: 50_000,
+        intakeMinor: 1,
+        ceilingMinor: 50_000,
+        graceMinor: 0,
+      });
+      expect.unreachable("must reject");
+    } catch (error) {
+      expect(error).toBeInstanceOf(CashError);
+      if (error instanceof CashError) expect(error.code).toBe("ceiling_exceeded");
+    }
+  });
+
+  it("allows a prepaid intake only while credit covers it", () => {
+    // ₦50,000 of credit is a negative position.
+    expect(() =>
+      assertIntakeAllowed({
+        model: "prepaid",
+        balanceMinor: -50_000,
+        intakeMinor: 500,
+        ceilingMinor: 0,
+        graceMinor: 0,
+      }),
+    ).not.toThrow();
+  });
+
+  it("refuses the first unit past zero under the hard guard", () => {
+    try {
+      assertIntakeAllowed({
+        model: "prepaid",
+        balanceMinor: 0,
+        intakeMinor: 1,
+        ceilingMinor: 0,
+        graceMinor: 0,
+      });
+      expect.unreachable("must reject");
+    } catch (error) {
+      expect(error).toBeInstanceOf(CashError);
+      if (error instanceof CashError) expect(error.code).toBe("insufficient_float");
+    }
+  });
+
+  it("allows exactly the grace and refuses one unit more", () => {
+    expect(() =>
+      assertIntakeAllowed({
+        model: "prepaid",
+        balanceMinor: 0,
+        intakeMinor: 2_000,
+        ceilingMinor: 0,
+        graceMinor: 2_000,
+      }),
+    ).not.toThrow();
+    expect(() =>
+      assertIntakeAllowed({
+        model: "prepaid",
+        balanceMinor: 0,
+        intakeMinor: 2_001,
+        ceilingMinor: 0,
+        graceMinor: 2_000,
+      }),
+    ).toThrow(CashError);
+  });
+
+  it("rejects a negative or fractional position it cannot reason about", () => {
+    expect(() =>
+      assertIntakeAllowed({
+        model: "prepaid",
+        balanceMinor: 1.5,
+        intakeMinor: 1,
+        ceilingMinor: 0,
+        graceMinor: 0,
+      }),
+    ).toThrow(CashError);
+  });
+});
+
+describe("exceedsMaxBalance", () => {
+  it("measures the credit the top-up creates, not the raw balance", () => {
+    // A collector holding ₦10,000 of cash needs ₦60,000 to reach ₦50,000 credit.
+    expect(
+      exceedsMaxBalance({
+        balanceMinor: 10_000,
+        topUpMinor: 60_000,
+        maxBalanceMinor: 50_000,
+      }),
+    ).toBe(false);
+    expect(
+      exceedsMaxBalance({
+        balanceMinor: 0,
+        topUpMinor: 50_001,
+        maxBalanceMinor: 50_000,
+      }),
+    ).toBe(true);
+    // A collector already in credit needs the difference, not the full amount.
+    expect(
+      exceedsMaxBalance({
+        balanceMinor: -40_000,
+        topUpMinor: 10_001,
+        maxBalanceMinor: 50_000,
+      }),
+    ).toBe(true);
   });
 });

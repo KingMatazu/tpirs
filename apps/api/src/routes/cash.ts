@@ -1,12 +1,13 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { CashError, ForbiddenError } from "@tpirs/domain";
 import type { CashErrorCode, Permission, Principal } from "@tpirs/domain";
-import type { CashIntakeRow, CashDepositRow } from "@tpirs/db";
+import type { CashIntakeRow, CashDepositRow, CollectorDepositInstructionRow } from "@tpirs/db";
 import { requirePermission } from "../auth.js";
 import { errorEnvelope } from "../errors.js";
 import type { Services } from "../services.js";
 import {
   createCashIntakeSchema,
+  deactivateDepositInstructionSchema,
   freezeWalletSchema,
   getCashWalletSchema,
   listCashDepositsSchema,
@@ -25,13 +26,22 @@ function toWalletJson(wallet: {
   overdueSince: Date | null;
   floatCeilingMinor: bigint | null;
   balanceMinor: bigint;
+  model: "postpaid" | "prepaid";
+  availableMinor: bigint;
+  intakeLimitMinor: bigint;
+  maxBalanceMinor: bigint | null;
   openIntakeTotalMinor: bigint;
   oldestOpenIntakeAt: Date | null;
   lastDepositAt: Date | null;
   depositInstruction: {
     provider: string;
     reference: string;
-    kind: "virtual_account" | "narration";
+    kind: "virtual_account" | "narration" | "virtual_terminal";
+    accountNumber?: string;
+    accountName?: string;
+    bank?: string;
+    pageUrl?: string;
+    currency?: string;
   } | null;
 }) {
   return {
@@ -43,11 +53,27 @@ function toWalletJson(wallet: {
     floatCeilingMinor:
       wallet.floatCeilingMinor === null ? null : wallet.floatCeilingMinor.toString(),
     balanceMinor: wallet.balanceMinor.toString(),
+    model: wallet.model,
+    availableMinor: wallet.availableMinor.toString(),
+    intakeLimitMinor: wallet.intakeLimitMinor.toString(),
+    maxBalanceMinor: wallet.maxBalanceMinor === null ? null : wallet.maxBalanceMinor.toString(),
     openIntakeTotalMinor: wallet.openIntakeTotalMinor.toString(),
     oldestOpenIntakeAt:
       wallet.oldestOpenIntakeAt === null ? null : wallet.oldestOpenIntakeAt.toISOString(),
     lastDepositAt: wallet.lastDepositAt === null ? null : wallet.lastDepositAt.toISOString(),
-    depositInstruction: wallet.depositInstruction,
+    depositInstruction:
+      wallet.depositInstruction === null
+        ? null
+        : {
+            provider: wallet.depositInstruction.provider,
+            reference: wallet.depositInstruction.reference,
+            kind: wallet.depositInstruction.kind,
+            accountNumber: wallet.depositInstruction.accountNumber ?? null,
+            accountName: wallet.depositInstruction.accountName ?? null,
+            bank: wallet.depositInstruction.bank ?? null,
+            pageUrl: wallet.depositInstruction.pageUrl ?? null,
+            currency: wallet.depositInstruction.currency ?? null,
+          },
   };
 }
 
@@ -79,6 +105,33 @@ function toDepositJson(deposit: CashDepositRow) {
   };
 }
 
+/** The display details a terminal instruction stores; absent fields stay null. */
+function toInstructionJson(instruction: CollectorDepositInstructionRow) {
+  const details =
+    typeof instruction.details === "object" &&
+    instruction.details !== null &&
+    !Array.isArray(instruction.details)
+      ? (instruction.details as Record<string, unknown>)
+      : {};
+  const text = (key: string): string | null => {
+    const value = details[key];
+    return typeof value === "string" && value.trim() !== "" ? value : null;
+  };
+  return {
+    id: instruction.id,
+    collectorUserId: instruction.collectorUserId,
+    provider: instruction.provider,
+    reference: instruction.reference,
+    kind: instruction.kind,
+    status: instruction.status,
+    accountNumber: text("accountNumber"),
+    accountName: text("accountName"),
+    bank: text("bank"),
+    pageUrl: text("pageUrl"),
+    currency: text("currency"),
+  };
+}
+
 /**
  * Maps a cash failure onto the status the caller can act on.
  *
@@ -97,6 +150,7 @@ const CASH_ERROR_STATUS: Readonly<Record<CashErrorCode, number>> = {
   intake_state: 409,
   duplicate_reference: 409,
   ceiling_exceeded: 409,
+  insufficient_float: 409,
   provider_required: 409,
   amount_mismatch: 400,
   invalid_amount: 400,
@@ -420,7 +474,10 @@ export function registerCashRoutes(
     },
   );
 
-  app.post<{ Params: { collectorUserId: string }; Body: { provider?: string } }>(
+  app.post<{
+    Params: { collectorUserId: string };
+    Body: { provider?: string; rotate?: boolean };
+  }>(
     "/v1/cash/collectors/:collectorUserId/deposit-instruction",
     { schema: provisionDepositInstructionSchema },
     async (request, reply) => {
@@ -430,6 +487,7 @@ export function registerCashRoutes(
           tenantId: principal.tenantId,
           collectorUserId: request.params.collectorUserId,
           ...(request.body.provider === undefined ? {} : { provider: request.body.provider }),
+          ...(request.body.rotate === undefined ? {} : { rotate: request.body.rotate }),
         });
         request.audit = {
           action: "cash.deposit_instruction.provision",
@@ -440,20 +498,38 @@ export function registerCashRoutes(
             provider: instruction.provider,
             reference: instruction.reference,
             kind: instruction.kind,
+            rotate: request.body.rotate === true,
           },
         };
-        return await Promise.resolve(
-          reply.send({
-            instruction: {
-              id: instruction.id,
-              collectorUserId: instruction.collectorUserId,
-              provider: instruction.provider,
-              reference: instruction.reference,
-              kind: instruction.kind,
-              status: instruction.status,
-            },
-          }),
-        );
+        return await Promise.resolve(reply.send({ instruction: toInstructionJson(instruction) }));
+      } catch (error) {
+        if (error instanceof CashError) return sendCashError(request, reply, error);
+        throw error;
+      }
+    },
+  );
+
+  app.delete<{ Params: { collectorUserId: string } }>(
+    "/v1/cash/collectors/:collectorUserId/deposit-instruction",
+    { schema: deactivateDepositInstructionSchema },
+    async (request, reply) => {
+      const principal = requirePermission(request, "payment:manage");
+      try {
+        const instruction = await services.collectorCash.deactivateCollectorDepositInstruction({
+          tenantId: principal.tenantId,
+          collectorUserId: request.params.collectorUserId,
+        });
+        request.audit = {
+          action: "cash.deposit_instruction.deactivate",
+          entityType: "collector_deposit_instruction",
+          entityId: instruction.id,
+          after: {
+            collectorUserId: instruction.collectorUserId,
+            provider: instruction.provider,
+            reference: instruction.reference,
+          },
+        };
+        return await Promise.resolve(reply.send({ instruction: toInstructionJson(instruction) }));
       } catch (error) {
         if (error instanceof CashError) return sendCashError(request, reply, error);
         throw error;

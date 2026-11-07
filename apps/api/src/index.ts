@@ -22,6 +22,8 @@ import { createXlsxExportService } from "@tpirs/export-service-xlsx";
 import { createCsvSettlementImport } from "@tpirs/settlement-import-csv";
 
 const QR_KEY_REF = "qr-token-signing-key";
+/** Where the Paystack integration secret lives; never read from the env directly. */
+const PAYSTACK_SECRET_REF = "payments/paystack/secret-key";
 
 /**
  * A cache that never counts, so the abuse limiter always allows. Used only by
@@ -116,6 +118,20 @@ async function main(): Promise<void> {
   let loadConfigFn: ReturnType<typeof makeTenantConfigLoader> | undefined;
   if (db !== undefined) {
     const secrets = createEnvSecretsProvider();
+    // Paystack's secret key doubles as the webhook signing secret. Anchor, the
+    // mount and tax onboarding all read Paystack's `FA`-prefixed keys; ours is a
+    // normal integration key. Missing is not fatal: webhooks are refused and
+    // terminal provisioning fails loudly rather than trusting unsigned input.
+    const paystackSecret = await secrets.getSecret(PAYSTACK_SECRET_REF).catch(() => undefined);
+    if (paystackSecret === undefined) {
+      telemetry.log(
+        "warn",
+        "paystack secret is not set; terminal funding and webhooks are disabled",
+        {
+          env: "SECRET_PAYMENTS_PAYSTACK_SECRET_KEY",
+        },
+      );
+    }
     try {
       services = await buildServices({
         db,
@@ -136,7 +152,19 @@ async function main(): Promise<void> {
         // them every webhook answers "provider not configured", which is how the
         // load harness found this gap in Phase 10 (Step 11).
         paymentProviders: {
-          paystack: createPaystackPaymentProvider(),
+          paystack: createPaystackPaymentProvider({
+            ...(paystackSecret === undefined
+              ? {}
+              : { secretKey: paystackSecret, webhookSecret: paystackSecret }),
+            ...(process.env.PAYSTACK_DEFAULT_EMAIL === undefined ||
+            process.env.PAYSTACK_DEFAULT_EMAIL.trim() === ""
+              ? {}
+              : { defaultEmail: process.env.PAYSTACK_DEFAULT_EMAIL.trim() }),
+            ...(process.env.PAYSTACK_BASE_URL === undefined ||
+            process.env.PAYSTACK_BASE_URL.trim() === ""
+              ? {}
+              : { baseUrl: process.env.PAYSTACK_BASE_URL.trim() }),
+          }),
           remita: createRemitaPaymentProvider(),
         },
         // Phase 8: a deployment supplies the statement reader and the report

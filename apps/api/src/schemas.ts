@@ -210,6 +210,24 @@ const errorEnvelopeSchema = {
   },
 };
 
+const depositInstructionView = {
+  type: "object",
+  nullable: true,
+  required: ["provider", "reference", "kind"],
+  properties: {
+    provider: { type: "string" },
+    reference: { type: "string" },
+    kind: { type: "string", enum: ["virtual_account", "narration", "virtual_terminal"] },
+    /** Present when the gateway issued a transfer destination (a NUBAN in Nigeria). */
+    accountNumber: { type: "string", nullable: true },
+    accountName: { type: "string", nullable: true },
+    bank: { type: "string", nullable: true },
+    /** A hosted page a payer can open instead of transferring. */
+    pageUrl: { type: "string", nullable: true },
+    currency: { type: "string", nullable: true },
+  },
+} as const;
+
 const cashWallet = {
   $id: "CashWallet",
   type: "object",
@@ -221,6 +239,10 @@ const cashWallet = {
     "overdueSince",
     "floatCeilingMinor",
     "balanceMinor",
+    "model",
+    "availableMinor",
+    "intakeLimitMinor",
+    "maxBalanceMinor",
     "openIntakeTotalMinor",
     "oldestOpenIntakeAt",
     "lastDepositAt",
@@ -235,21 +257,20 @@ const cashWallet = {
     floatCeilingMinor: { type: "string", nullable: true },
     /** Derived COLLECTOR_CASH position; bigint rows serialize as strings. */
     balanceMinor: { type: "string" },
+    /** How this tenant funds a wallet; prepaid changes what the numbers mean. */
+    model: { type: "string", enum: ["postpaid", "prepaid"] },
+    /** `max(0, intakeLimit - balance)`: how much more cash may be taken now. */
+    availableMinor: { type: "string" },
+    /** The signed position an intake may reach: ceiling (postpaid) or grace. */
+    intakeLimitMinor: { type: "string" },
+    /** Prepaid only: the most credit a collector may hold. */
+    maxBalanceMinor: { type: "string", nullable: true },
     openIntakeTotalMinor: { type: "string" },
     /** Oldest still-open intake, and the last deposit, for the collector list. */
     oldestOpenIntakeAt: { type: "string", nullable: true },
     lastDepositAt: { type: "string", nullable: true },
-    /** The collector's dedicated deposit account, when finance provisioned one. */
-    depositInstruction: {
-      type: "object",
-      nullable: true,
-      required: ["provider", "reference", "kind"],
-      properties: {
-        provider: { type: "string" },
-        reference: { type: "string" },
-        kind: { type: "string", enum: ["virtual_account", "narration"] },
-      },
-    },
+    /** The collector's funding destination, when finance provisioned one. */
+    depositInstruction: depositInstructionView,
   },
 };
 
@@ -1793,8 +1814,45 @@ export const provisionDepositInstructionSchema: FastifySchema = {
   params: collectorParams,
   body: {
     type: "object",
-    properties: { provider: { type: "string" } },
+    properties: {
+      provider: { type: "string" },
+      /** Replace the live destination; a plain repeat returns it (ADR 0069). */
+      rotate: { type: "boolean" },
+    },
   },
+  response: {
+    200: {
+      type: "object",
+      required: ["instruction"],
+      properties: {
+        instruction: {
+          type: "object",
+          required: ["id", "collectorUserId", "provider", "reference", "kind", "status"],
+          properties: {
+            id: { type: "string" },
+            collectorUserId: { type: "string" },
+            provider: { type: "string" },
+            reference: { type: "string" },
+            kind: { type: "string" },
+            status: { type: "string" },
+            accountNumber: { type: "string", nullable: true },
+            accountName: { type: "string", nullable: true },
+            bank: { type: "string", nullable: true },
+            pageUrl: { type: "string", nullable: true },
+            currency: { type: "string", nullable: true },
+          },
+        },
+      },
+    },
+    400: errorResponseSchema,
+    403: errorResponseSchema,
+    404: errorResponseSchema,
+    409: errorResponseSchema,
+  },
+};
+
+export const deactivateDepositInstructionSchema: FastifySchema = {
+  params: collectorParams,
   response: {
     200: {
       type: "object",
@@ -1814,8 +1872,8 @@ export const provisionDepositInstructionSchema: FastifySchema = {
         },
       },
     },
-    400: errorResponseSchema,
     403: errorResponseSchema,
+    404: errorResponseSchema,
     409: errorResponseSchema,
   },
 };

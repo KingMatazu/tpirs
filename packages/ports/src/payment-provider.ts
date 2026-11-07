@@ -83,6 +83,17 @@ export interface NormalizedPaymentEvent {
   /** Stable dedupe key: replaying the same webhook must produce the same value. */
   readonly providerEventId: string;
   readonly providerReference: string;
+  /**
+   * The destination the money arrived at, when the gateway reports one that is
+   * not the transaction reference.
+   *
+   * A Virtual Terminal payment is the motivating case (ADR 0069): the payer
+   * transfers to the terminal's dedicated account, and Paystack names the
+   * terminal in `metadata.virtual_terminal.code` while `providerReference` is
+   * Paystack's own `T…`. Collector deposits resolve their instruction by this
+   * value first, so the collector can be credited without a reference of ours.
+   */
+  readonly attributionKey?: string;
   readonly amount: Money;
   readonly status: "success" | "failed";
   readonly paidAt: Date;
@@ -109,19 +120,43 @@ export interface Settlement {
 export interface DepositAttributionRequest {
   /** The collector the deposit account/reference will belong to. */
   readonly collectorUserId: string;
+  /**
+   * The tenant the destination belongs to. Sent to the gateway as support
+   * metadata so a terminal can be traced to the tenant that created it.
+   */
+  readonly tenantId?: string;
   /** Correlation key for the adapter's own idempotent bookkeeping. */
   readonly idempotencyKey: string;
+  /** A human name for the destination; the terminal name a payer sees. */
+  readonly name?: string;
+  /** Phone that receives the gateway's own payment notifications, E.164. */
+  readonly phone?: string;
+  /** ISO currency the destination should collect in. */
+  readonly currency?: string;
+  readonly metadata?: Readonly<Record<string, string>>;
 }
 
 /** A deposit destination the adapter issued, in the form the collector pays with. */
 export interface DepositAttribution {
-  readonly kind: "virtual_account" | "narration";
   /**
-   * What the collector pays into for `virtual_account`, or what they write in
-   * the payment narration for `narration`. The webhook resolves the collector
-   * from this value.
+   * `virtual_terminal`: a terminal code plus, where the market issues one, a
+   * dedicated account number (ADR 0069). `virtual_account` and `narration` are
+   * the older shapes kept for adapters that only offer those.
+   */
+  readonly kind: "virtual_account" | "narration" | "virtual_terminal";
+  /**
+   * What the webhook resolves the collector from: the terminal code for
+   * `virtual_terminal`, the account number for `virtual_account`, or the text
+   * the payer writes for `narration`.
    */
   readonly value: string;
+  /** Present when the gateway issued a transfer destination (a NUBAN in Nigeria). */
+  readonly accountNumber?: string;
+  readonly accountName?: string;
+  readonly bank?: string;
+  /** Hosted page a payer can open instead of transferring, when the gateway has one. */
+  readonly pageUrl?: string;
+  readonly currency?: string;
 }
 
 export interface PaymentProvider {
@@ -147,4 +182,13 @@ export interface PaymentProvider {
    * sanctioned. The adapter owns the reference format; core never invents one.
    */
   createDepositAttribution?(request: DepositAttributionRequest): Promise<DepositAttribution>;
+  /**
+   * Turns a destination off at the gateway, when the gateway has a remote
+   * object that outlives the platform's row (a Virtual Terminal does).
+   *
+   * Optional so adapters whose destination is a platform-side reference keep
+   * working; the caller treats a failure as a loud, retryable error rather than
+   * silently leaving a destination that still credits a departed collector.
+   */
+  deactivateDepositAttribution?(reference: string): Promise<void>;
 }

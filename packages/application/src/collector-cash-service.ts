@@ -1,7 +1,8 @@
 import { todayInTimeZone } from "@tpirs/domain";
-import { CashError, assertWithinCeiling, canIntake, money } from "@tpirs/domain";
+import { CashError, assertIntakeAllowed, canIntake, exceedsMaxBalance, money } from "@tpirs/domain";
 import type { BusinessDate, Money } from "@tpirs/domain";
 import { assetTypeId, tenantId as tenantRef } from "@tpirs/domain";
+import { cashModelOf, maxBalanceMinorOf } from "@tpirs/config";
 import { randomOpaqueId } from "@tpirs/crypto";
 import type {
   CashDepositRow,
@@ -120,6 +121,7 @@ export class CollectorCashService {
   constructor(private readonly deps: CollectorCashServiceDeps) {
     this.wallets = new CashWalletService({
       db: deps.db,
+      loadConfig: deps.loadConfig,
       ...(deps.now === undefined ? {} : { now: deps.now }),
     });
   }
@@ -205,6 +207,12 @@ export class CollectorCashService {
     readonly tenantId: string;
     readonly collectorUserId: string;
     readonly provider: string;
+    /**
+     * Replace an existing destination. A plain repeat returns the live one
+     * (ADR 0069): a double-click must not create a second terminal and leave the
+     * first orphaned and still creditable.
+     */
+    readonly rotate?: boolean;
   }): Promise<CollectorDepositInstructionRow> {
     if (this.deps.providerFor === undefined) {
       throw new PortError("PaymentProvider", "not_found", "no payment providers are configured");
@@ -224,10 +232,40 @@ export class CollectorCashService {
         `Provider "${input.provider}" does not offer collector deposit attribution`,
       );
     }
+    const config = await this.requireConfig(input.tenantId);
+
+    const active = await withTenant(this.deps.db, input.tenantId, async (tx) =>
+      repositories(tx).collectorCash.findActiveInstructionForCollector(
+        input.tenantId,
+        input.collectorUserId,
+        input.provider,
+      ),
+    );
+    if (active !== undefined && input.rotate !== true) return active;
+
+    const profile = await withTenant(this.deps.db, input.tenantId, async (tx) =>
+      repositories(tx).users.findById(input.collectorUserId),
+    );
+
     const attribution = await adapter.createDepositAttribution({
+      tenantId: input.tenantId,
       collectorUserId: input.collectorUserId,
       idempotencyKey: `cash:${input.tenantId}:${input.collectorUserId}:${randomOpaqueId()}`,
+      // The terminal name is what the collector and support see at the gateway.
+      name: `${config.identity.name} — ${profile?.displayName ?? "Collector"}`,
+      ...(profile?.phone === undefined || profile.phone === null ? {} : { phone: profile.phone }),
+      currency: config.locale.currency,
     });
+
+    const details = {
+      ...(attribution.accountNumber === undefined
+        ? {}
+        : { accountNumber: attribution.accountNumber }),
+      ...(attribution.accountName === undefined ? {} : { accountName: attribution.accountName }),
+      ...(attribution.bank === undefined ? {} : { bank: attribution.bank }),
+      ...(attribution.pageUrl === undefined ? {} : { pageUrl: attribution.pageUrl }),
+      ...(attribution.currency === undefined ? {} : { currency: attribution.currency }),
+    };
 
     return withTenant(this.deps.db, input.tenantId, async (tx) => {
       const repos = repositories(tx);
@@ -236,6 +274,13 @@ export class CollectorCashService {
         input.collectorUserId,
         input.provider,
       );
+      if (previous !== undefined && input.rotate !== true) {
+        // Another request provisioned while this one was talking to the gateway.
+        // Keep the one that won, and turn off the terminal this call created so
+        // two live destinations never exist for one collector.
+        await adapter.deactivateDepositAttribution?.(attribution.value).catch(() => undefined);
+        return previous;
+      }
       if (previous !== undefined) {
         await repos.collectorCash.revokeInstruction(input.tenantId, previous.id);
       }
@@ -244,7 +289,44 @@ export class CollectorCashService {
         provider: input.provider,
         reference: attribution.value,
         kind: attribution.kind,
+        details,
       });
+    });
+  }
+
+  /**
+   * Turns a collector's funding destination off (ADR 0069).
+   *
+   * Remote first: if the gateway refuses, the local row stays active, so a
+   * collector is never left with a number the app hides but the bank still
+   * credits. Deleting an account calls this before the tombstone.
+   */
+  async deactivateCollectorDepositInstruction(input: {
+    readonly tenantId: string;
+    readonly collectorUserId: string;
+    readonly provider?: string;
+  }): Promise<CollectorDepositInstructionRow> {
+    const instruction = await withTenant(this.deps.db, input.tenantId, async (tx) =>
+      repositories(tx).collectorCash.findActiveInstructionForCollector(
+        input.tenantId,
+        input.collectorUserId,
+        input.provider,
+      ),
+    );
+    if (instruction === undefined) {
+      throw new CashError(
+        "deposit_unknown",
+        "This collector has no active funding destination to deactivate.",
+      );
+    }
+    const adapter = this.deps.providerFor?.(instruction.provider);
+    await adapter?.deactivateDepositAttribution?.(instruction.reference);
+    return withTenant(this.deps.db, input.tenantId, async (tx) => {
+      const revoked = await repositories(tx).collectorCash.revokeInstruction(
+        input.tenantId,
+        instruction.id,
+      );
+      return revoked ?? instruction;
     });
   }
 
@@ -258,6 +340,7 @@ export class CollectorCashService {
     readonly tenantId: string;
     readonly collectorUserId: string;
     readonly provider?: string;
+    readonly rotate?: boolean;
   }): Promise<CollectorDepositInstructionRow> {
     const config = await this.requireConfig(input.tenantId);
     const provider =
@@ -273,6 +356,7 @@ export class CollectorCashService {
       tenantId: input.tenantId,
       collectorUserId: input.collectorUserId,
       provider,
+      ...(input.rotate === undefined ? {} : { rotate: input.rotate }),
     });
   }
 
@@ -325,11 +409,11 @@ export class CollectorCashService {
    * One arriving deposit webhook, resolved against the collector's deposit
    * instructions before any payment attribution happens (ADR 0032).
    *
-   * Returns `undefined` when the reference is not a deposit instruction, so
-   * the payment flow continues. A recognised deposit always inserts the
-   * `cash_deposits` row; the ledger only moves when the deposit actually
-   * covers open intakes. An over-deposit or an unmatched one stays in
-   * suspense with no posting (D35), exactly like gateway suspense.
+   * Returns `undefined` when the destination is not a deposit instruction, so
+   * the payment flow continues. Under `postpaid` the ledger only moves when the
+   * deposit actually covers open intakes, and an over-deposit waits in suspense
+   * (D35). Under `prepaid` (ADR 0069) the deposit is the point: it credits the
+   * wallet gross, regardless of open intakes.
    */
   async ingestDeposit(input: {
     readonly tenantId: string;
@@ -341,9 +425,17 @@ export class CollectorCashService {
      * every transfer (migration 0013).
      */
     readonly webhookEventId?: string | null;
+    /**
+     * The instruction the caller already resolved. The webhook pipeline finds it
+     * by the terminal code before calling this; passing it in avoids a second
+     * lookup that could disagree about which destination received the money.
+     */
+    readonly instruction?: CollectorDepositInstructionRow;
     readonly event: {
       readonly providerEventId: string;
       readonly providerReference: string;
+      /** The destination the gateway named (a terminal code), when it did. */
+      readonly attributionKey?: string;
       readonly amount: Money;
       readonly status: "success" | "failed";
     };
@@ -359,18 +451,19 @@ export class CollectorCashService {
       repos,
     }: LedgerContext): Promise<CashDepositResult | undefined> => {
       const tenantId = input.tenantId;
-      const instruction = await repos.collectorCash.findActiveInstruction(
-        tenantId,
-        input.provider,
-        input.event.providerReference,
-      );
+      // The destination is the terminal code when the gateway named one, and
+      // the transaction reference otherwise (narration/virtual-account rails).
+      const destination = input.event.attributionKey ?? input.event.providerReference;
+      const instruction =
+        input.instruction ??
+        (await repos.collectorCash.findActiveInstruction(tenantId, input.provider, destination));
       if (instruction === undefined) {
         return undefined;
       }
 
       const { deposit, existed } = await repos.collectorCash.insertDepositIfAbsent(tenantId, {
         provider: input.provider,
-        providerReference: input.event.providerReference,
+        providerReference: destination,
         amountMinor: BigInt(input.event.amount.amount),
         currency: input.event.amount.currency,
         collectorUserId: instruction.collectorUserId,
@@ -393,12 +486,64 @@ export class CollectorCashService {
         return this.depositResult(repos, deposit, false, "suspense");
       }
 
+      const depositMinor = BigInt(input.event.amount.amount);
+
+      // Prepaid: the transfer is the funding event. Credit the wallet gross and
+      // say so; the gateway fee is expensed when the settlement line posts.
+      if (cashModelOf(input.config.cashRules) === "prepaid") {
+        const beforeMinor = await repos.ledger.collectorCashBalance(tenantId, collector);
+        await ledger.postTransaction(tenantId, {
+          idempotencyKey: `topup:${deposit.id}`,
+          postings: [
+            {
+              accountCode: "GATEWAY_CLEARING",
+              direction: "debit",
+              amount: money(input.event.amount.currency, Number(depositMinor)),
+              collectorUserId: collector,
+            },
+            {
+              accountCode: "COLLECTOR_CASH",
+              direction: "credit",
+              amount: money(input.event.amount.currency, Number(depositMinor)),
+              collectorUserId: collector,
+            },
+          ],
+          sourceType: "cash_deposit",
+          sourceId: deposit.id,
+          description: `Float top-up received via ${input.provider}`,
+        });
+        // The transfer has already arrived, so an over-cap top-up is credited
+        // and flagged rather than refused; finance sees it in the audit trail.
+        if (
+          exceedsMaxBalance({
+            balanceMinor: Number(beforeMinor),
+            topUpMinor: Number(depositMinor),
+            maxBalanceMinor: maxBalanceMinorOf(input.config.cashRules),
+          })
+        ) {
+          await repos.audit.record({
+            tenantId,
+            actorUserId: null,
+            action: "cash.topup.over_cap",
+            entityType: "cash_deposit",
+            entityId: deposit.id,
+            before: { collectorUserId: collector, balanceMinor: beforeMinor.toString() },
+            after: {
+              collectorUserId: collector,
+              amountMinor: depositMinor.toString(),
+              maxBalanceMinor: String(maxBalanceMinorOf(input.config.cashRules)),
+            },
+          });
+        }
+        await repos.collectorCash.setDepositOutcome(tenantId, deposit.id, { status: "matched" });
+        return this.depositResult(repos, deposit, false, "matched");
+      }
+
       // Oldest open intake first, with partial coverage allowed. A deposit
       // larger than the open intakes posts nothing at all: the surplus waits
       // in suspense until an intake can cover it (D35), so the day-close
       // arithmetic stays "intake minus posted deposits equals balance".
       const totalRemaining = await this.remainingOpenTotal(repos, tenantId, collector);
-      const depositMinor = BigInt(input.event.amount.amount);
       if (depositMinor > totalRemaining || totalRemaining === 0n) {
         return this.depositResult(repos, deposit, false, "suspense");
       }
@@ -720,14 +865,24 @@ export class CollectorCashService {
       );
     }
 
-    // 3. The float ceiling is per collector, with an optional override on the
-    //    wallet row. The balance is derived, never stored (ADR 0031).
-    const ceilingMinor = wallet.floatCeilingMinor ?? BigInt(config.cashRules.floatCeilingMinor);
+    // 3. The guard is per tenant model (ADR 0069): postpaid caps the cash the
+    //    collector may hold, prepaid caps how far the position may cross zero.
+    //    A per-wallet ceiling override still wins under postpaid. The balance is
+    //    derived, never stored (ADR 0031).
+    const model = cashModelOf(config.cashRules);
+    const limitMinor =
+      model === "prepaid"
+        ? config.cashRules.intakeGuard === "grace"
+          ? (config.cashRules.graceMinor ?? 0)
+          : 0
+        : Number(wallet.floatCeilingMinor ?? BigInt(config.cashRules.floatCeilingMinor));
     const balanceMinor = await repos.ledger.collectorCashBalance(tenantId, input.collectorUserId);
-    assertWithinCeiling({
+    assertIntakeAllowed({
+      model,
       balanceMinor: Number(balanceMinor),
       intakeMinor: input.amount.amount,
-      ceilingMinor: Number(ceilingMinor),
+      ceilingMinor: limitMinor,
+      graceMinor: limitMinor,
     });
 
     // 4. Settle the day through the same engine a gateway payment uses.
@@ -758,6 +913,9 @@ export class CollectorCashService {
       amountMinor: BigInt(input.amount.amount),
       currency: input.amount.currency,
       receiptNumber,
+      // Prepaid intakes are paid by the wallet at the moment they happen; there
+      // is no deposit to wait for, so they never sit in the overdue sweep.
+      ...(model === "prepaid" ? { status: "matched" as const } : {}),
       obligationPeriodId: daySettled.period?.id ?? null,
       transactionId: daySettled.walletTransaction?.id ?? null,
     });

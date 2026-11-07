@@ -185,7 +185,11 @@ export function createWorker(deps: WorkerDeps): Worker {
   // twice changes nothing, which is why it needs no queue and no retries.
   const cashSweeper = createCashDeadlineSweeper({
     db,
-    cash: createCashWalletService({ db, ...(deps.now === undefined ? {} : { now: deps.now }) }),
+    cash: createCashWalletService({
+      db,
+      loadConfig: configFor,
+      ...(deps.now === undefined ? {} : { now: deps.now }),
+    }),
     telemetry,
     ...(deps.now === undefined ? {} : { now: deps.now }),
   });

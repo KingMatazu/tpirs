@@ -28,6 +28,7 @@ export type CashErrorCode =
   | "cash_disabled"
   | "wallet_frozen"
   | "ceiling_exceeded"
+  | "insufficient_float"
   | "already_paid"
   | "amount_mismatch"
   | "duplicate_reference"
@@ -118,8 +119,80 @@ export function assertWithinCeiling(input: CeilingInput): void {
   }
 }
 
-export type DepositClassification = "matched" | "partial" | "surplus";
+/** How a tenant's wallet is funded (ADR 0069). */
+export type CashModel = "postpaid" | "prepaid";
 
+export interface IntakeAllowanceInput {
+  readonly model: CashModel;
+  /**
+   * Signed derived position, minor units: positive means the collector holds
+   * the State's cash, negative means the platform holds the collector's credit.
+   */
+  readonly balanceMinor: number;
+  /** The intake being attempted, minor units; must be positive. */
+  readonly intakeMinor: number;
+  /** Postpaid: the undeposited-cash ceiling; must be non-negative. */
+  readonly ceilingMinor: number;
+  /** Prepaid: how far the position may cross zero; 0 is the hard guard. */
+  readonly graceMinor: number;
+}
+
+/**
+ * Whether a cash intake is allowed under the tenant's model.
+ *
+ * - postpaid: `balance + intake <= ceiling` — the ceiling caps the State's
+ *   exposure, exactly as `assertWithinCeiling` has always done.
+ * - prepaid: `balance + intake <= grace` — a collector with no credit cannot
+ *   take cash, and the hard guard (grace 0) refuses even the first unit past
+ *   zero. Credit is a negative balance, so a collector holding ₦50,000 of credit
+ *   can take up to ₦50,000.
+ *
+ * One function for both models keeps the API, the phone and the server on the
+ * same number; they each pass the config-derived ceiling or grace.
+ */
+export function assertIntakeAllowed(input: IntakeAllowanceInput): void {
+  const { model, balanceMinor, intakeMinor, ceilingMinor, graceMinor } = input;
+  if (!Number.isSafeInteger(balanceMinor)) {
+    throw new CashError("invalid_amount", `Balance ${balanceMinor} is not a safe integer`);
+  }
+  if (!Number.isSafeInteger(intakeMinor) || intakeMinor <= 0) {
+    throw new CashError("invalid_amount", `Intake ${intakeMinor} must be a positive integer`);
+  }
+  if (model === "postpaid") {
+    assertWithinCeiling({ balanceMinor, intakeMinor, ceilingMinor });
+    return;
+  }
+  if (!Number.isSafeInteger(graceMinor) || graceMinor < 0) {
+    throw new CashError("invalid_amount", `Grace ${graceMinor} must be a non-negative integer`);
+  }
+  if (balanceMinor + intakeMinor > graceMinor) {
+    throw new CashError(
+      "insufficient_float",
+      `Insufficient float: position ${balanceMinor}, intake ${intakeMinor}, allowed ${graceMinor}`,
+    );
+  }
+}
+
+/**
+ * Whether a top-up would push a collector's prepaid credit past the configured
+ * maximum balance.
+ *
+ * The transfer has already arrived when this is asked, so it never refuses:
+ * finance gets an alert and the wallet is credited anyway. The check exists so
+ * the cap is measured, not assumed.
+ */
+export function exceedsMaxBalance(input: {
+  readonly balanceMinor: number;
+  readonly topUpMinor: number;
+  readonly maxBalanceMinor: number;
+}): boolean {
+  const { balanceMinor, topUpMinor, maxBalanceMinor } = input;
+  if (!Number.isSafeInteger(topUpMinor) || topUpMinor <= 0) return false;
+  if (!Number.isSafeInteger(maxBalanceMinor) || maxBalanceMinor <= 0) return false;
+  return topUpMinor - balanceMinor > maxBalanceMinor;
+}
+
+export type DepositClassification = "matched" | "partial" | "surplus";
 export interface DepositInput {
   /** The deposit that arrived, minor units; must be positive. */
   readonly depositMinor: number;

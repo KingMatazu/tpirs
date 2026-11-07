@@ -271,6 +271,13 @@ export function defaultTenantConfig(input: TenantConfigDefaultsInput): TenantCon
       floatCeilingMinor: input.cashFloatCeilingMinor ?? 5_000_000,
       depositDeadlineHours: input.depositDeadlineHours ?? 24,
       freezeOnShortfall: true,
+      // ADR 0069. A new tenant starts postpaid, which is the model every
+      // existing configuration already behaved under.
+      model: "postpaid",
+      maxBalanceMinor: 5_000_000,
+      intakeGuard: "hard",
+      graceMinor: 0,
+      funding: "virtual_terminal",
     },
     collectors: { nationalIdPattern: DEFAULT_NATIONAL_ID_PATTERN },
     payments: { underpaymentPolicy: input.underpaymentPolicy ?? "wallet" },

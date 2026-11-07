@@ -1,5 +1,6 @@
 import { sql } from "kysely";
 import type { Transaction } from "kysely";
+import { jsonb } from "../connection.js";
 import type { Database } from "../connection.js";
 
 export type {
@@ -313,12 +314,14 @@ export class CollectorCashRepository {
       collectorUserId: string;
       provider: string;
       reference: string;
-      kind: "virtual_account" | "narration";
+      kind: "virtual_account" | "narration" | "virtual_terminal";
+      details?: Readonly<Record<string, unknown>>;
     },
   ): Promise<CollectorDepositInstructionRow> {
+    const { details, ...rest } = params;
     return this.db
       .insertInto("collectorDepositInstructions")
-      .values({ tenantId, ...params })
+      .values({ tenantId, ...rest, details: jsonb(details ?? {}) })
       .returningAll()
       .executeTakeFirstOrThrow();
   }
@@ -355,6 +358,8 @@ export class CollectorCashRepository {
       amountMinor: bigint;
       currency: string;
       receiptNumber: string;
+      /** Prepaid intakes are settled on arrival, so they start `matched`. */
+      status?: "open" | "matched";
       obligationPeriodId?: string | null;
       transactionId?: string | null;
     },
@@ -381,6 +386,7 @@ export class CollectorCashRepository {
         amountMinor: params.amountMinor,
         currency: params.currency,
         receiptNumber: params.receiptNumber,
+        ...(params.status === undefined ? {} : { status: params.status }),
         obligationPeriodId: params.obligationPeriodId ?? null,
         transactionId: params.transactionId ?? null,
       })

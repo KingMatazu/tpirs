@@ -509,22 +509,31 @@ describeIntegration("CollectorCashService (integration)", () => {
     return { tenant, instruction, intake, webhook, ...after };
   }
 
-  it("provisions a deposit instruction from the adapter and rotates it", async () => {
+  it("provisions once, returns the live instruction, and rotates only on request", async () => {
     const tenant = await makeTenant();
     const first = await service.provisionDepositInstruction({
       tenantId: tenant.tenantId,
       collectorUserId: tenant.collectorUserId,
       provider: "mock",
     });
-    expect(first.kind).toBe("narration");
-    expect(first.reference).toMatch(/^cash-dep-/);
+    expect(first.kind).toBe("virtual_terminal");
+    expect(first.reference).toMatch(/^VT_MOCK_/);
 
-    const second = await service.provisionDepositInstruction({
+    // A double click must not create a second terminal (ADR 0069).
+    const repeat = await service.provisionDepositInstruction({
       tenantId: tenant.tenantId,
       collectorUserId: tenant.collectorUserId,
       provider: "mock",
     });
-    expect(second.id).not.toBe(first.id);
+    expect(repeat.id).toBe(first.id);
+
+    const rotated = await service.provisionDepositInstruction({
+      tenantId: tenant.tenantId,
+      collectorUserId: tenant.collectorUserId,
+      provider: "mock",
+      rotate: true,
+    });
+    expect(rotated.id).not.toBe(first.id);
     const active = await withTenant(db, tenant.tenantId, async (tx) =>
       repositories(tx).collectorCash.findActiveInstructionForCollector(
         tenant.tenantId,
@@ -532,7 +541,7 @@ describeIntegration("CollectorCashService (integration)", () => {
         "mock",
       ),
     );
-    expect(active?.id).toBe(second.id);
+    expect(active?.id).toBe(rotated.id);
   });
 
   it("matches a deposit webhook, clears the float and covers the intake", async () => {
