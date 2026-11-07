@@ -16,7 +16,11 @@ export interface CreateDisputeInput {
   readonly tenantId: string;
   readonly clientDisputeId: string;
   readonly reason: string;
-  readonly description: string;
+  /**
+   * The officer's own words. Optional on purpose: the reason alone is enough to
+   * open a dispute, and the column stores an empty string when there is no note.
+   */
+  readonly description?: string;
   readonly occurredAt: Date | string;
   readonly officerUserId: string;
   readonly assetId?: string;
@@ -77,7 +81,7 @@ export class DisputeService {
         zoneId: input.zoneId ?? null,
         clientDisputeId: input.clientDisputeId,
         reason: input.reason,
-        description: input.description,
+        description: input.description ?? "",
         occurredAt,
         businessDate,
         latitude: input.latitude ?? null,

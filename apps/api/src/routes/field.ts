@@ -394,9 +394,6 @@ export function registerVerificationAndSyncRoutes(
       if (reason === undefined || reason.trim() === "") {
         return reply.code(400).send(badRequest(request, "reason required"));
       }
-      if (description === undefined || description.trim() === "") {
-        return reply.code(400).send(badRequest(request, "description required"));
-      }
       const evidence = parseEvidence(body.evidence);
 
       try {
@@ -404,7 +401,7 @@ export function registerVerificationAndSyncRoutes(
           tenantId: principal.tenantId,
           clientDisputeId,
           reason,
-          description,
+          description: description ?? "",
           occurredAt: body.occurredAt ?? new Date().toISOString(),
           officerUserId: principal.userId,
           zoneId: null,

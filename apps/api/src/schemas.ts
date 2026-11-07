@@ -1523,7 +1523,10 @@ export const listScansSchema: FastifySchema = {
 export const createDisputeSchema: FastifySchema = {
   body: {
     type: "object",
-    required: ["clientDisputeId", "reason", "description", "occurredAt"],
+    // `description` is deliberately optional: an officer on a cheap phone raises
+    // a dispute by picking a reason, and the office reads the reason and any
+    // photo. A note helps when there is one, but it never blocks the send.
+    required: ["clientDisputeId", "reason", "occurredAt"],
     properties: {
       clientDisputeId: { type: "string", pattern: UUID_SCHEMA_PATTERN },
       assetId: { type: "string" },

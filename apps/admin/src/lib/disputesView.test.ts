@@ -147,6 +147,11 @@ describe("disputeDetailRows", () => {
     );
   });
 
+  it("shows a dash when the officer sent no description", () => {
+    const rows = disputeDetailRows(toDisputeView({ ...raw, description: "" }), format);
+    expect(rows).toEqual(expect.arrayContaining([{ label: "Description", value: "—" }]));
+  });
+
   it("omits resolution lines until the row has a resolution", () => {
     const labels = disputeDetailRows(dispute, format).map((row) => row.label);
     expect(labels).not.toContain("Resolution note");

@@ -260,6 +260,23 @@ describeIntegration("api disputes (integration)", () => {
     expect((detail.json() as { dispute: { id: string } }).dispute.id).toBe(disputeId);
   });
 
+  it("accepts a dispute with no description, because the reason is enough", async () => {
+    const officer = await login("dsp.officer");
+    const created = await app.inject({
+      method: "POST",
+      url: "/v1/disputes",
+      headers: auth(officer),
+      payload: {
+        clientDisputeId: randomUUID(),
+        assetId,
+        reason: "already_paid",
+        occurredAt: "2026-06-15T10:05:00Z",
+      },
+    });
+    expect(created.statusCode).toBe(200);
+    expect((created.json() as { status: string }).status).toBe("open");
+  });
+
   it("filters by status and keeps a collector out", async () => {
     const auditor = await login("dsp.auditor");
     const empty = await app.inject({

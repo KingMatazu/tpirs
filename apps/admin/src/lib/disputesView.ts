@@ -218,7 +218,7 @@ export function disputeDetailRows(
     { label: "Asset", value: dispute.assetId },
     { label: "Zone", value: dispute.zoneId ?? "—" },
     { label: "Reason", value: dispute.reason },
-    { label: "Description", value: dispute.description },
+    { label: "Description", value: dispute.description === "" ? "—" : dispute.description },
     { label: "Opened by", value: dispute.openedByUserId },
   ];
   if (dispute.businessDate !== "") {

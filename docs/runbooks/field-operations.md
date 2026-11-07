@@ -20,7 +20,8 @@ Phase 6 field verification and offline operations are complete.
 
 ## Disputes
 
-- Create dispute with reason from config, description, optional photo (downscaled)
+- Create dispute with reason from config, optional description, optional photo (downscaled)
+- The reason is enough to submit; the description is a note the officer adds only when it helps
 - Photo attached as base64 in request, stored in object storage
 - Queued offline if network unavailable
 - Status remains OPEN until resolved in Phase 8

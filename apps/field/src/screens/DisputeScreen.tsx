@@ -43,10 +43,6 @@ export function DisputeScreen(
       setError(copy.dispute.needReason);
       return;
     }
-    if (description.trim() === "") {
-      setError(copy.dispute.needDescription);
-      return;
-    }
     setBusy(true);
     setError(undefined);
     try {

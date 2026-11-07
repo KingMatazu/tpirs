@@ -3565,7 +3565,7 @@ export interface paths {
                         assetId?: string;
                         reference?: string;
                         reason: string;
-                        description: string;
+                        description?: string;
                         occurredAt: string;
                         latitude?: number;
                         longitude?: number;

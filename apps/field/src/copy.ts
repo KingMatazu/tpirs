@@ -111,8 +111,8 @@ export const copy = {
     title: "Raise a dispute",
     for: "About",
     reasonLabel: "What happened?",
-    descriptionLabel: "What did you see?",
-    descriptionHint: "A sentence or two. The office reads this, not the driver.",
+    descriptionLabel: "What did you see? (optional)",
+    descriptionHint: "Add a note only if it helps the office. Picking a reason is enough.",
     photoLabel: "Photo (optional)",
     photoHint: "The sticker, the vehicle or the situation.",
     photoTooLarge:
@@ -120,7 +120,6 @@ export const copy = {
     submit: "Send dispute",
     submitting: "Sending…",
     needReason: "Pick what happened.",
-    needDescription: "Describe what you saw.",
     recorded: "Dispute sent to the office.",
     queued: "Dispute saved on this phone. It will upload when there is a connection.",
     queueFull: "This phone cannot hold any more. Tell your supervisor about this one now.",

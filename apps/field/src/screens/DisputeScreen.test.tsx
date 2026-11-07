@@ -38,11 +38,25 @@ describe("DisputeScreen", () => {
     expect(screen.queryByRole("button", { name: /technical issue/i })).toBeNull();
   });
 
-  it("will not send without a reason and a description", async () => {
+  it("will not send without a reason", async () => {
     renderScreen();
     fireEvent.click(screen.getByRole("button", { name: /send dispute/i }));
     expect(await screen.findByText(/pick what happened/i)).toBeTruthy();
     expect(recordDispute).not.toHaveBeenCalled();
+  });
+
+  it("sends on the reason alone, with no description typed", async () => {
+    vi.mocked(recordDispute).mockResolvedValue({ status: "recorded", disputeId: "d-1" });
+    renderScreen();
+
+    fireEvent.click(screen.getByRole("button", { name: /already paid/i }));
+    fireEvent.click(screen.getByRole("button", { name: /send dispute/i }));
+
+    await waitFor(() => {
+      expect(recordDispute).toHaveBeenCalledWith(
+        expect.objectContaining({ reason: "already_paid", description: "" }),
+      );
+    });
   });
 
   it("sends the chosen reason and the officer's words", async () => {

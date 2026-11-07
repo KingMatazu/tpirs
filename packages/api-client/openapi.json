@@ -5468,7 +5468,6 @@
                 "required": [
                   "clientDisputeId",
                   "reason",
-                  "description",
                   "occurredAt"
                 ],
                 "properties": {
