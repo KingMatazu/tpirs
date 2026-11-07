@@ -2,44 +2,105 @@
 
 Park collectors who do not use the app take cash at the roadside. The platform
 records the intake, settles the day through the ordinary settlement path, and
-waits for the cash to reach the bank. Until that deposit lands, the collector
-holds money that belongs to the state — the **float**. This runbook covers the
-five things an operator does with it.
+knows exactly how much of the State's cash the collector is holding.
 
 Background: ADR 0031 (cash as a funding account), ADR 0032 (deposit
-attribution), ADR 0033 (float ceiling, deadline, freeze). Config lives under
-`cashRules` in the tenant config; nothing here is state-specific.
+attribution), ADR 0033 (float ceiling, deadline, freeze), ADR 0069 (Virtual
+Terminal funding and the prepaid model). Config lives under `cashRules` in the
+tenant config; nothing here is state-specific.
 
-| `cashRules` field      | Meaning                                                    |
-| ---------------------- | ---------------------------------------------------------- |
-| `enabled`              | Whether cash collection is allowed at all                  |
-| `floatCeilingMinor`    | Most cash one collector may hold; a wallet can override it |
-| `depositDeadlineHours` | How long an intake may stay open before it is a shortfall  |
-| `freezeOnShortfall`    | Whether a missed deadline freezes the wallet automatically |
+| `cashRules` field      | Meaning                                                                       |
+| ---------------------- | ----------------------------------------------------------------------------- |
+| `enabled`              | Whether cash collection is allowed at all                                     |
+| `floatCeilingMinor`    | Postpaid: most cash one collector may hold; a wallet can override it          |
+| `depositDeadlineHours` | Postpaid: how long an intake may stay open before it is a shortfall           |
+| `freezeOnShortfall`    | Postpaid: whether a missed deadline freezes the wallet automatically          |
+| `model`                | `postpaid` (default) or `prepaid` (ADR 0069)                                  |
+| `maxBalanceMinor`      | Prepaid: the most credit a collector may hold (default ₦50,000)               |
+| `intakeGuard`          | Prepaid: `hard` (default, no negative position) or `grace`                    |
+| `graceMinor`           | Prepaid with `grace`: how far an intake may cross zero                        |
+| `funding`              | The rail; only `virtual_terminal` today (`pay_with_transfer` is the fallback) |
 
-## 1. Provision a deposit instruction
+## Two models, one ledger
 
-A collector pays cash into a **dedicated destination**: a virtual account or a
-narration reference the bank and the gateway both recognise. The reference is
-minted by the payment adapter — never by core code — and exactly one
-instruction per `(collector, provider)` is active at a time.
+`COLLECTOR_CASH` is the State's asset, so the derived balance is **positive when
+the collector holds State cash** and **negative when the platform holds the
+collector's prepaid credit**.
+
+- **Postpaid** (the default): the collector takes cash first and deposits it by
+  `depositDeadlineHours`; `balance + intake <= floatCeilingMinor`, and a deposit
+  covers open intakes (suspense when it cannot).
+- **Prepaid** (ADR 0069): the collector funds the wallet first and each intake
+  draws it down. `balance + intake <= graceMinor` (0 under the hard guard). A
+  top-up credits the wallet regardless of open intakes, so there is no suspense.
+  Intakes are recorded `matched` immediately and never enter the deadline sweep.
+
+Switch a tenant by editing config — no deploy:
+
+```yaml
+cashRules:
+  enabled: true
+  floatCeilingMinor: 5000000
+  depositDeadlineHours: 24
+  freezeOnShortfall: true
+  model: prepaid
+  maxBalanceMinor: 5000000
+  intakeGuard: hard
+  graceMinor: 0
+  funding: virtual_terminal
+```
+
+## 0. Fund a prepaid wallet (Virtual Terminal)
+
+A pre-funded collector transfers **any amount, at any time** to a terminal's
+dedicated account. Paystack names the terminal in the webhook
+(`metadata.virtual_terminal.code`), which is how the credit is attributed.
+
+Provision or rotate from the dashboard: **Collectors → Open → Funding terminal**
+(permission `payment:manage`), or:
 
 ```sh
 POST /v1/cash/collectors/<collectorUserId>/deposit-instruction
 Authorization: Bearer <finance token>          # permission: payment:manage
 Content-Type: application/json
 
-{ "provider": "paystack" }
+{ "provider": "paystack", "rotate": true }
 ```
 
-The response carries `reference` and `kind` (`virtual_account` or
-`narration`). Hand the reference to the collector; they write it on every
-transfer. Calling the route again **rotates** the instruction: the previous one
-is revoked in the same transaction, so a stale reference can never resolve.
-Reissue only when the collector loses the reference or changes provider.
+The response carries `reference` (the `VT_…` code) and, where the market issues
+one, `accountNumber`, `accountName`, `bank` and `pageUrl`. The collector app's
+**Fund wallet** screen renders them with a copy button and a live balance.
 
-The portal's **Collectors → wallet** screen shows the deposit instruction next
-to the wallet once it exists.
+- A plain repeat returns the live terminal; only `"rotate": true` replaces it.
+  Rotation deactivates the old terminal at Paystack first, so an old number can
+  never keep crediting the collector.
+- Deactivate with `DELETE /v1/cash/collectors/<collectorUserId>/deposit-instruction`
+  (also part of the leaver procedure). A remote failure leaves the row active —
+  never a hidden destination the bank still credits.
+- Credit is **gross**: `Dr GATEWAY_CLEARING / Cr COLLECTOR_CASH`. The gateway fee
+  is expensed when the settlement line posts, so the collector gets the full
+  float and the State carries the fee (1% capped ₦300 on a terminal transfer).
+- The app polls the wallet every 5 seconds while **Fund wallet** is open. The
+  webhook credits in the same request that receives it; Paystack retries for 72
+  hours if a delivery is missed.
+- A transfer over `maxBalanceMinor` is still credited (the money has arrived),
+  audited as `cash.topup.over_cap`, and the wallet shows the excess. It is not a
+  reason to refuse the collector's money.
+
+**Paystack must be enabled for Virtual Terminals** on the pilot business, and the
+collector's dedicated NUBAN appears only where the market issues one. Without a
+NUBAN the app shows `pageUrl` instead. Neither is a code path: the API returns
+whichever fields exist.
+
+## 1. Provision a deposit instruction (postpaid or a second rail)
+
+The same route also provisions the older `virtual_account`/`narration`
+destinations for a provider that offers them. The reference is minted by the
+payment adapter — never by core code — and exactly one instruction per
+`(collector, provider)` is active at a time.
+
+The portal's **Collectors → Open → Funding terminal** card shows the destination
+next to the wallet once it exists.
 
 ## 2. Take cash (an intake)
 
@@ -75,9 +136,10 @@ record on a collector's behalf. What happens inside one transaction:
    window, the receipt SMS is queued through `channels.cashReceiptTemplate`.
 
 Refusals are stable codes: `wallet_frozen` and `already_paid` (409),
-`ceiling_exceeded` (409), `amount_mismatch` (400, wrong fee or currency),
-`asset_unknown` (404, forged or unknown sticker), `cash_disabled` (400).
-Nothing is written when the intake is refused.
+`ceiling_exceeded` (409, postpaid), `insufficient_float` (409, prepaid),
+`amount_mismatch` (400, wrong fee or currency), `asset_unknown` (404, forged or
+unknown sticker), `cash_disabled` (400). Nothing is written when the intake is
+refused.
 
 ## 3. Match a suspense deposit
 
@@ -193,13 +255,16 @@ where tenant_id = '<tenant-id>';
 
 ## Troubleshooting
 
-| Symptom                                           | Likely cause and next step                                                                                                                                             |
-| ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Deposit row exists with `status = 'suspense'`     | No open intake covered it, or the amount exceeded them. Match it manually once the intake exists, or check the currency (`deposits` in a foreign currency never post). |
-| A second deposit from the same collector vanished | It did not: look for two `cash_deposits` rows with the same `provider_reference` and different `webhook_event_id`. One event per transfer is the identity.             |
-| Collector cannot take cash                        | `wallet_frozen`: read `frozen_reason`, confirm the bank deposit, then finance unfreezes. `ceiling_exceeded`: the float is at the configured ceiling.                   |
-| Intake returns `already_paid`                     | The asset's day is already settled (gateway or another collector). Cash must not be credited twice for one day.                                                        |
-| Receipt SMS missing                               | Check `sms_log` for the intake id; delivery is retried by the outbox sweeper. Template comes from `channels.cashReceiptTemplate`.                                      |
+| Symptom                                           | Likely cause and next step                                                                                                                                                                                                               |
+| ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Deposit row exists with `status = 'suspense'`     | No open intake covered it, or the amount exceeded them. Match it manually once the intake exists, or check the currency (`deposits` in a foreign currency never post).                                                                   |
+| A second deposit from the same collector vanished | It did not: look for two `cash_deposits` rows with the same `provider_reference` and different `webhook_event_id`. One event per transfer is the identity.                                                                               |
+| Collector cannot take cash                        | Prepaid: `insufficient_float` — the wallet has no credit left; the collector funds it. Postpaid: `wallet_frozen` (read `frozen_reason`, confirm the deposit, finance unfreezes) or `ceiling_exceeded` (float at the configured ceiling). |
+| A top-up does not appear                          | Check `webhook_events` for the delivery and `cash_deposits` for a row whose `provider_reference` is the `VT_…` code. If the terminal has no NUBAN, the collector used a page the business has not enabled.                               |
+| A top-up credited the wrong collector             | The terminal code in `metadata.virtual_terminal.code` is the attribution. A code that belongs to no active instruction is ignored, never applied to a payment; find the transfer in Paystack and record it manually.                     |
+| `cash.topup.over_cap` in the audit trail          | The transfer exceeded `maxBalanceMinor`. The wallet was credited in full; the excess is visible to finance and no further top-up is needed until it is spent.                                                                            |
+| Intake returns `already_paid`                     | The asset's day is already settled (gateway or another collector). Cash must not be credited twice for one day.                                                                                                                          |
+| Receipt SMS missing                               | Check `sms_log` for the intake id; delivery is retried by the outbox sweeper. Template comes from `channels.cashReceiptTemplate`.                                                                                                        |
 
 ## Demo data
 

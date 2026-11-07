@@ -1336,3 +1336,37 @@ longer rides, or the buyer's vehicle is registered to someone unreachable.
 - Rejected: re-registering the vehicle (a new sticker invalidates the one on the
   bike and splits its history), letting `asset:manage` do it (collectors hold it
   for corrections), and a free-text owner field (cannot be verified or audited).
+
+---
+
+## D66: How does a collector fund a prepaid float
+
+**Status:** resolved (ADR 0069). One Virtual Terminal per collector; prepaid
+wallet; the State bears the gateway fee.
+
+The prepaid model needs a destination the collector can pay into with any amount
+at any time, attributed to them without a reference they type. A dedicated
+virtual account was blocked on BVN/eligibility, Pay with Transfer fixes the
+amount per charge, and a payment link carries no documented page identifier in
+the webhook.
+
+- Decision: `POST /virtual_terminal` per collector. The `VT_…` code is the
+  attribution key and, in Nigeria, the terminal's `paymentMethods` carries a
+  dedicated NUBAN the collector transfers to. `POST`/`DELETE
+/v1/cash/collectors/:id/deposit-instruction` provisions, rotates and
+  deactivates it; `"rotate": true` is required to replace a live terminal.
+- Decision: a top-up credits `COLLECTOR_CASH` gross through `GATEWAY_CLEARING`;
+  the fee is expensed at settlement. There is no suspense under prepaid.
+- Decision: `cashRules.model`, `maxBalanceMinor` (default ₦50,000),
+  `intakeGuard` (`hard` default) and `graceMinor` are tenant config with defaults
+  that preserve postpaid.
+- Decision: an inbound transfer over the maximum balance is credited and audited
+  (`cash.topup.over_cap`), never refused.
+- Consequence: the collector must initiate a bank transfer from an app or a
+  teller; Test Mode may return no NUBAN, so the app falls back to the terminal
+  page URL.
+- Open for the pilot: Virtual Terminal enablement and terminal limits on the
+  Paystack business, and whether a branch accepts a cash deposit into the NUBAN.
+- Rejected: a DVA per collector (blocked), PwT as primary (fixed amount),
+  Payment Links (undocumented attribution), one shared terminal (cannot name the
+  payer), and a stored balance column (the ledger remains the source of truth).
