@@ -33,6 +33,10 @@ function testConfig(
     disabled?: boolean;
     freezeOnShortfall?: boolean;
     depositDeadlineHours?: number;
+    model?: "postpaid" | "prepaid";
+    maxBalanceMinor?: number;
+    intakeGuard?: "hard" | "grace";
+    graceMinor?: number;
   } = {},
 ): TenantConfig {
   return validateTenantConfig({
@@ -98,6 +102,12 @@ function testConfig(
       floatCeilingMinor: options.ceilingMinor ?? 1_000_000,
       depositDeadlineHours: options.depositDeadlineHours ?? 8,
       freezeOnShortfall: options.freezeOnShortfall ?? true,
+      ...(options.model === undefined ? {} : { model: options.model }),
+      ...(options.maxBalanceMinor === undefined
+        ? {}
+        : { maxBalanceMinor: options.maxBalanceMinor }),
+      ...(options.intakeGuard === undefined ? {} : { intakeGuard: options.intakeGuard }),
+      ...(options.graceMinor === undefined ? {} : { graceMinor: options.graceMinor }),
     },
     payments: { underpaymentPolicy: "wallet" },
     featureFlags: { disputes: true, prepay: false, offlineMode: true, anomalyAlerts: true },
@@ -163,6 +173,10 @@ describeIntegration("CollectorCashService (integration)", () => {
       disabled?: boolean;
       freezeOnShortfall?: boolean;
       depositDeadlineHours?: number;
+      model?: "postpaid" | "prepaid";
+      maxBalanceMinor?: number;
+      intakeGuard?: "hard" | "grace";
+      graceMinor?: number;
     } = {},
   ): Promise<TenantFixture> {
     const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -508,6 +522,67 @@ describeIntegration("CollectorCashService (integration)", () => {
     });
     return { tenant, instruction, intake, webhook, ...after };
   }
+
+  it("funds a prepaid wallet, refuses at zero, and allows the intake after the top-up", async () => {
+    const tenant = await makeTenant({ model: "prepaid", maxBalanceMinor: 5_000_000 });
+    const instruction = await provisionInstruction(tenant);
+
+    // Hard guard: no credit means no cash may be taken.
+    await expect(service.recordIntake(baseInput(tenant))).rejects.toMatchObject({
+      code: "insufficient_float",
+    });
+
+    // The transfer is the funding event; it needs no open intake.
+    const webhook = await deliverDepositWebhook(tenant.tenantId, instruction?.reference ?? "", {
+      amount: 5_000_000,
+    });
+    expect(webhook.outcome).toBe("deposit_matched");
+    expect(await collectorBalance(tenant)).toBe(-5_000_000n);
+
+    const intake = await service.recordIntake(baseInput(tenant));
+    expect(intake.replayed).toBe(false);
+    expect(await collectorBalance(tenant)).toBe(-5_000_000n + BigInt(BIKE_FEE));
+
+    // Prepaid intakes are paid by the wallet and never wait for a deposit.
+    const intakeRow = await withTenant(db, tenant.tenantId, async (tx) =>
+      repositories(tx).collectorCash.findIntakeById(tenant.tenantId, intake.intakeId),
+    );
+    expect(intakeRow?.status).toBe("matched");
+  });
+
+  it("allows exactly the grace and refuses the next intake", async () => {
+    const tenant = await makeTenant({
+      model: "prepaid",
+      intakeGuard: "grace",
+      graceMinor: 25_000,
+    });
+
+    // The grace covers the fee; the position becomes +20,000.
+    const first = await service.recordIntake(baseInput(tenant));
+    expect(first.balanceMinor).toBe(BigInt(BIKE_FEE));
+
+    // A second day would take the position to +40,000, past the 25,000 grace.
+    await expect(
+      service.recordIntake({ ...baseInput(tenant), businessDate: businessDate("2026-06-16") }),
+    ).rejects.toMatchObject({ code: "insufficient_float" });
+  });
+
+  it("credits an over-cap top-up and audits it instead of refusing the money", async () => {
+    const tenant = await makeTenant({ model: "prepaid", maxBalanceMinor: 25_000 });
+    const instruction = await provisionInstruction(tenant);
+
+    const webhook = await deliverDepositWebhook(tenant.tenantId, instruction?.reference ?? "", {
+      amount: 50_000,
+    });
+    expect(webhook.outcome).toBe("deposit_matched");
+    expect(await collectorBalance(tenant)).toBe(-50_000n);
+
+    const audit = await withTenant(db, tenant.tenantId, async (tx) =>
+      repositories(tx).audit.search({ action: "cash.topup.over_cap" }),
+    );
+    expect(audit).toHaveLength(1);
+    expect(audit[0]?.entityType).toBe("cash_deposit");
+  });
 
   it("provisions once, returns the live instruction, and rotates only on request", async () => {
     const tenant = await makeTenant();
