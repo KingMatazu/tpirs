@@ -126,8 +126,10 @@ Idempotency-Key: cash-<collector>-<uuid>
 }
 ```
 
-A collector may only record their own intake; finance and supervisors may
-record on a collector's behalf. What happens inside one transaction:
+A collector may only record their own intake. A **zone supervisor** may record
+on a collector's behalf when the collector's phone cannot; **finance cannot take
+cash at all** (ADR 0070) — it reconciles the record and can reverse it through
+dual approval. What happens inside one transaction:
 
 1. the day is settled exactly as a gateway payment would
    (`Dr COLLECTOR_CASH / Cr ASSET_WALLET`, then the allocation to

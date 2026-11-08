@@ -162,13 +162,13 @@ describeIntegration("api collector cash (integration)", () => {
       const supervisorRole = await role("zone_supervisor", [
         "asset:read",
         "cash:read",
+        "cash:intake",
         "cash:freeze",
       ]);
       const financeRole = await role("finance_admin", [
         "payment:read",
         "payment:manage",
         "cash:read",
-        "cash:intake",
         "cash:deposit:read",
         "cash:deposit:match",
         "cash:freeze",
@@ -324,6 +324,40 @@ describeIntegration("api collector cash (integration)", () => {
       },
     });
     expect(response.statusCode).toBe(403);
+  });
+
+  it("lets a zone supervisor record for a collector, and refuses finance", async () => {
+    const supervisor = await login("cash.supervisor");
+    const allowed = await app.inject({
+      method: "POST",
+      url: "/v1/cash/intakes",
+      headers: { authorization: `Bearer ${supervisor}` },
+      payload: {
+        collectorUserId: otherCollectorId,
+        clientReference: `supervisor-${slug}`,
+        amountMinor: String(FEE_MINOR),
+        assetId,
+        businessDate: "2026-06-16",
+      },
+    });
+    expect(allowed.statusCode).toBe(200);
+
+    // Finance reconciles cash; it cannot take it, and no longer holds the
+    // permission at all (ADR 0070).
+    const finance = await login("cash.finance");
+    const denied = await app.inject({
+      method: "POST",
+      url: "/v1/cash/intakes",
+      headers: { authorization: `Bearer ${finance}` },
+      payload: {
+        collectorUserId: collectorId,
+        clientReference: `finance-${slug}`,
+        amountMinor: String(FEE_MINOR),
+        assetId,
+        businessDate: "2026-06-17",
+      },
+    });
+    expect(denied.statusCode).toBe(403);
   });
 
   it("lists only the caller's wallet for a collector, and refuses another wallet", async () => {

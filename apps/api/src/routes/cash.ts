@@ -239,10 +239,17 @@ export function registerCashRoutes(
         .code(400)
         .send(errorEnvelope("bad_request", "collectorUserId is required", request.id));
     }
-    // A collector takes cash in their own name; finance and supervisors may
-    // record on a collector's behalf, which is the admin form (Step 8).
-    if (collectorUserId !== principal.userId && !principal.permissions.includes("cash:freeze")) {
-      throw new ForbiddenError("A collector may only record their own cash intake", "cash:intake");
+    // Taking cash is a field act. Only the collector may draw down their own
+    // float; a zone supervisor may record on a collector's behalf when the
+    // collector's phone cannot. Finance reconciles cash but never takes it, and
+    // no longer holds `cash:intake` at all (ADR 0070).
+    const mayRecordForCollector =
+      collectorUserId === principal.userId || principal.roles.includes("zone_supervisor");
+    if (!mayRecordForCollector) {
+      throw new ForbiddenError(
+        "Only the collector, or a zone supervisor recording on their behalf, may take cash",
+        "cash:intake",
+      );
     }
 
     const amountMinor = parseMinor(body.amountMinor);

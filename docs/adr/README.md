@@ -72,3 +72,4 @@ Format: context, decision, consequences, alternatives considered.
 - [0067](./0067-sticker-qr-geometry-and-verify-url.md) The sticker QR scales to its box, and may carry a verify URL
 - [0068](./0068-refresh-cookie-samesite.md) The refresh cookie's SameSite is derived from the request
 - [0069](./0069-collector-virtual-terminal-funding.md) A Virtual Terminal per collector funds a prepaid float
+- [0070](./0070-finance-does-not-take-cash.md) Finance reconciles cash but never takes it
