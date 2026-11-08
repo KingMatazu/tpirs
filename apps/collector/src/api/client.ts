@@ -6,6 +6,11 @@ export function setCollectorToken(token: string | undefined): void {
   tokenReader = () => token;
 }
 
+/** The in-memory bearer, for the development-only simulator call. */
+export function collectorToken(): string | undefined {
+  return tokenReader();
+}
+
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "";
 
 /**

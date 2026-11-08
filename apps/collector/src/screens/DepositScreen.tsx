@@ -1,6 +1,15 @@
 import { useEffect, useState, type ReactElement } from "react";
 import { formatMoneyMinor } from "@tpirs/ui-tokens";
-import { Banner, Card, Screen, SecondaryButton } from "../components/ui.js";
+import {
+  Banner,
+  Card,
+  Field,
+  PrimaryButton,
+  Screen,
+  SecondaryButton,
+  inputClass,
+} from "../components/ui.js";
+import { collectorToken } from "../api/client.js";
 import { toBigInt } from "../lib/flow.js";
 import { useTenantConfig, useWallet } from "../lib/data.js";
 
@@ -24,6 +33,13 @@ export function DepositScreen(props: Readonly<{ onBack: () => void }>): ReactEle
   const deadlineHours = config?.cashRules.depositDeadlineHours ?? 24;
   const prepaid = view?.model === "prepaid";
   const [copied, setCopied] = useState(false);
+  // Development only: Paystack Test Mode cannot issue a terminal NUBAN, so the
+  // browser can credit the wallet through the API's dev route. Vite strips this
+  // branch from a production build (`import.meta.env.DEV` is false there).
+  const [simAmount, setSimAmount] = useState("20000");
+  const [simBusy, setSimBusy] = useState(false);
+  const [simMessage, setSimMessage] = useState<string | undefined>(undefined);
+  const [simError, setSimError] = useState<string | undefined>(undefined);
 
   // The webhook credits in the same request that receives it; this poll is what
   // turns that into a number the collector sees while standing there.
@@ -45,6 +61,47 @@ export function DepositScreen(props: Readonly<{ onBack: () => void }>): ReactEle
   const accountNumber = instruction?.accountNumber ?? null;
   const pageUrl = instruction?.pageUrl ?? null;
   const credit = toBigInt(view?.balanceMinor) < 0n ? -toBigInt(view?.balanceMinor) : 0n;
+
+  const simulate = async (): Promise<void> => {
+    const major = Number(simAmount);
+    if (!Number.isFinite(major) || major <= 0) {
+      setSimError("Enter a positive amount.");
+      return;
+    }
+    setSimBusy(true);
+    setSimError(undefined);
+    setSimMessage(undefined);
+    try {
+      const token = collectorToken();
+      const response = await fetch("/v1/dev/collector-topup", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          ...(token === undefined ? {} : { authorization: `Bearer ${token}` }),
+        },
+        body: JSON.stringify({ amountMinor: String(Math.round(major * 100)) }),
+      });
+      const body = (await response.json()) as {
+        availableMinor?: string;
+        error?: { message?: string };
+      };
+      if (!response.ok) {
+        throw new Error(body.error?.message ?? "The simulation was refused.");
+      }
+      await wallet.refetch();
+      setSimMessage(
+        `Credited. Float available is now ${formatMoneyMinor(
+          body.availableMinor ?? "0",
+          currency,
+          numberFormat,
+        )}.`,
+      );
+    } catch (error) {
+      setSimError(error instanceof Error ? error.message : "The simulation failed.");
+    } finally {
+      setSimBusy(false);
+    }
+  };
 
   const copy = async (): Promise<void> => {
     if (accountNumber === null) return;
@@ -148,7 +205,9 @@ export function DepositScreen(props: Readonly<{ onBack: () => void }>): ReactEle
 
       {prepaid ? (
         <Banner tone="info">
-          The transfer is credited gross. The gateway fee is the State&apos;s, not yours.
+          On a live deployment the collector sends a bank transfer to that account from any bank
+          app; Paystack credits this wallet within seconds, and the State pays the gateway fee.
+          Until then, use the simulator below to see the credit.
         </Banner>
       ) : (
         <Banner tone="info">
@@ -156,6 +215,40 @@ export function DepositScreen(props: Readonly<{ onBack: () => void }>): ReactEle
           and restores your float.
         </Banner>
       )}
+
+      {import.meta.env.DEV && prepaid ? (
+        <Card>
+          <p className="text-sm font-medium text-slate-900">Developer tools</p>
+          <p className="mt-1 text-xs text-slate-500">
+            Credits this wallet as if the transfer had arrived — no real money moves. This panel is
+            stripped from a production build.
+          </p>
+          <div className="mt-3 space-y-3">
+            <Field label={`Amount (${currency})`}>
+              <input
+                className={inputClass}
+                inputMode="decimal"
+                value={simAmount}
+                onChange={(event) => {
+                  setSimAmount(event.target.value);
+                }}
+              />
+            </Field>
+            <PrimaryButton
+              disabled={simBusy}
+              onClick={() => {
+                void simulate();
+              }}
+            >
+              {simBusy ? "Crediting…" : "Simulate top-up"}
+            </PrimaryButton>
+            {simMessage === undefined ? null : (
+              <p className="text-xs text-emerald-700">{simMessage}</p>
+            )}
+            {simError === undefined ? null : <p className="text-xs text-red-600">{simError}</p>}
+          </div>
+        </Card>
+      ) : null}
     </Screen>
   );
 }

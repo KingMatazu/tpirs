@@ -27,6 +27,7 @@ import { registerVerificationAndSyncRoutes } from "./routes/field.js";
 import { registerWebhookRoutes } from "./routes/webhooks.js";
 import { registerPaymentRoutes } from "./routes/payments.js";
 import { registerCashRoutes } from "./routes/cash.js";
+import { registerDevRoutes } from "./routes/dev.js";
 import { registerChannelRoutes } from "./routes/channels.js";
 import { registerAuditRoutes } from "./routes/audit.js";
 import { registerReconciliationRoutes } from "./routes/reconciliation.js";
@@ -217,6 +218,12 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     if (options.services !== undefined) {
       registerPaymentRoutes(app, { services: options.services });
       registerCashRoutes(app, { services: options.services });
+      // Local development only: Test Mode cannot issue a terminal NUBAN, so
+      // the browser simulates the transfer. Absent from a production build.
+      registerDevRoutes(app, {
+        services: options.services,
+        enabled: config.nodeEnv !== "production",
+      });
       registerReversalRoutes(app, { services: options.services });
       if (options.loadConfig !== undefined) {
         registerReconciliationRoutes(app, {

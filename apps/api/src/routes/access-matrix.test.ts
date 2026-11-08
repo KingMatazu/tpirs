@@ -57,6 +57,9 @@ const AUTHENTICATED: Readonly<Record<string, string>> = {
   // only writing it needs tenant:configure. The config holds secret references,
   // never secret values.
   "GET /v1/tenants/current/config": "any signed-in staff member renders screens from it",
+  // Local development only (NODE_ENV !== production): credits the caller's own
+  // funding destination so the wallet can be exercised without a live gateway.
+  "POST /v1/dev/collector-topup": "development-only wallet simulator",
 };
 
 /** The permission each protected route must demand, keyed by `METHOD path`. */
