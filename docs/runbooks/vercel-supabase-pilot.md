@@ -58,22 +58,23 @@ Import the repository as a new Vercel project:
 
 Environment variables (Production, and Preview if you want previews):
 
-| Variable                              | Value                                                                                                                                                       |
-| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `DATABASE_URL`                        | the **port 6543** pooler URL with `?sslmode=require`                                                                                                        |
-| `DB_POOL_MAX`                         | `1`                                                                                                                                                         |
-| `SECRET_QR_TOKEN_SIGNING_KEY`         | a new random secret, 32+ bytes; rotating it invalidates printed stickers                                                                                    |
-| `SETUP_TOKEN`                         | a new random secret; **required**, or production refuses first-run setup                                                                                    |
-| `CORS_ORIGINS`                        | the three frontend origins, comma-separated (set after step 3, then redeploy)                                                                               |
-| `REFRESH_COOKIE_SAMESITE`             | optional — derived from `CORS_ORIGINS` (ADR 0068); leave it unset                                                                                           |
-| `TRUST_PROXY`                         | `true`                                                                                                                                                      |
-| `OBJECT_STORAGE_ADAPTER`              | `mock` (see step 7)                                                                                                                                         |
-| `METRICS_ENABLED`                     | `false`                                                                                                                                                     |
-| `REQUIRE_STAFF_TOTP`                  | `false`                                                                                                                                                     |
-| `PUBLIC_VERIFY_BASE_URL`              | optional; leave empty until the public verify page ships (ADR 0067)                                                                                         |
-| `SECRET_PAYMENTS_PAYSTACK_SECRET_KEY` | Paystack integration secret (`sk_test_…` now, `sk_live_…` at go-live). Also signs webhooks; unset disables terminal funding and refuses webhooks (ADR 0069) |
-| `PAYSTACK_DEFAULT_EMAIL`              | payer email for hosted checkout (driver-direct). Optional while driver-direct is off                                                                        |
-| `DEPLOYMENT_REGION`                   | e.g. `katsina-pilot`                                                                                                                                        |
+| Variable                              | Value                                                                                                                                                                          |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `DATABASE_URL`                        | the **port 6543** pooler URL with `?sslmode=require`                                                                                                                           |
+| `DB_POOL_MAX`                         | `1`                                                                                                                                                                            |
+| `SECRET_QR_TOKEN_SIGNING_KEY`         | a new random secret, 32+ bytes; rotating it invalidates printed stickers                                                                                                       |
+| `SETUP_TOKEN`                         | a new random secret; **required**, or production refuses first-run setup                                                                                                       |
+| `CORS_ORIGINS`                        | the three frontend origins, comma-separated (set after step 3, then redeploy)                                                                                                  |
+| `REFRESH_COOKIE_SAMESITE`             | optional — derived from `CORS_ORIGINS` (ADR 0068); leave it unset                                                                                                              |
+| `TRUST_PROXY`                         | `true`                                                                                                                                                                         |
+| `OBJECT_STORAGE_ADAPTER`              | `mock` (see step 7)                                                                                                                                                            |
+| `METRICS_ENABLED`                     | `false`                                                                                                                                                                        |
+| `REQUIRE_STAFF_TOTP`                  | `false`                                                                                                                                                                        |
+| `PUBLIC_VERIFY_BASE_URL`              | optional; leave empty until the public verify page ships (ADR 0067)                                                                                                            |
+| `SECRET_PAYMENTS_PAYSTACK_SECRET_KEY` | Paystack integration secret (`sk_test_…` now, `sk_live_…` at go-live). Also signs webhooks; unset disables terminal funding and refuses webhooks (ADR 0069)                    |
+| `PAYSTACK_DEFAULT_EMAIL`              | payer email for hosted checkout (driver-direct). Optional while driver-direct is off                                                                                           |
+| `DEV_TOOLS_ENABLED`                   | `true` only for a hosted demo: mounts `POST /v1/dev/collector-topup`, which mints float. **Unset before live money.** Pair with `VITE_DEV_TOOLS=true` on the collector project |
+| `DEPLOYMENT_REGION`                   | e.g. `katsina-pilot`                                                                                                                                                           |
 
 `NODE_ENV` is `production` on Vercel; that is what makes the refresh cookie
 `Secure`, and what makes an unset `SETUP_TOKEN` disable setup. Do not override it.
@@ -102,6 +103,13 @@ The `VITE_API_BASE_URL` value must match the API origin exactly (scheme + host,
 no trailing slash). It is read at build time, so set it before the first build
 and redeploy after changing it. Each build also builds the workspace packages it
 imports (`pnpm --filter @tpirs/<app>... build`).
+
+For a hosted **demo** of the collector wallet, set `VITE_DEV_TOOLS=true` on
+`tpirs-collector` and `DEV_TOOLS_ENABLED=true` on `tpirs-api`. The collector's
+**Fund wallet** screen then shows a "Developer tools" card that credits the
+wallet without money arriving. Both are build/runtime settings for the demo
+only — remove them before the deployment handles real money, because either one
+is enough surface for a collector to mint their own float.
 
 `tpirs-admin` also carries the addresses the account handover card prints, so an
 administrator can tell a new officer where to sign in:

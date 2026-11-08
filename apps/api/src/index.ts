@@ -71,6 +71,7 @@ function loadConfig(): AppConfig {
       ? {}
       : { setupToken: process.env.SETUP_TOKEN.trim() }),
     trustProxy: process.env.TRUST_PROXY === "true",
+    devTools: process.env.DEV_TOOLS_ENABLED === "true",
   };
 }
 
@@ -87,6 +88,17 @@ async function main(): Promise<void> {
     forwardSpans: false,
   });
   const telemetry = metrics;
+  if (config.devTools === true && config.nodeEnv === "production") {
+    // Loud on purpose: this route can credit a collector's wallet without money
+    // arriving, so a live deployment must never carry it.
+    telemetry.log(
+      "warn",
+      "DEV_TOOLS_ENABLED is on in production: wallet simulation can mint float",
+      {
+        setting: "DEV_TOOLS_ENABLED",
+      },
+    );
+  }
   const objectStorage = buildObjectStorage(process.env);
   telemetry.log("info", "object storage adapter ready", {
     adapter: process.env.OBJECT_STORAGE_ADAPTER ?? "s3",

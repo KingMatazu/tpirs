@@ -33,6 +33,13 @@ export interface AppConfig {
   readonly setupToken?: string;
   /** Trust `X-Forwarded-For` (Vercel, Railway, any reverse proxy). */
   readonly trustProxy?: boolean;
+  /**
+   * Development affordances, currently the collector wallet top-up simulator
+   * (`POST /v1/dev/collector-topup`). Always on outside production; a hosted
+   * deployment opts in with `DEV_TOOLS_ENABLED=true`. It mints float, so it must
+   * never be on for a live-money deployment.
+   */
+  readonly devTools?: boolean;
 }
 
 export interface BuildAppOptions {

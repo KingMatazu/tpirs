@@ -218,11 +218,11 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     if (options.services !== undefined) {
       registerPaymentRoutes(app, { services: options.services });
       registerCashRoutes(app, { services: options.services });
-      // Local development only: Test Mode cannot issue a terminal NUBAN, so
-      // the browser simulates the transfer. Absent from a production build.
+      // Local development only by default; a hosted demo opts in with
+      // `DEV_TOOLS_ENABLED=true` (it can mint float, so never on live money).
       registerDevRoutes(app, {
         services: options.services,
-        enabled: config.nodeEnv !== "production",
+        enabled: config.nodeEnv !== "production" || config.devTools === true,
       });
       registerReversalRoutes(app, { services: options.services });
       if (options.loadConfig !== undefined) {

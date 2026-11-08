@@ -32,6 +32,11 @@ export function DepositScreen(props: Readonly<{ onBack: () => void }>): ReactEle
   const numberFormat = config?.locale.numberFormat ?? "en-NG";
   const deadlineHours = config?.cashRules.depositDeadlineHours ?? 24;
   const prepaid = view?.model === "prepaid";
+  // The simulator is a development affordance: always on under `vite dev`, and
+  // on a hosted demo only when the build sets VITE_DEV_TOOLS=true. The API
+  // route is behind DEV_TOOLS_ENABLED and mints float, so both stay off for a
+  // live-money deployment.
+  const devTools = import.meta.env.DEV || import.meta.env.VITE_DEV_TOOLS === "true";
   const [copied, setCopied] = useState(false);
   // Development only: Paystack Test Mode cannot issue a terminal NUBAN, so the
   // browser can credit the wallet through the API's dev route. Vite strips this
@@ -216,12 +221,12 @@ export function DepositScreen(props: Readonly<{ onBack: () => void }>): ReactEle
         </Banner>
       )}
 
-      {import.meta.env.DEV && prepaid ? (
+      {devTools && prepaid ? (
         <Card>
           <p className="text-sm font-medium text-slate-900">Developer tools</p>
           <p className="mt-1 text-xs text-slate-500">
-            Credits this wallet as if the transfer had arrived — no real money moves. This panel is
-            stripped from a production build.
+            Credits this wallet as if the transfer had arrived — no real money moves. Shown only
+            when developer tools are enabled for this build.
           </p>
           <div className="mt-3 space-y-3">
             <Field label={`Amount (${currency})`}>
