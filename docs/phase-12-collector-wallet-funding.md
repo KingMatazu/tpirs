@@ -57,9 +57,14 @@ Paystack business before collectors fund real money.
 2. **Terminal limit per integration.** Ask Paystack support. One terminal per
    collector is the model; a hard cap below the collector count needs the PwT
    fallback.
-3. **Dedicated NUBAN in test mode.** `POST /virtual_terminal` returns
+3. **Dedicated NUBAN availability.** `POST /virtual_terminal` returns
    `paymentMethods: []` in some markets/domains and a `dedicated_nuban` entry in
-   Nigeria live. The app must work with either: a terminal without a NUBAN shows
+   Nigeria live. **Test Mode on the pilot business answers
+   `titan-paystack is not available in test mode` and creates nothing**, so the
+   terminal flow is exercised locally against the mock adapter: the API registers
+   `mock` outside production, and the demo tenant binds
+   `providers[PaymentProvider] = "mock"`. Switch the binding to `paystack` on the
+   live business. The app must work with either: a terminal without a NUBAN shows
    the terminal page URL instead.
 4. **Teller deposit.** Confirm a bank branch will accept a cash deposit into the
    terminal's dedicated NUBAN. If not, collectors fund from their bank app only.

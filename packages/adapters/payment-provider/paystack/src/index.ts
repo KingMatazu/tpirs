@@ -312,9 +312,10 @@ export function createPaystackPaymentProvider(options: PaystackOptions = {}): Pa
         what: "virtual terminal create",
         body: {
           name,
-          ...(request.phone === undefined
-            ? {}
-            : { destinations: [{ target: request.phone, name }] }),
+          // Paystack requires the field. A collector should always have a phone
+          // (the account service enforces it); an empty list is sent rather than
+          // omitting the field, so the gateway's own error is legible.
+          destinations: request.phone === undefined ? [] : [{ target: request.phone, name }],
           ...(request.currency === undefined ? {} : { currency: request.currency }),
           metadata: {
             ...(request.tenantId === undefined ? {} : { tenantId: request.tenantId }),

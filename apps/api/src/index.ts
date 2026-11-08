@@ -7,6 +7,7 @@ import { buildObjectStorage } from "./storage.js";
 import { createOtelTelemetry } from "@tpirs/adapters-otel-telemetry";
 import { createPrometheusTelemetry } from "@tpirs/adapters-prometheus-telemetry";
 import { createPaystackPaymentProvider } from "@tpirs/payment-provider-paystack";
+import { createMockPaymentProvider } from "@tpirs/payment-provider-mock";
 import { createRemitaPaymentProvider } from "@tpirs/payment-provider-remita";
 import { createEnvSecretsProvider } from "@tpirs/adapters-env-secrets";
 import { createMockCache } from "@tpirs/cache-mock";
@@ -166,6 +167,12 @@ async function main(): Promise<void> {
               : { baseUrl: process.env.PAYSTACK_BASE_URL.trim() }),
           }),
           remita: createRemitaPaymentProvider(),
+          // Local and demo deployments only. Paystack's Test Mode cannot issue
+          // a Virtual Terminal NUBAN ("titan-paystack is not available in test
+          // mode"), so the terminal flow is exercised against the mock adapter
+          // by binding the tenant to `mock`. A production build does not
+          // register it, so no stored config can select it there.
+          ...(config.nodeEnv === "production" ? {} : { mock: createMockPaymentProvider() }),
         },
         // Phase 8: a deployment supplies the statement reader and the report
         // renderers; tenants decide their columns, schedule and rules in config.

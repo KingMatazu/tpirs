@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { CashError, ForbiddenError } from "@tpirs/domain";
+import { PortError } from "@tpirs/ports";
 import type { CashErrorCode, Permission, Principal } from "@tpirs/domain";
 import type { CashIntakeRow, CashDepositRow, CollectorDepositInstructionRow } from "@tpirs/db";
 import { requirePermission } from "../auth.js";
@@ -163,6 +164,26 @@ function sendCashError(request: FastifyRequest, reply: FastifyReply, error: Cash
   return reply
     .code(CASH_ERROR_STATUS[error.code])
     .send(errorEnvelope(error.code, error.message, request.id));
+}
+
+/**
+ * A gateway refusal while provisioning a funding destination.
+ *
+ * A missing adapter or an unconfigured secret is a deployment problem (404/503),
+ * not an unknown server fault; the operator needs the adapter's own sentence.
+ */
+function sendPortError(request: FastifyRequest, reply: FastifyReply, error: PortError) {
+  const status =
+    error.code === "not_found"
+      ? 404
+      : error.code === "invalid_request"
+        ? 400
+        : error.code === "conflict"
+          ? 409
+          : error.code === "unauthorized"
+            ? 502
+            : 503;
+  return reply.code(status).send(errorEnvelope(error.code, error.message, request.id));
 }
 
 function parseMinor(value: string | undefined): bigint | undefined {
@@ -504,6 +525,7 @@ export function registerCashRoutes(
         return await Promise.resolve(reply.send({ instruction: toInstructionJson(instruction) }));
       } catch (error) {
         if (error instanceof CashError) return sendCashError(request, reply, error);
+        if (error instanceof PortError) return sendPortError(request, reply, error);
         throw error;
       }
     },
@@ -532,6 +554,7 @@ export function registerCashRoutes(
         return await Promise.resolve(reply.send({ instruction: toInstructionJson(instruction) }));
       } catch (error) {
         if (error instanceof CashError) return sendCashError(request, reply, error);
+        if (error instanceof PortError) return sendPortError(request, reply, error);
         throw error;
       }
     },
