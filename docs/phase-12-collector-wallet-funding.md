@@ -57,15 +57,25 @@ Paystack business before collectors fund real money.
 2. **Terminal limit per integration.** Ask Paystack support. One terminal per
    collector is the model; a hard cap below the collector count needs the PwT
    fallback.
-3. **Dedicated NUBAN availability.** `POST /virtual_terminal` returns
-   `paymentMethods: []` in some markets/domains and a `dedicated_nuban` entry in
-   Nigeria live. **Test Mode on the pilot business answers
-   `titan-paystack is not available in test mode` and creates nothing**, so the
-   terminal flow is exercised locally against the mock adapter: the API registers
-   `mock` outside production, and the demo tenant binds
-   `providers[PaymentProvider] = "mock"`. Switch the binding to `paystack` on the
-   live business. The app must work with either: a terminal without a NUBAN shows
-   the terminal page URL instead.
+3. **Dedicated NUBAN / Virtual Terminal entitlement.** `POST /virtual_terminal`
+   returns `paymentMethods: []` in some markets/domains and a `dedicated_nuban`
+   entry in Nigeria live. **The pilot business is not enabled for the programme
+   at all, including Test Mode**: `GET /dedicated_account/available_providers`
+   answers `403 feature_unavailable` ("Dedicated NUBAN is not available for your
+   business") and every terminal create answers
+   `500 titan-paystack is not available in test mode`. Paystack support must
+   enable Dedicated NUBAN / Virtual Terminals on the integration before either
+   mode works. Request text:
+
+   > Please enable Dedicated NUBAN / Virtual Terminals on our integration, in
+   > both Test and Live modes. We need one Virtual Terminal (dedicated NUBAN)
+   > per field collector for a state revenue pilot.
+
+   Until then the API registers `mock` outside production and the demo tenant
+   binds `providers[PaymentProvider] = "mock"`; switch the binding to `paystack`
+   when the entitlement lands. The app must work with either: a terminal without
+   a NUBAN shows the terminal page URL instead.
+
 4. **Teller deposit.** Confirm a bank branch will accept a cash deposit into the
    terminal's dedicated NUBAN. If not, collectors fund from their bank app only.
 5. **Fee line.** Confirm the pilot's tariff: terminal transfers are published at
