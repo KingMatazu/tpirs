@@ -9,7 +9,7 @@ import {
   SecondaryButton,
   inputClass,
 } from "../components/ui.js";
-import { collectorToken } from "../api/client.js";
+import { api, collectorToken } from "../api/client.js";
 import { toBigInt } from "../lib/flow.js";
 import { useTenantConfig, useWallet } from "../lib/data.js";
 
@@ -45,6 +45,8 @@ export function DepositScreen(props: Readonly<{ onBack: () => void }>): ReactEle
   const [simBusy, setSimBusy] = useState(false);
   const [simMessage, setSimMessage] = useState<string | undefined>(undefined);
   const [simError, setSimError] = useState<string | undefined>(undefined);
+  const [setupBusy, setSetupBusy] = useState(false);
+  const [setupError, setSetupError] = useState<string | undefined>(undefined);
 
   // The webhook credits in the same request that receives it; this poll is what
   // turns that into a number the collector sees while standing there.
@@ -66,6 +68,28 @@ export function DepositScreen(props: Readonly<{ onBack: () => void }>): ReactEle
   const accountNumber = instruction?.accountNumber ?? null;
   const pageUrl = instruction?.pageUrl ?? null;
   const credit = toBigInt(view?.balanceMinor) < 0n ? -toBigInt(view?.balanceMinor) : 0n;
+
+  // Paystack cannot issue a terminal in Test Mode, so a demo collector can ask
+  // the API for a mock destination. It is the same provisioning route finance
+  // uses, with the adapter named explicitly; the button is dev-tools only.
+  const setupDemoFunding = async (): Promise<void> => {
+    setSetupBusy(true);
+    setSetupError(undefined);
+    try {
+      const result = await api.POST("/v1/cash/collectors/{collectorUserId}/deposit-instruction", {
+        params: { path: { collectorUserId: view?.collectorUserId ?? "" } },
+        body: { provider: "mock" },
+      });
+      if (!result.response.ok) {
+        throw new Error("The demo funding account could not be created.");
+      }
+      await wallet.refetch();
+    } catch (error) {
+      setSetupError(error instanceof Error ? error.message : "The request failed.");
+    } finally {
+      setSetupBusy(false);
+    }
+  };
 
   const simulate = async (): Promise<void> => {
     const major = Number(simAmount);
@@ -156,11 +180,35 @@ export function DepositScreen(props: Readonly<{ onBack: () => void }>): ReactEle
         </Card>
       )}
 
-      {instruction === null || view === undefined ? (
-        <Banner tone="warning">
-          No funding account is provisioned for you yet. Ask finance to set one up before your next
-          collection.
-        </Banner>
+      {view === undefined ? null : instruction === null ? (
+        <>
+          <Banner tone="warning">
+            No funding account is provisioned for you yet. Ask finance to set one up before your
+            next collection.
+          </Banner>
+          {devTools ? (
+            <Card>
+              <p className="text-sm font-medium text-slate-900">Demo funding account</p>
+              <p className="mt-1 text-xs text-slate-500">
+                Paystack Test Mode cannot issue a terminal NUBAN. This creates a mock terminal so
+                the wallet and its simulator can be tried on this deployment.
+              </p>
+              <div className="mt-3 space-y-2">
+                <PrimaryButton
+                  disabled={setupBusy}
+                  onClick={() => {
+                    void setupDemoFunding();
+                  }}
+                >
+                  {setupBusy ? "Creating…" : "Set up demo funding account"}
+                </PrimaryButton>
+                {setupError === undefined ? null : (
+                  <p className="text-xs text-red-600">{setupError}</p>
+                )}
+              </div>
+            </Card>
+          ) : null}
+        </>
       ) : (
         <Card>
           <p className="text-sm text-slate-500">

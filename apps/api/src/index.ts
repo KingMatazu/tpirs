@@ -182,9 +182,12 @@ async function main(): Promise<void> {
           // Local and demo deployments only. Paystack's Test Mode cannot issue
           // a Virtual Terminal NUBAN ("titan-paystack is not available in test
           // mode"), so the terminal flow is exercised against the mock adapter
-          // by binding the tenant to `mock`. A production build does not
-          // register it, so no stored config can select it there.
-          ...(config.nodeEnv === "production" ? {} : { mock: createMockPaymentProvider() }),
+          // by binding the tenant to `mock`, or by naming it explicitly from the
+          // collector's demo setup button. A production build without dev tools
+          // does not register it, so no stored config can select it there.
+          ...(config.nodeEnv === "production" && config.devTools !== true
+            ? {}
+            : { mock: createMockPaymentProvider() }),
         },
         // Phase 8: a deployment supplies the statement reader and the report
         // renderers; tenants decide their columns, schedule and rules in config.

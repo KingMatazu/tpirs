@@ -269,6 +269,9 @@ export class CollectorCashService {
 
     return withTenant(this.deps.db, input.tenantId, async (tx) => {
       const repos = repositories(tx);
+      // A collector seeded before wallets were created with the account can still
+      // be provisioned; the wallet is the screen's precondition (ADR 0071).
+      await repos.collectorCash.ensureWallet(input.tenantId, input.collectorUserId);
       const previous = await repos.collectorCash.findActiveInstructionForCollector(
         input.tenantId,
         input.collectorUserId,

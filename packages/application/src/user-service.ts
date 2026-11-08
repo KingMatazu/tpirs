@@ -517,6 +517,11 @@ export async function createUser(db: AnyDb, input: CreateUserInput): Promise<Use
         });
       }
       await markPrimary(repos, user.id, resolved, input.primaryRoleKey);
+      // A collector without a wallet cannot be funded, cannot be opened from the
+      // dashboard and cannot take cash; create it with the account (ADR 0071).
+      if (resolved.some((role) => role.key === COLLECTOR_ROLE)) {
+        await repos.collectorCash.ensureWallet(input.tenantId, user.id);
+      }
       return await summarize(repos, user);
     });
   } catch (error) {
@@ -637,6 +642,11 @@ export async function updateUser(db: AnyDb, input: UpdateUserInput): Promise<Use
         });
       }
       await markPrimary(repos, input.userId, resolved, input.primaryRoleKey);
+      // A role change can turn an existing account into a collector; give it the
+      // wallet every collector screen assumes (ADR 0071).
+      if (resolved.some((role) => role.key === COLLECTOR_ROLE)) {
+        await repos.collectorCash.ensureWallet(input.tenantId, input.userId);
+      }
     } else if (input.primaryRoleKey !== undefined) {
       const held = await repos.roles.rolesForUser(input.userId);
       const grant = held.find((role) => role.key === input.primaryRoleKey);

@@ -317,6 +317,14 @@ describeIntegration("api users e2e (integration)", () => {
     expect(user.roles).toEqual(["collector", "staff"]);
     expect(user.primaryRoleKey).toBe("collector");
     dualId = user.id;
+
+    // A collector account comes with its wallet (ADR 0071), so the dashboard can
+    // open it and finance can provision a funding destination straight away.
+    const tenant = await withSystem(db, (tx) => repositories(tx).tenants.findBySlug(slugA));
+    const wallet = await withTenant(db, tenant?.id ?? "", (tx) =>
+      repositories(tx).collectorCash.findWallet(tenant?.id ?? "", user.id),
+    );
+    expect(wallet).toBeDefined();
   });
 
   it("refuses a primary role that is not being assigned", async () => {

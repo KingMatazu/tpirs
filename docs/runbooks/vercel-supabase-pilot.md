@@ -107,7 +107,9 @@ imports (`pnpm --filter @tpirs/<app>... build`).
 For a hosted **demo** of the collector wallet, set `VITE_DEV_TOOLS=true` on
 `tpirs-collector` and `DEV_TOOLS_ENABLED=true` on `tpirs-api`. The collector's
 **Fund wallet** screen then shows a "Developer tools" card that credits the
-wallet without money arriving. Both are build/runtime settings for the demo
+wallet without money arriving; when no funding destination exists it also offers
+**Set up demo funding account**, which creates a mock terminal through the same
+provisioning route finance uses. Both are build/runtime settings for the demo
 only — remove them before the deployment handles real money, because either one
 is enough surface for a collector to mint their own float.
 
