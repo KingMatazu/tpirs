@@ -201,7 +201,16 @@ function parseMinor(value: string | undefined): bigint | undefined {
  */
 function seesWholeTenant(principal: Principal): boolean {
   const wider: readonly Permission[] = ["cash:freeze", "cash:unfreeze", "cash:deposit:read"];
-  return wider.some((permission) => principal.permissions.includes(permission));
+  // A collector sees only their own wallet; every other holder of `cash:read`
+  // is an operational reader of the tenant — finance, supervisor, auditor, and
+  // the system admin, which deliberately holds none of the money permissions.
+  // Deciding by "is this a collector" rather than by a list of money
+  // permissions is what stops the system admin from being filtered down to its
+  // own (non-existent) wallet.
+  return (
+    wider.some((permission) => principal.permissions.includes(permission)) ||
+    !principal.roles.includes("collector")
+  );
 }
 
 function assertMaySeeCollector(principal: Principal, collectorUserId: string): void {

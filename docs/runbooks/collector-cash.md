@@ -255,6 +255,16 @@ from ledger_entries
 where tenant_id = '<tenant-id>';
 ```
 
+## The Collectors page is empty
+
+A **collector-only** account sees just its own wallet. Every other holder of
+`cash:read` — finance, supervisor, auditor, system admin — sees the whole
+tenant. A system admin once fell through that rule (it holds `cash:read` but no
+money permission, so it was mistaken for a collector and filtered to a wallet it
+does not have); if the page is still empty, confirm the API deployment includes
+the fix, then check the wallet count in the tenant with the query under
+"Reconcile a wallet by hand".
+
 ## A collector has no Fund wallet screen
 
 Work down this list; each step answers a different cause.

@@ -175,6 +175,9 @@ describeIntegration("api collector cash (integration)", () => {
         "cash:unfreeze",
       ]);
       const auditorRole = await role("auditor", ["cash:read", "cash:deposit:read"]);
+      // A staff reader with cash:read but no money permission, like a system
+      // admin: it must still see the tenant's collectors.
+      const observerRole = await role("observer", ["cash:read"]);
 
       const user = async (username: string, roleId: string) => {
         const created = await repos.users.create({
@@ -197,6 +200,7 @@ describeIntegration("api collector cash (integration)", () => {
       await user("cash.supervisor", supervisorRole);
       await user("cash.finance", financeRole);
       await user("cash.auditor", auditorRole);
+      await user("cash.observer", observerRole);
 
       const asset = await repos.assets.create({
         tenantId: tenant.id,
@@ -358,6 +362,21 @@ describeIntegration("api collector cash (integration)", () => {
       },
     });
     expect(denied.statusCode).toBe(403);
+  });
+
+  it("shows every wallet to a staff reader who holds no money permission", async () => {
+    const token = await login("cash.observer");
+    const response = await app.inject({
+      method: "GET",
+      url: "/v1/cash/wallets",
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(response.statusCode).toBe(200);
+    const ids = (response.json() as { wallets: { collectorUserId: string }[] }).wallets.map(
+      (wallet) => wallet.collectorUserId,
+    );
+    expect(ids).toContain(collectorId);
+    expect(ids).toContain(otherCollectorId);
   });
 
   it("lists only the caller's wallet for a collector, and refuses another wallet", async () => {
