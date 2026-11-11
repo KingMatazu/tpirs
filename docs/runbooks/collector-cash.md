@@ -255,6 +255,41 @@ from ledger_entries
 where tenant_id = '<tenant-id>';
 ```
 
+## A collector has no Fund wallet screen
+
+Work down this list; each step answers a different cause.
+
+1. **Does the wallet exist?** A collector created before ADR 0071 has no
+   `collector_wallets` row, so `GET /v1/cash/wallets/:id` answers
+   `wallet_unknown` and the dashboard's wallet list omits them. Migration 0030
+   backfills every non-deleted collector; run it (`pnpm db:migrate`) before
+   debugging anything else.
+   ```sql
+   select u.username
+   from users u
+   join user_roles ur on ur.user_id = u.id and ur.tenant_id = u.tenant_id
+   join roles r on r.id = ur.role_id and r.key = 'collector'
+   left join collector_wallets w
+     on w.collector_user_id = u.id and w.tenant_id = u.tenant_id
+   where u.deleted_at is null and w.id is null;
+   ```
+2. **Is the tenant prepaid?** The screen says **Deposit cash** under the default
+   `postpaid` model and **Fund wallet** only under `prepaid`; the simulator is
+   prepaid-only too.
+   ```sql
+   select slug, config->'cashRules'->>'model' from tenants;
+   ```
+   Fix with `jsonb_set(config, '{cashRules,model}', '"prepaid"')`.
+3. **Is a destination provisioned?** With none, the screen says "No funding
+   account is provisioned". Finance provisions from **Collectors → Funding
+   terminal**; a demo collector can press **Set up demo funding account**, which
+   requires `DEV_TOOLS_ENABLED=true` on the API and `VITE_DEV_TOOLS=true` on the
+   collector build.
+4. **Is the browser running the new build?** The collector app is a PWA. A
+   redeploy does not replace the cached shell until the update prompt is accepted
+   or the tab is closed and reopened. Check the JS bundle hash, or open a private
+   window, before concluding the deploy failed.
+
 ## Troubleshooting
 
 | Symptom                                           | Likely cause and next step                                                                                                                                                                                                               |

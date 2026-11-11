@@ -21,10 +21,12 @@ funding account" while finance had no wallet to open and provision.
 
 - **Creating an account whose roles include `collector` creates its wallet** in
   the same transaction. The same happens on an edit that adds the collector role.
+- **Existing collector accounts are backfilled** by migration 0030, which inserts
+  the missing wallet for every non-deleted user holding the collector role.
 - **Provisioning a funding destination ensures the wallet exists** before it
-  writes the instruction, covering accounts created before this change.
+  writes the instruction, covering any account the backfill missed.
 - The wallet stays a single row per collector, with `ensureWallet` idempotent, so
-  the two paths converge rather than competing.
+  the three paths converge rather than competing.
 - This does not create wallets for other roles: an officer or finance admin has
   no cash position.
 
