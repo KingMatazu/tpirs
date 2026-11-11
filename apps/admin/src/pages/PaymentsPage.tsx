@@ -108,7 +108,9 @@ export function PaymentsPage(): ReactElement {
         <p className="mt-0.5 text-sm text-slate-500">
           Every gateway payment, the asset it was attributed to, and whether the driver's receipt
           went out. A business day with no payment recorded means only that: no payment was
-          recorded. Money that arrived without an asset waits in suspense.
+          recorded. Money that arrived without an asset waits in suspense. Cash taken by a collector
+          and float top-ups are not gateway payments — they appear under{" "}
+          <span className="font-medium">Collectors</span>, on the collector's wallet.
         </p>
       </div>
 

@@ -685,4 +685,37 @@ describeIntegration("api collector cash (integration)", () => {
     const body = response.json() as { instruction: { status: string } };
     expect(body.instruction.status).toBe("revoked");
   });
+
+  it("lists a collector whose wallet row is missing, and repairs it", async () => {
+    // Simulate an account created before ADR 0071: the role exists, the wallet
+    // does not. The list must still show the person and heal the row.
+    const orphanId = await withTenant(db, tenantId, async (tx) => {
+      const repos = repositories(tx);
+      const orphan = await repos.users.create({
+        tenantId,
+        username: `orphan-${slug}`,
+        displayName: "Orphan Collector",
+        passwordHash: "not-used",
+        totpSecret: null,
+      });
+      const collectorRole = await repos.roles.findByKey("collector");
+      if (collectorRole === undefined) throw new Error("collector role missing");
+      await repos.roles.assignToUser({
+        tenantId,
+        userId: orphan.id,
+        roleId: collectorRole.id,
+      });
+      return orphan.id;
+    });
+
+    const token = await login("cash.finance");
+    const response = await app.inject({
+      method: "GET",
+      url: "/v1/cash/wallets",
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(response.statusCode).toBe(200);
+    const wallets = (response.json() as { wallets: { collectorUserId: string }[] }).wallets;
+    expect(wallets.map((wallet) => wallet.collectorUserId)).toContain(orphanId);
+  });
 });

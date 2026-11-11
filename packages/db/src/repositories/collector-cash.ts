@@ -180,6 +180,22 @@ export class CollectorCashRepository {
   }
 
   async listWallets(tenantId: string): Promise<CollectorWalletRow[]> {
+    // The screen is called "Collectors", so it must list collectors, not only
+    // rows a previous path happened to create. Repair the invariant first:
+    // every non-deleted account holding the collector role has a wallet
+    // (ADR 0071). Idempotent, and a missed backfill then cannot hide a person
+    // from finance.
+    await sql`
+      insert into collector_wallets (tenant_id, collector_user_id)
+      select u.tenant_id, u.id
+      from users u
+      join user_roles ur on ur.user_id = u.id and ur.tenant_id = u.tenant_id
+      join roles r on r.id = ur.role_id
+      where u.tenant_id = ${tenantId}
+        and r.key = 'collector'
+        and u.deleted_at is null
+      on conflict (tenant_id, collector_user_id) do nothing
+    `.execute(this.db);
     return this.db
       .selectFrom("collectorWallets")
       .selectAll()

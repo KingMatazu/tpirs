@@ -25,8 +25,12 @@ funding account" while finance had no wallet to open and provision.
   the missing wallet for every non-deleted user holding the collector role.
 - **Provisioning a funding destination ensures the wallet exists** before it
   writes the instruction, covering any account the backfill missed.
+- **The wallets list repairs the invariant before it reads**, so a database that
+  missed the backfill (or an account created by an older build) cannot hide a
+  collector from finance. The insert is idempotent and creates only an empty
+  wallet.
 - The wallet stays a single row per collector, with `ensureWallet` idempotent, so
-  the three paths converge rather than competing.
+  the paths converge rather than competing.
 - This does not create wallets for other roles: an officer or finance admin has
   no cash position.
 
