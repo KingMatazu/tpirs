@@ -14,6 +14,15 @@ export function collectorToken(): string | undefined {
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "";
 
 /**
+ * An absolute URL for a hand-written request (the dev simulator is outside the
+ * generated contract). A relative path would hit the collector's own SPA
+ * rewrite on a split-origin deployment and return `index.html` with a 200.
+ */
+export function apiUrl(path: string): string {
+  return `${apiBaseUrl.replace(/\/+$/, "")}${path}`;
+}
+
+/**
  * `same-origin` by default. A split-origin deployment sets `VITE_API_BASE_URL`
  * and takes `include`, because the httpOnly refresh cookie is only stored when
  * the request that produced it was not same-origin-suppressed (ADR 0026/0052).

@@ -9,7 +9,7 @@ import {
   SecondaryButton,
   inputClass,
 } from "../components/ui.js";
-import { api, collectorToken } from "../api/client.js";
+import { api, apiUrl, collectorToken } from "../api/client.js";
 import { toBigInt } from "../lib/flow.js";
 import { useTenantConfig, useWallet } from "../lib/data.js";
 
@@ -102,7 +102,7 @@ export function DepositScreen(props: Readonly<{ onBack: () => void }>): ReactEle
     setSimMessage(undefined);
     try {
       const token = collectorToken();
-      const response = await fetch("/v1/dev/collector-topup", {
+      const response = await fetch(apiUrl("/v1/dev/collector-topup"), {
         method: "POST",
         headers: {
           "content-type": "application/json",
@@ -110,10 +110,16 @@ export function DepositScreen(props: Readonly<{ onBack: () => void }>): ReactEle
         },
         body: JSON.stringify({ amountMinor: String(Math.round(major * 100)) }),
       });
-      const body = (await response.json()) as {
-        availableMinor?: string;
-        error?: { message?: string };
-      };
+      // A non-JSON body is almost always the SPA rewrite answering with HTML,
+      // which is what a relative API path does on a split-origin deployment.
+      let body: { availableMinor?: string; error?: { message?: string } };
+      try {
+        body = (await response.json()) as typeof body;
+      } catch {
+        throw new Error(
+          "The API answered with a page, not JSON. Check that VITE_API_BASE_URL points at the API.",
+        );
+      }
       if (!response.ok) {
         throw new Error(body.error?.message ?? "The simulation was refused.");
       }
